@@ -60,6 +60,16 @@ body {
   color: var(--accent);
 }
 
+.version {
+  font-size: 9px;
+  color: var(--muted);
+  opacity: 0.5;
+  margin-left: 6px;
+  font-weight: normal;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
 .credit-link {
   font-size: 9px;
   color: var(--muted);
