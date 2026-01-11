@@ -1006,15 +1006,10 @@ export class MapComponent {
           ? '<div class="hotspot-breaking">BREAKING</div>'
           : '';
 
-        const subtextHtml = spot.subtext
-          ? `<div class="hotspot-subtext">${escapeHtml(spot.subtext)}</div>`
-          : '';
-
         div.innerHTML = `
           ${breakingBadge}
           <div class="hotspot-marker ${escapeHtml(spot.level || 'low')}"></div>
           <div class="hotspot-label">${escapeHtml(spot.name)}</div>
-          ${subtextHtml}
         `;
 
         div.addEventListener('click', (e) => {
