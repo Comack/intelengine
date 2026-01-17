@@ -663,16 +663,22 @@ export class MapComponent {
   }
 
   private getProjection(width: number, height: number): d3.GeoProjection {
-    // Equirectangular: 360° longitude, 180° latitude
-    // Scale to fit whichever dimension is more constrained
-    const scaleForWidth = width / (2 * Math.PI);   // fit 360° in width
-    const scaleForHeight = height / Math.PI;        // fit 180° in height
+    // Equirectangular with cropped latitude range (60°N to 55°S = 115°)
+    // This removes empty polar regions and allows full-width display
+    const LAT_NORTH = 60;
+    const LAT_SOUTH = -55;
+    const LAT_RANGE = LAT_NORTH - LAT_SOUTH; // 115°
+    const LAT_CENTER = (LAT_NORTH + LAT_SOUTH) / 2; // 2.5°N
+
+    // Scale to fit: 360° longitude in width, 115° latitude in height
+    const scaleForWidth = width / (2 * Math.PI);
+    const scaleForHeight = height / (LAT_RANGE * Math.PI / 180);
     const scale = Math.min(scaleForWidth, scaleForHeight);
 
     return d3
       .geoEquirectangular()
       .scale(scale)
-      .center([0, 0])
+      .center([0, LAT_CENTER])
       .translate([width / 2, height / 2]);
   }
 

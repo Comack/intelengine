@@ -275,15 +275,16 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: var(--bg);
   width: 100%;
 }
 
 .map-section {
-  height: 65vh;
-  min-height: 400px;
-  max-height: 85vh;
+  height: 50vh;
+  min-height: 350px;
+  max-height: 70vh;
   border: 1px solid var(--border);
   background: var(--surface);
   display: flex;
