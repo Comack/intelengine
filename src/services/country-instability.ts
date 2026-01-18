@@ -340,8 +340,16 @@ function calcUnrestScore(data: CountryData, countryCode: string): number {
     const fatalities = data.protests.reduce((sum, p) => sum + (p.fatalities || 0), 0);
     const highSeverity = data.protests.filter(p => p.severity === 'high').length;
 
-    const adjustedCount = protestCount * multiplier;
+    // For democracies with frequent protests (low multiplier), use log scaling
+    // This prevents routine protests from triggering instability alerts
+    const isHighVolume = multiplier < 0.7;
+    const adjustedCount = isHighVolume
+      ? Math.log2(protestCount + 1) * multiplier * 5  // Log scale for democracies
+      : protestCount * multiplier;
+
     baseScore = Math.min(50, adjustedCount * 8);
+
+    // Fatalities and high severity always matter, but scaled by multiplier
     fatalityBoost = Math.min(30, fatalities * 5 * multiplier);
     severityBoost = Math.min(20, highSeverity * 10 * multiplier);
   }

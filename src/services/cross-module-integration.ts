@@ -57,6 +57,10 @@ const previousCIIScores = new Map<string, number>();
 const ALERT_MERGE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const ALERT_MERGE_DISTANCE_KM = 200;
 
+// Warmup period - don't emit CII alerts until system has stabilized
+let ciiWarmupCycles = 0;
+const CII_WARMUP_REQUIRED = 2; // Skip first 2 cycles to let data populate
+
 let alertIdCounter = 0;
 function generateAlertId(): string {
   return `alert-${Date.now()}-${++alertIdCounter}`;
@@ -320,11 +324,16 @@ export function checkCIIChanges(): UnifiedAlert[] {
   const newAlerts: UnifiedAlert[] = [];
   const scores = calculateCII();
 
+  // Track warmup cycles - skip alerting until data has stabilized
+  ciiWarmupCycles++;
+  const isWarmedUp = ciiWarmupCycles > CII_WARMUP_REQUIRED;
+
   for (const score of scores) {
     const previous = previousCIIScores.get(score.code) ?? score.score;
     const change = score.score - previous;
 
-    if (Math.abs(change) >= 10) {
+    // Only emit alerts after warmup period
+    if (isWarmedUp && Math.abs(change) >= 10) {
       const driver = getHighestComponent(score);
       const alert = createCIIAlert(
         score.code,
