@@ -5747,6 +5747,58 @@ body.playback-mode .status-dot {
   cursor: help;
 }
 
+/* CII Learning Mode */
+.cii-learning-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 170, 0, 0.15);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.cii-learning-banner .learning-icon {
+  font-size: 16px;
+}
+
+.cii-learning-banner .learning-text {
+  flex: 1;
+}
+
+.cii-learning-banner .learning-title {
+  font-size: 10px;
+  font-weight: bold;
+  color: #ffaa00;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cii-learning-banner .learning-desc {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.cii-learning-banner .learning-progress {
+  width: 60px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.cii-learning-banner .learning-bar {
+  height: 100%;
+  background: #ffaa00;
+  transition: width 1s ease;
+}
+
+/* Dim scores during learning */
+.cii-learning .cii-country {
+  opacity: 0.6;
+}
+
 /* Cascade Panel Styles */
 .cascade-panel {
   display: flex;
@@ -6347,6 +6399,37 @@ body.playback-mode .status-dot {
   font-size: 10px;
   color: #44aa44;
   font-weight: 500;
+}
+
+/* Learning Mode Override - must come after base banner styles */
+.risk-status-learning {
+  background: rgba(255, 170, 0, 0.15) !important;
+  border: 1px solid rgba(255, 170, 0, 0.3) !important;
+}
+
+.risk-status-learning .risk-warning-icon,
+.risk-status-learning .risk-status-icon {
+  color: #ffaa00;
+}
+
+.risk-status-learning .risk-warning-text,
+.risk-status-learning .risk-status-text {
+  color: #ffaa00;
+}
+
+.risk-status-learning .learning-progress-mini {
+  width: 40px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+  overflow: hidden;
+  margin-left: auto;
+}
+
+.risk-status-learning .learning-bar {
+  height: 100%;
+  background: #ffaa00;
+  transition: width 1s ease;
 }
 
 /* Data Sources */

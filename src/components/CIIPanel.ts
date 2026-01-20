@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml } from '@/utils/sanitize';
-import { calculateCII, type CountryScore } from '@/services/country-instability';
+import { calculateCII, getLearningProgress, type CountryScore } from '@/services/country-instability';
 
 export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
@@ -51,6 +51,24 @@ export class CIIPanel extends Panel {
     return '<span class="trend-stable">→</span>';
   }
 
+  private renderLearningBanner(): string {
+    const { inLearning, remainingMinutes, progress } = getLearningProgress();
+    if (!inLearning) return '';
+
+    return `
+      <div class="cii-learning-banner">
+        <div class="learning-icon">📊</div>
+        <div class="learning-text">
+          <div class="learning-title">Learning Mode</div>
+          <div class="learning-desc">Calibrating scores (~${remainingMinutes}m remaining)</div>
+        </div>
+        <div class="learning-progress">
+          <div class="learning-bar" style="width: ${progress}%"></div>
+        </div>
+      </div>
+    `;
+  }
+
   private renderCountry(country: CountryScore): string {
     const barWidth = country.score;
     const color = this.getLevelColor(country.level);
@@ -85,13 +103,17 @@ export class CIIPanel extends Panel {
       const withData = this.scores.filter(s => s.score > 0);
       this.setCount(withData.length);
 
+      const { inLearning } = getLearningProgress();
+      const learningBanner = this.renderLearningBanner();
+      const learningClass = inLearning ? 'cii-learning' : '';
+
       if (withData.length === 0) {
-        this.content.innerHTML = '<div class="empty-state">Collecting data...</div>';
+        this.content.innerHTML = learningBanner + '<div class="empty-state">Collecting data...</div>';
         return;
       }
 
       const html = withData.map(s => this.renderCountry(s)).join('');
-      this.content.innerHTML = `<div class="cii-list">${html}</div>`;
+      this.content.innerHTML = learningBanner + `<div class="cii-list ${learningClass}">${html}</div>`;
     } catch (error) {
       console.error('[CIIPanel] Refresh error:', error);
       this.showError('Failed to calculate CII');

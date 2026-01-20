@@ -49,6 +49,48 @@ export const TIER1_COUNTRIES: Record<string, string> = {
   VE: 'Venezuela',
 };
 
+// Learning Mode - warmup period for reliable data
+const LEARNING_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+let learningStartTime: number | null = null;
+let isLearningComplete = false;
+
+export function startLearning(): void {
+  if (learningStartTime === null) {
+    learningStartTime = Date.now();
+  }
+}
+
+export function isInLearningMode(): boolean {
+  if (isLearningComplete) return false;
+  if (learningStartTime === null) return true;
+
+  const elapsed = Date.now() - learningStartTime;
+  if (elapsed >= LEARNING_DURATION_MS) {
+    isLearningComplete = true;
+    return false;
+  }
+  return true;
+}
+
+export function getLearningProgress(): { inLearning: boolean; remainingMinutes: number; progress: number } {
+  if (isLearningComplete) {
+    return { inLearning: false, remainingMinutes: 0, progress: 100 };
+  }
+  if (learningStartTime === null) {
+    return { inLearning: true, remainingMinutes: 15, progress: 0 };
+  }
+
+  const elapsed = Date.now() - learningStartTime;
+  const remaining = Math.max(0, LEARNING_DURATION_MS - elapsed);
+  const progress = Math.min(100, (elapsed / LEARNING_DURATION_MS) * 100);
+
+  return {
+    inLearning: remaining > 0,
+    remainingMinutes: Math.ceil(remaining / 60000),
+    progress: Math.round(progress),
+  };
+}
+
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
   US: ['united states', 'usa', 'america', 'washington', 'biden', 'trump', 'pentagon'],
   RU: ['russia', 'moscow', 'kremlin', 'putin'],
@@ -432,11 +474,11 @@ export function calculateCII(): CountryScore[] {
     const data = countryDataMap.get(code) || initCountryData();
     const baselineRisk = BASELINE_RISK[code] ?? 20;
 
-    // Calculate component scores with country-specific adjustments
+    // Calculate component scores with country-specific adjustments (rounded for display)
     const components: ComponentScores = {
-      unrest: calcUnrestScore(data, code),
-      security: calcSecurityScore(data),
-      information: calcInformationScore(data, code),
+      unrest: Math.round(calcUnrestScore(data, code)),
+      security: Math.round(calcSecurityScore(data)),
+      information: Math.round(calcInformationScore(data, code)),
     };
 
     // Calculate event-based score (weighted components)

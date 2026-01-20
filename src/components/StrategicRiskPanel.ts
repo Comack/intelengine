@@ -16,6 +16,7 @@ import {
   type DataSourceState,
   type DataFreshnessSummary,
 } from '@/services/data-freshness';
+import { getLearningProgress } from '@/services/country-instability';
 
 export class StrategicRiskPanel extends Panel {
   private overview: StrategicRiskOverview | null = null;
@@ -200,14 +201,24 @@ export class StrategicRiskPanel extends Panel {
     const scoreDeg = Math.round((score / 100) * 270);
     const sources = dataFreshness.getAllSources();
 
+    // Check for learning mode - takes priority over limited data warning
+    const { inLearning, remainingMinutes, progress } = getLearningProgress();
+    const warningBanner = inLearning
+      ? `<div class="risk-warning-banner risk-status-learning">
+          <span class="risk-warning-icon">📊</span>
+          <span class="risk-warning-text">Learning Mode - ${remainingMinutes}m until reliable</span>
+          <div class="learning-progress-mini">
+            <div class="learning-bar" style="width: ${progress}%"></div>
+          </div>
+        </div>`
+      : `<div class="risk-warning-banner">
+          <span class="risk-warning-icon">⚠️</span>
+          <span class="risk-warning-text">Limited Data - ${this.getActiveSourceNames().join(', ') || 'waiting for sources'}</span>
+        </div>`;
+
     return `
       <div class="strategic-risk-panel">
-        <div class="risk-warning-banner">
-          <span class="risk-warning-icon">⚠️</span>
-          <span class="risk-warning-text">
-            Limited Data - ${this.getActiveSourceNames().join(', ') || 'waiting for sources'}
-          </span>
-        </div>
+        ${warningBanner}
 
         <div class="risk-gauge">
           <div class="risk-score-container">
@@ -266,14 +277,24 @@ export class StrategicRiskPanel extends Panel {
     const level = this.getScoreLevel(score);
     const scoreDeg = Math.round((score / 100) * 270);
 
+    // Check for learning mode
+    const { inLearning, remainingMinutes, progress } = getLearningProgress();
+    const statusBanner = inLearning
+      ? `<div class="risk-status-banner risk-status-learning">
+          <span class="risk-status-icon">📊</span>
+          <span class="risk-status-text">Learning Mode - ${remainingMinutes}m until reliable</span>
+          <div class="learning-progress-mini">
+            <div class="learning-bar" style="width: ${progress}%"></div>
+          </div>
+        </div>`
+      : `<div class="risk-status-banner risk-status-ok">
+          <span class="risk-status-icon">✓</span>
+          <span class="risk-status-text">All data sources active</span>
+        </div>`;
+
     return `
       <div class="strategic-risk-panel">
-        <div class="risk-status-banner risk-status-ok">
-          <span class="risk-status-icon">✓</span>
-          <span class="risk-status-text">
-            All data sources active
-          </span>
-        </div>
+        ${statusBanner}
 
         <div class="risk-gauge">
           <div class="risk-score-container">

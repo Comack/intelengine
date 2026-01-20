@@ -1,7 +1,7 @@
 import { getLocationName, type GeoConvergenceAlert } from './geo-convergence';
 import type { CountryScore } from './country-instability';
 import type { CascadeResult, CascadeImpactLevel } from '@/types';
-import { calculateCII, TIER1_COUNTRIES } from './country-instability';
+import { calculateCII, TIER1_COUNTRIES, isInLearningMode } from './country-instability';
 
 export type AlertPriority = 'critical' | 'high' | 'medium' | 'low';
 export type AlertType = 'convergence' | 'cii_spike' | 'cascade' | 'composite';
@@ -56,10 +56,6 @@ const alerts: UnifiedAlert[] = [];
 const previousCIIScores = new Map<string, number>();
 const ALERT_MERGE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const ALERT_MERGE_DISTANCE_KM = 200;
-
-// Warmup period - don't emit CII alerts until system has stabilized
-let ciiWarmupCycles = 0;
-const CII_WARMUP_REQUIRED = 2; // Skip first 2 cycles to let data populate
 
 let alertIdCounter = 0;
 function generateAlertId(): string {
@@ -345,16 +341,15 @@ export function checkCIIChanges(): UnifiedAlert[] {
   const newAlerts: UnifiedAlert[] = [];
   const scores = calculateCII();
 
-  // Track warmup cycles - skip alerting until data has stabilized
-  ciiWarmupCycles++;
-  const isWarmedUp = ciiWarmupCycles > CII_WARMUP_REQUIRED;
+  // Skip alerting during learning mode - data not yet reliable
+  const inLearning = isInLearningMode();
 
   for (const score of scores) {
     const previous = previousCIIScores.get(score.code) ?? score.score;
     const change = score.score - previous;
 
-    // Only emit alerts after warmup period
-    if (isWarmedUp && Math.abs(change) >= 10) {
+    // Only emit alerts after learning period completes
+    if (!inLearning && Math.abs(change) >= 10) {
       const driver = getHighestComponent(score);
       const alert = createCIIAlert(
         score.code,
