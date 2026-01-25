@@ -393,6 +393,14 @@ export class DeckGLMap {
       const clusters = this.clusterMarkers(significantProtests, clusterRadius, p => p.country);
       this.renderProtestClusters(clusters);
     }
+
+    // Datacenters clustering (both variants) - only at low zoom levels
+    if (this.state.layers.datacenters && zoom < 5) {
+      const clusterRadius = zoom >= 3 ? 30 : zoom >= 2 ? 50 : 70;
+      const activeDCs = AI_DATA_CENTERS.filter(dc => dc.status !== 'decommissioned');
+      const clusters = this.clusterMarkers(activeDCs, clusterRadius, dc => dc.country);
+      this.renderDatacenterClusters(clusters);
+    }
   }
 
   private renderTechHQClusters(clusters: Array<{ items: typeof TECH_HQS; center: [number, number]; screenPos: [number, number] }>): void {
@@ -563,6 +571,69 @@ export class DeckGLMap {
     });
   }
 
+  private renderDatacenterClusters(clusters: Array<{ items: typeof AI_DATA_CENTERS; center: [number, number]; screenPos: [number, number] }>): void {
+    const zoom = this.maplibreMap?.getZoom() || 2;
+
+    clusters.forEach(cluster => {
+      if (cluster.items.length === 0) return;
+
+      const div = document.createElement('div');
+      const primaryDC = cluster.items[0]!;
+      const isCluster = cluster.items.length > 1;
+      const totalChips = cluster.items.reduce((sum, dc) => sum + dc.chipCount, 0);
+      const hasPlanned = cluster.items.some(dc => dc.status === 'planned');
+      const hasExisting = cluster.items.some(dc => dc.status === 'existing');
+
+      div.className = `datacenter-marker ${hasPlanned && !hasExisting ? 'planned' : 'existing'} ${isCluster ? 'cluster' : ''}`;
+      div.style.cssText = `position: absolute; left: ${cluster.screenPos[0]}px; top: ${cluster.screenPos[1]}px; transform: translate(-50%, -50%); pointer-events: auto; cursor: pointer;`;
+
+      const icon = document.createElement('div');
+      icon.className = 'datacenter-icon';
+      icon.textContent = '🖥️';
+      div.appendChild(icon);
+
+      if (isCluster) {
+        const badge = document.createElement('div');
+        badge.className = 'cluster-badge';
+        badge.textContent = String(cluster.items.length);
+        div.appendChild(badge);
+
+        const formatNum = (n: number) => n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(n);
+        div.title = `${cluster.items.length} data centers • ${formatNum(totalChips)} chips`;
+      } else {
+        if (zoom >= 4) {
+          const label = document.createElement('div');
+          label.className = 'datacenter-label';
+          label.textContent = primaryDC.owner.split(',')[0] || primaryDC.name.slice(0, 15);
+          div.appendChild(label);
+        }
+        div.title = primaryDC.name;
+      }
+
+      div.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const rect = this.container.getBoundingClientRect();
+        if (isCluster) {
+          this.popup.show({
+            type: 'datacenterCluster',
+            data: { items: cluster.items, region: primaryDC.country, country: primaryDC.country },
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        } else {
+          this.popup.show({
+            type: 'datacenter',
+            data: primaryDC,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          });
+        }
+      });
+
+      this.clusterOverlay?.appendChild(div);
+    });
+  }
+
   private buildLayers(): LayersList {
     const layers: (Layer | null | false)[] = [];
     const { layers: mapLayers } = this.state;
@@ -607,8 +678,9 @@ export class DeckGLMap {
       layers.push(this.createHotspotsLayer());
     }
 
-    // Datacenters layer - SQUARE icons
-    if (mapLayers.datacenters) {
+    // Datacenters layer - SQUARE icons (only at high zoom, clusters handle low zoom)
+    const currentZoom = this.maplibreMap?.getZoom() || 2;
+    if (mapLayers.datacenters && currentZoom >= 5) {
       layers.push(this.createDatacentersLayer());
     }
 

@@ -8,7 +8,7 @@ import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticl
 import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster';
 
 interface TechEventPopupData {
   id: string;
@@ -40,9 +40,15 @@ interface ProtestClusterData {
   country: string;
 }
 
+interface DatacenterClusterData {
+  items: AIDataCenter[];
+  region: string;
+  country: string;
+}
+
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -186,6 +192,8 @@ export class MapPopup {
         return this.renderOutagePopup(data.data as InternetOutage);
       case 'datacenter':
         return this.renderDatacenterPopup(data.data as AIDataCenter);
+      case 'datacenterCluster':
+        return this.renderDatacenterClusterPopup(data.data as DatacenterClusterData);
       case 'ais':
         return this.renderAisPopup(data.data as AisDisruptionEvent);
       case 'protest':
@@ -1276,6 +1284,65 @@ export class MapPopup {
           ` : ''}
         </div>
         ${dc.note ? `<p class="popup-description">${dc.note}</p>` : ''}
+        <div class="popup-attribution">Data: Epoch AI GPU Clusters</div>
+      </div>
+    `;
+  }
+
+  private renderDatacenterClusterPopup(data: DatacenterClusterData): string {
+    const totalChips = data.items.reduce((sum, dc) => sum + dc.chipCount, 0);
+    const totalPower = data.items.reduce((sum, dc) => sum + (dc.powerMW || 0), 0);
+    const existingCount = data.items.filter(dc => dc.status === 'existing').length;
+    const plannedCount = data.items.filter(dc => dc.status === 'planned').length;
+
+    const formatNumber = (n: number) => {
+      if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+      if (n >= 1000) return `${(n / 1000).toFixed(0)}K`;
+      return n.toString();
+    };
+
+    const dcListHtml = data.items.slice(0, 8).map(dc => `
+      <div class="cluster-item">
+        <span class="cluster-item-icon">${dc.status === 'planned' ? '🔨' : '🖥️'}</span>
+        <div class="cluster-item-info">
+          <span class="cluster-item-name">${escapeHtml(dc.name.slice(0, 40))}${dc.name.length > 40 ? '...' : ''}</span>
+          <span class="cluster-item-detail">${escapeHtml(dc.owner)} • ${formatNumber(dc.chipCount)} chips</span>
+        </div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="popup-header datacenter cluster">
+        <span class="popup-title">🖥️ ${data.items.length} Data Centers</span>
+        <span class="popup-badge elevated">${escapeHtml(data.region)}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-subtitle">${escapeHtml(data.country)}</div>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">TOTAL CHIPS</span>
+            <span class="stat-value">${formatNumber(totalChips)}</span>
+          </div>
+          ${totalPower > 0 ? `
+          <div class="popup-stat">
+            <span class="stat-label">TOTAL POWER</span>
+            <span class="stat-value">${totalPower.toFixed(0)} MW</span>
+          </div>
+          ` : ''}
+          <div class="popup-stat">
+            <span class="stat-label">OPERATIONAL</span>
+            <span class="stat-value">${existingCount}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">PLANNED</span>
+            <span class="stat-value">${plannedCount}</span>
+          </div>
+        </div>
+        <div class="cluster-list">
+          ${dcListHtml}
+        </div>
+        ${data.items.length > 8 ? `<p class="popup-more">+ ${data.items.length - 8} more data centers</p>` : ''}
         <div class="popup-attribution">Data: Epoch AI GPU Clusters</div>
       </div>
     `;
