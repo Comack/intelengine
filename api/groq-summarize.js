@@ -37,7 +37,7 @@ function getRedis() {
 }
 
 // Cache version - increment to bust old caches after breaking changes
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 
 // Generate cache key from headlines, geoContext, and variant
 function getCacheKey(headlines, mode, geoContext = '', variant = 'full') {
@@ -154,10 +154,24 @@ export default async function handler(request) {
     const intelSection = geoContext ? `\n\n${geoContext}` : '';
 
     // Current date context for LLM (models may have outdated knowledge)
-    const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}. Donald Trump is the current US President (second term, inaugurated Jan 2025).`;
+    const isTechVariant = variant === 'tech';
+    const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.${isTechVariant ? '' : ' Donald Trump is the current US President (second term, inaugurated Jan 2025).'}`;
 
     if (mode === 'brief') {
-      systemPrompt = `${dateContext}
+      if (isTechVariant) {
+        // Tech variant: focus on startups, AI, funding, product launches
+        systemPrompt = `${dateContext}
+
+Summarize the key tech/startup development in 2-3 sentences.
+Rules:
+- Focus ONLY on technology, startups, AI, funding, product launches, or developer news
+- IGNORE political news, trade policy, tariffs, government actions unless directly about tech regulation
+- Lead with the company/product/technology name
+- Start directly: "OpenAI announced...", "A new $50M Series B...", "GitHub released..."
+- No bullet points, no meta-commentary`;
+      } else {
+        // Full variant: geopolitical focus
+        systemPrompt = `${dateContext}
 
 Summarize the key development in 2-3 sentences.
 Rules:
@@ -167,9 +181,20 @@ Rules:
 - CRITICAL FOCAL POINTS are the main actors - mention them by name
 - If focal points show news + signals convergence, that's the lead
 - No bullet points, no meta-commentary`;
+      }
       userPrompt = `Summarize the top story:\n${headlineText}${intelSection}`;
     } else if (mode === 'analysis') {
-      systemPrompt = `${dateContext}
+      if (isTechVariant) {
+        systemPrompt = `${dateContext}
+
+Analyze the tech/startup trend in 2-3 sentences.
+Rules:
+- Focus ONLY on technology implications: funding trends, AI developments, market shifts, product strategy
+- IGNORE political implications, trade wars, government unless directly about tech policy
+- Lead with the insight for tech industry
+- Connect to startup ecosystem, VC trends, or technical implications`;
+      } else {
+        systemPrompt = `${dateContext}
 
 Provide analysis in 2-3 sentences. Be direct and specific.
 Rules:
@@ -179,11 +204,14 @@ Rules:
 - CRITICAL FOCAL POINTS are your main actors - explain WHY they matter
 - If focal points show news-signal correlation, flag as escalation
 - Connect dots, be specific about implications`;
-      userPrompt = `What's the key pattern or risk?\n${headlineText}${intelSection}`;
+      }
+      userPrompt = isTechVariant
+        ? `What's the key tech trend or development?\n${headlineText}${intelSection}`
+        : `What's the key pattern or risk?\n${headlineText}${intelSection}`;
     } else {
-      systemPrompt = `${dateContext}
-
-Synthesize in 2 sentences max. Lead with substance. NEVER start with "Breaking news" or "Tonight" - just state the insight directly. CRITICAL focal points with news-signal convergence are significant.`;
+      systemPrompt = isTechVariant
+        ? `${dateContext}\n\nSynthesize tech news in 2 sentences. Focus on startups, AI, funding, products. Ignore politics unless directly about tech regulation.`
+        : `${dateContext}\n\nSynthesize in 2 sentences max. Lead with substance. NEVER start with "Breaking news" or "Tonight" - just state the insight directly. CRITICAL focal points with news-signal convergence are significant.`;
       userPrompt = `Key takeaway:\n${headlineText}${intelSection}`;
     }
 
