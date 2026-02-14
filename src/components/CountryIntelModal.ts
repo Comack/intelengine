@@ -188,14 +188,15 @@ export class CountryIntelModal {
     this.overlay.classList.add('active');
   }
 
-  public updateBrief(data: CountryIntelData): void {
+  public updateBrief(data: CountryIntelData & { skipped?: boolean; reason?: string; fallback?: boolean }): void {
     if (data.code !== this.currentCode) return;
 
     const briefSection = this.contentEl.querySelector('.intel-brief-section');
     if (!briefSection) return;
 
-    if (data.error) {
-      briefSection.innerHTML = `<div class="intel-error">Unable to generate brief. ${escapeHtml(data.error)}</div>`;
+    if (data.error || data.skipped || !data.brief) {
+      const msg = data.error || data.reason || 'AI brief unavailable — configure GROQ_API_KEY in Settings.';
+      briefSection.innerHTML = `<div class="intel-error">${escapeHtml(msg)}</div>`;
       return;
     }
 

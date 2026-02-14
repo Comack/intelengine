@@ -128,7 +128,7 @@ export default async function handler(req) {
         status: 200,
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=300',
+          'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
           'X-Cache': 'STALE',
         },
       });

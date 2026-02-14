@@ -15,19 +15,47 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
 
+const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
+  GROQ_API_KEY: 'https://console.groq.com/keys',
+  OPENROUTER_API_KEY: 'https://openrouter.ai/settings/keys',
+  FRED_API_KEY: 'https://fred.stlouisfed.org/docs/api/api_key.html',
+  EIA_API_KEY: 'https://www.eia.gov/opendata/register.php',
+  CLOUDFLARE_API_TOKEN: 'https://dash.cloudflare.com/profile/api-tokens',
+  ACLED_ACCESS_TOKEN: 'https://developer.acleddata.com/',
+  WINGBITS_API_KEY: 'https://wingbits.com/register',
+  AISSTREAM_API_KEY: 'https://aisstream.io/authenticate',
+  OPENSKY_CLIENT_ID: 'https://opensky-network.org/login?view=registration',
+  OPENSKY_CLIENT_SECRET: 'https://opensky-network.org/login?view=registration',
+};
+
 interface RuntimeConfigPanelOptions {
   mode?: 'full' | 'alert';
+  buffered?: boolean;
 }
 
 export class RuntimeConfigPanel extends Panel {
   private unsubscribe: (() => void) | null = null;
   private readonly mode: 'full' | 'alert';
+  private readonly buffered: boolean;
+  private pendingSecrets = new Map<RuntimeSecretKey, string>();
 
   constructor(options: RuntimeConfigPanelOptions = {}) {
     super({ id: 'runtime-config', title: 'Desktop Configuration', showCount: false });
     this.mode = options.mode ?? (isDesktopRuntime() ? 'alert' : 'full');
+    this.buffered = options.buffered ?? false;
     this.unsubscribe = subscribeRuntimeConfig(() => this.render());
     this.render();
+  }
+
+  public async commitPendingSecrets(): Promise<void> {
+    for (const [key, value] of this.pendingSecrets) {
+      await setSecretValue(key, value);
+    }
+    this.pendingSecrets.clear();
+  }
+
+  public hasPendingChanges(): boolean {
+    return this.pendingSecrets.size > 0;
   }
 
   public destroy(): void {
@@ -43,29 +71,17 @@ export class RuntimeConfigPanel extends Panel {
       const totalFeatures = RUNTIME_FEATURES.length;
       const availableFeatures = RUNTIME_FEATURES.filter((feature) => isFeatureAvailable(feature.id)).length;
       const missingFeatures = Math.max(0, totalFeatures - availableFeatures);
-      const missingSecrets = Array.from(
-        new Set(
-          RUNTIME_FEATURES
-            .flatMap((feature) => feature.requiredSecrets)
-            .filter((key) => !getSecretState(key).valid),
-        ),
-      );
-
-      const alertTitle = missingFeatures > 0 ? 'Settings not configured' : 'Desktop settings configured';
+      const configuredCount = Object.keys(snapshot.secrets).length;
+      const alertTitle = configuredCount > 0
+        ? (missingFeatures > 0 ? 'Some features need API keys' : 'Desktop settings configured')
+        : 'Configure API keys to unlock features';
       const alertClass = missingFeatures > 0 ? 'warn' : 'ok';
-      const missingPreview = missingSecrets.length > 0
-        ? missingSecrets.slice(0, 4).join(', ')
-        : 'None';
-      const missingTail = missingSecrets.length > 4 ? ` +${missingSecrets.length - 4} more` : '';
 
       this.content.innerHTML = `
         <section class="runtime-alert runtime-alert-${alertClass}">
           <h3>${alertTitle}</h3>
           <p>
-            ${availableFeatures}/${totalFeatures} features available · ${Object.keys(snapshot.secrets).length} local secrets configured.
-          </p>
-          <p class="runtime-alert-missing">
-            Missing keys: ${escapeHtml(`${missingPreview}${missingTail}`)}
+            ${availableFeatures}/${totalFeatures} features available${configuredCount > 0 ? ` · ${configuredCount} secrets configured` : ''}.
           </p>
           <button type="button" class="runtime-open-settings-btn" data-open-settings>
             Open Settings
@@ -93,7 +109,7 @@ export class RuntimeConfigPanel extends Panel {
     const available = isFeatureAvailable(feature.id);
     const secrets = feature.requiredSecrets.map((key) => this.renderSecretRow(key)).join('');
     const desktop = isDesktopRuntime();
-    const fallbackClass = available ? 'ok' : 'fallback';
+    const fallbackHtml = available ? '' : `<p class="runtime-feature-fallback fallback">${escapeHtml(feature.fallback)}</p>`;
 
     return `
       <section class="runtime-feature ${available ? 'available' : 'degraded'}">
@@ -102,11 +118,10 @@ export class RuntimeConfigPanel extends Panel {
             <input type="checkbox" data-toggle="${feature.id}" ${enabled ? 'checked' : ''} ${desktop ? '' : 'disabled'}>
             <span>${escapeHtml(feature.name)}</span>
           </label>
-          <span class="runtime-pill ${available ? 'ok' : 'warn'}">${available ? 'Ready' : 'Fallback'}</span>
+          <span class="runtime-pill ${available ? 'ok' : 'warn'}">${available ? 'Ready' : 'Needs Keys'}</span>
         </header>
-        <p class="runtime-feature-desc">${escapeHtml(feature.description)}</p>
         <div class="runtime-secrets">${secrets}</div>
-        <p class="runtime-feature-fallback ${fallbackClass}">${escapeHtml(feature.fallback)}</p>
+        ${fallbackHtml}
       </section>
     `;
   }
@@ -114,9 +129,13 @@ export class RuntimeConfigPanel extends Panel {
   private renderSecretRow(key: RuntimeSecretKey): string {
     const state = getSecretState(key);
     const status = !state.present ? 'Missing' : state.valid ? `Valid (${state.source})` : 'Looks invalid';
+    const signupUrl = SIGNUP_URLS[key];
+    const linkHtml = signupUrl
+      ? ` <a href="#" data-signup-url="${signupUrl}" class="runtime-secret-link" title="Get API key">&#x2197;</a>`
+      : '';
     return `
       <div class="runtime-secret-row">
-        <code>${escapeHtml(key)}</code>
+        <div class="runtime-secret-key"><code>${escapeHtml(key)}</code>${linkHtml}</div>
         <span class="runtime-secret-status ${state.valid ? 'ok' : 'warn'}">${escapeHtml(status)}</span>
         <input type="password" data-secret="${key}" placeholder="Set secret" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'}>
       </div>
@@ -124,6 +143,19 @@ export class RuntimeConfigPanel extends Panel {
   }
 
   private attachListeners(): void {
+    this.content.querySelectorAll<HTMLAnchorElement>('a[data-signup-url]').forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const url = link.dataset.signupUrl;
+        if (!url) return;
+        if (isDesktopRuntime()) {
+          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
+        } else {
+          window.open(url, '_blank');
+        }
+      });
+    });
+
     if (!isDesktopRuntime()) return;
 
     if (this.mode === 'alert') {
@@ -146,9 +178,15 @@ export class RuntimeConfigPanel extends Panel {
     this.content.querySelectorAll<HTMLInputElement>('input[data-secret]').forEach((input) => {
       input.addEventListener('change', () => {
         const key = input.dataset.secret as RuntimeSecretKey | undefined;
-        if (!key) return;
-        void setSecretValue(key, input.value);
-        input.value = '';
+        if (!key || !input.value) return;
+        if (this.buffered) {
+          this.pendingSecrets.set(key, input.value);
+          input.value = '';
+          input.placeholder = 'Pending (save with OK)';
+        } else {
+          void setSecretValue(key, input.value);
+          input.value = '';
+        }
       });
     });
   }

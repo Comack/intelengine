@@ -713,7 +713,7 @@ export default async function handler(req) {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, s-maxage=1800', // Cache for 30 minutes
+        'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300',
       },
     });
   } catch (error) {

@@ -26,3 +26,21 @@ app.init().catch(console.error);
   cells: debugGetCells,
   count: getCellCount,
 };
+
+if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window)) {
+  import('virtual:pwa-register').then(({ registerSW }) => {
+    registerSW({
+      onRegisteredSW(_swUrl, registration) {
+        if (registration) {
+          setInterval(async () => {
+            if (!navigator.onLine) return;
+            try { await registration.update(); } catch {}
+          }, 60 * 60 * 1000);
+        }
+      },
+      onOfflineReady() {
+        console.log('[PWA] App ready for offline use');
+      },
+    });
+  });
+}

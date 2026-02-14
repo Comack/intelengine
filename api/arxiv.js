@@ -33,7 +33,7 @@ export default async function handler(request) {
       headers: {
         'Content-Type': 'application/xml',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=3600', // 1 hour cache
+        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600', // 1 hour cache
       },
     });
   } catch (error) {

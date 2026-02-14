@@ -10,7 +10,7 @@ use std::env;
 
 use keyring::Entry;
 use serde_json::{Map, Value};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 const LOCAL_API_PORT: &str = "46123";
@@ -18,8 +18,7 @@ const KEYRING_SERVICE: &str = "world-monitor";
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
 const DESKTOP_LOG_FILE: &str = "desktop.log";
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
-const MENU_DEBUG_OPEN_LOGS_ID: &str = "debug.open_logs";
-const MENU_DEBUG_OPEN_SIDECAR_LOG_ID: &str = "debug.open_sidecar_log";
+const MENU_HELP_GITHUB_ID: &str = "help.github";
 const SUPPORTED_SECRET_KEYS: [&str; 15] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
@@ -169,32 +168,44 @@ fn append_desktop_log(app: &AppHandle, level: &str, message: &str) {
     let _ = writeln!(file, "[{timestamp}][{level}] {message}");
 }
 
-fn open_path_in_shell(path: &Path) -> Result<(), String> {
+fn open_in_shell(arg: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let mut command = {
         let mut cmd = Command::new("open");
-        cmd.arg(path);
+        cmd.arg(arg);
         cmd
     };
 
     #[cfg(target_os = "windows")]
     let mut command = {
         let mut cmd = Command::new("explorer");
-        cmd.arg(path);
+        cmd.arg(arg);
         cmd
     };
 
     #[cfg(all(unix, not(target_os = "macos")))]
     let mut command = {
         let mut cmd = Command::new("xdg-open");
-        cmd.arg(path);
+        cmd.arg(arg);
         cmd
     };
 
     command
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Failed to open {}: {e}", path.display()))
+        .map_err(|e| format!("Failed to open {}: {e}", arg))
+}
+
+fn open_path_in_shell(path: &Path) -> Result<(), String> {
+    open_in_shell(&path.to_string_lossy())
+}
+
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("Only http/https URLs are allowed".to_string());
+    }
+    open_in_shell(&url)
 }
 
 fn open_logs_folder_impl(app: &AppHandle) -> Result<PathBuf, String> {
@@ -226,6 +237,41 @@ fn open_sidecar_log_file(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 fn open_settings_window_command(app: AppHandle) -> Result<(), String> {
     open_settings_window(&app)
+}
+
+#[tauri::command]
+fn close_settings_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("settings") {
+        window.close().map_err(|e| format!("Failed to close settings window: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Fetch JSON from Polymarket Gamma API using native TLS (bypasses Cloudflare JA3 blocking).
+/// Called from frontend when browser CORS and sidecar Node.js TLS both fail.
+#[tauri::command]
+async fn fetch_polymarket(path: String, params: String) -> Result<String, String> {
+    let allowed = ["events", "markets", "tags"];
+    let segment = path.trim_start_matches('/');
+    if !allowed.iter().any(|a| segment.starts_with(a)) {
+        return Err("Invalid Polymarket path".into());
+    }
+    let url = format!("https://gamma-api.polymarket.com/{}?{}", segment, params);
+    let client = reqwest::Client::builder()
+        .use_native_tls()
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+    let resp = client
+        .get(&url)
+        .header("Accept", "application/json")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Polymarket fetch failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Polymarket HTTP {}", resp.status()));
+    }
+    resp.text().await.map_err(|e| format!("Read body failed: {e}"))
 }
 
 fn open_settings_window(app: &AppHandle) -> Result<(), String> {
@@ -261,28 +307,31 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let file_menu =
         Submenu::with_items(handle, "File", true, &[&settings_item, &separator, &quit_item])?;
 
-    let open_logs_item = MenuItem::with_id(
+    let about_metadata = AboutMetadata {
+        name: Some("World Monitor".into()),
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        copyright: Some("\u{00a9} 2025 Elie Habib".into()),
+        website: Some("https://worldmonitor.app".into()),
+        website_label: Some("worldmonitor.app".into()),
+        ..Default::default()
+    };
+    let about_item = PredefinedMenuItem::about(handle, Some("About World Monitor"), Some(about_metadata))?;
+    let github_item = MenuItem::with_id(
         handle,
-        MENU_DEBUG_OPEN_LOGS_ID,
-        "Open Logs Folder",
+        MENU_HELP_GITHUB_ID,
+        "GitHub Repository",
         true,
         None::<&str>,
     )?;
-    let open_sidecar_log_item = MenuItem::with_id(
+    let help_separator = PredefinedMenuItem::separator(handle)?;
+    let help_menu = Submenu::with_items(
         handle,
-        MENU_DEBUG_OPEN_SIDECAR_LOG_ID,
-        "Open Local API Log",
+        "Help",
         true,
-        None::<&str>,
-    )?;
-    let debug_menu = Submenu::with_items(
-        handle,
-        "Debug",
-        true,
-        &[&open_logs_item, &open_sidecar_log_item],
+        &[&about_item, &help_separator, &github_item],
     )?;
 
-    Menu::with_items(handle, &[&file_menu, &debug_menu])
+    Menu::with_items(handle, &[&file_menu, &help_menu])
 }
 
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
@@ -293,17 +342,8 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 eprintln!("[tauri] settings menu failed: {err}");
             }
         }
-        MENU_DEBUG_OPEN_LOGS_ID => {
-            if let Err(err) = open_logs_folder_impl(app) {
-                append_desktop_log(app, "ERROR", &format!("open logs folder failed: {err}"));
-                eprintln!("[tauri] open logs folder failed: {err}");
-            }
-        }
-        MENU_DEBUG_OPEN_SIDECAR_LOG_ID => {
-            if let Err(err) = open_sidecar_log_impl(app) {
-                append_desktop_log(app, "ERROR", &format!("open sidecar log failed: {err}"));
-                eprintln!("[tauri] open sidecar log failed: {err}");
-            }
+        MENU_HELP_GITHUB_ID => {
+            let _ = open_in_shell("https://github.com/koala73/worldmonitor");
         }
         _ => {}
     }
@@ -428,6 +468,20 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_err));
 
+    // Pass keychain secrets to sidecar as env vars
+    let mut secret_count = 0u32;
+    for key in SUPPORTED_SECRET_KEYS.iter() {
+        if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
+            if let Ok(value) = entry.get_password() {
+                if !value.trim().is_empty() {
+                    cmd.env(key, value.trim());
+                    secret_count += 1;
+                }
+            }
+        }
+    }
+    append_desktop_log(app, "INFO", &format!("injected {secret_count} keychain secrets into sidecar env"));
+
     let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to launch local API: {e}"))?;
@@ -461,7 +515,10 @@ fn main() {
             write_cache_entry,
             open_logs_folder,
             open_sidecar_log_file,
-            open_settings_window_command
+            open_settings_window_command,
+            close_settings_window,
+            open_url,
+            fetch_polymarket
         ])
         .setup(|app| {
             if let Err(err) = start_local_api(&app.handle()) {

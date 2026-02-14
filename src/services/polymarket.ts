@@ -1,6 +1,8 @@
 import type { PredictionMarket } from '@/types';
 import { createCircuitBreaker } from '@/utils';
 import { SITE_VARIANT } from '@/config';
+import { isDesktopRuntime } from '@/services/runtime';
+import { tryInvokeTauri } from '@/services/tauri-bridge';
 
 interface PolymarketMarket {
   question: string;
@@ -23,7 +25,66 @@ interface PolymarketEvent {
   closed?: boolean;
 }
 
+const GAMMA_API = 'https://gamma-api.polymarket.com';
+
 const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket' });
+
+// Track whether direct browser→Polymarket fetch works
+// Cloudflare blocks server-side TLS but browsers pass JA3 fingerprint checks
+let directFetchWorks: boolean | null = null;
+
+async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, string>): Promise<Response> {
+  const qs = new URLSearchParams(params).toString();
+
+  // Try direct browser fetch first (Cloudflare accepts browser TLS fingerprint)
+  if (directFetchWorks !== false) {
+    try {
+      const resp = await fetch(`${GAMMA_API}/${endpoint}?${qs}`, {
+        headers: { 'Accept': 'application/json' },
+      });
+      if (resp.ok) {
+        if (!directFetchWorks) console.log('[Polymarket] Direct browser fetch working');
+        directFetchWorks = true;
+        return resp;
+      }
+    } catch {
+      directFetchWorks = false;
+      console.log('[Polymarket] Direct fetch blocked by Cloudflare, using proxy');
+    }
+  }
+
+  // Desktop: use Tauri Rust command (native TLS bypasses Cloudflare JA3 blocking)
+  if (isDesktopRuntime()) {
+    try {
+      const body = await tryInvokeTauri<string>('fetch_polymarket', { path: endpoint, params: qs });
+      if (body) {
+        return new Response(body, {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } catch { /* Tauri command failed, fall through to proxy */ }
+  }
+
+  // Web: server proxy via Vercel edge function (expects 'tag' not 'tag_slug')
+  const proxyParams: Record<string, string> = { endpoint };
+  for (const [k, v] of Object.entries(params)) {
+    proxyParams[k === 'tag_slug' ? 'tag' : k] = v;
+  }
+  const proxyQs = new URLSearchParams(proxyParams).toString();
+
+  // Try local proxy first (works in prod, dev proxies through production)
+  try {
+    const resp = await fetch(`/api/polymarket?${proxyQs}`);
+    if (resp.ok) {
+      const data = await resp.clone().json();
+      if (Array.isArray(data) && data.length > 0) return resp;
+    }
+  } catch { /* local proxy failed */ }
+
+  // Final fallback: hit production endpoint directly
+  return fetch(`https://worldmonitor.app/api/polymarket?${proxyQs}`);
+}
 
 const GEOPOLITICAL_TAGS = [
   'politics', 'geopolitics', 'elections', 'world',
@@ -71,15 +132,25 @@ function buildMarketUrl(eventSlug?: string, marketSlug?: string): string | undef
 }
 
 async function fetchEventsByTag(tag: string, limit = 30): Promise<PolymarketEvent[]> {
-  const response = await fetch(
-    `/api/polymarket?endpoint=events&tag=${tag}&closed=false&order=volume&ascending=false&limit=${limit}`
-  );
+  const response = await polyFetch('events', {
+    tag_slug: tag,
+    closed: 'false',
+    order: 'volume',
+    ascending: 'false',
+    limit: String(limit),
+  });
   if (!response.ok) return [];
-  return response.json();
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
 }
 
 async function fetchTopMarkets(): Promise<PredictionMarket[]> {
-  const response = await fetch('/api/polymarket?closed=false&order=volume&ascending=false&limit=100');
+  const response = await polyFetch('markets', {
+    closed: 'false',
+    order: 'volume',
+    ascending: 'false',
+    limit: '100',
+  });
   if (!response.ok) return [];
   const data: PolymarketMarket[] = await response.json();
 

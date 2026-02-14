@@ -71,7 +71,7 @@ export default async function handler(request) {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=300', // 5 min cache
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60', // 5 min cache
       },
     });
   } catch (error) {

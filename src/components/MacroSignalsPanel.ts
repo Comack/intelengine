@@ -70,7 +70,7 @@ export class MacroSignalsPanel extends Panel {
   constructor() {
     super({ id: 'macro-signals', title: 'Market Radar', showCount: false });
     void this.fetchData();
-    this.refreshInterval = setInterval(() => this.fetchData(), 60000);
+    this.refreshInterval = setInterval(() => this.fetchData(), 3 * 60000);
   }
 
   public destroy(): void {

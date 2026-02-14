@@ -46,7 +46,7 @@ export default async function handler(request) {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, s-maxage=300', // Cache for 5 minutes
+          'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60', // Cache for 5 minutes
         },
       });
     }
@@ -56,7 +56,7 @@ export default async function handler(request) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=300',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
       },
     });
   } catch (error) {

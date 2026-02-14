@@ -5,7 +5,7 @@
  * Server-side Redis cache for cross-user deduplication
  */
 
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson, hashString } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -15,47 +15,13 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'llama-3.1-8b-instant'; // 14.4K RPD vs 1K for 70b
 const CACHE_TTL_SECONDS = 86400; // 24 hours
 
-// Initialize Redis (lazy - only if env vars present)
-let redis = null;
-let redisInitFailed = false;
-function getRedis() {
-  if (redis) return redis;
-  if (redisInitFailed) return null;
-
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    try {
-      redis = new Redis({ url, token });
-    } catch (err) {
-      console.warn('[Groq] Redis init failed:', err.message);
-      redisInitFailed = true;
-      return null;
-    }
-  }
-  return redis;
-}
-
-// Cache version - increment to bust old caches after breaking changes
 const CACHE_VERSION = 'v3';
 
-// Generate cache key from headlines, geoContext, and variant
 function getCacheKey(headlines, mode, geoContext = '', variant = 'full') {
   const sorted = headlines.slice(0, 8).sort().join('|');
   const geoHash = geoContext ? ':g' + hashString(geoContext).slice(0, 6) : '';
   const hash = hashString(`${mode}:${sorted}`);
-  // Include variant and version to prevent cross-site cache collisions
   return `summary:${CACHE_VERSION}:${variant}:${hash}${geoHash}`;
-}
-
-// Simple hash function for cache keys
-function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
 }
 
 // Deduplicate similar headlines (same story from different sources)
@@ -104,8 +70,8 @@ export default async function handler(request) {
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Groq API key not configured', fallback: true }), {
-      status: 503,
+    return new Response(JSON.stringify({ summary: null, fallback: true, skipped: true, reason: 'GROQ_API_KEY not configured' }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -120,28 +86,20 @@ export default async function handler(request) {
       });
     }
 
-    // Check Redis cache first
-    const redisClient = getRedis();
+    // Check cache first
     const cacheKey = getCacheKey(headlines, mode, geoContext, variant);
-
-    if (redisClient) {
-      try {
-        const cached = await redisClient.get(cacheKey);
-        if (cached && typeof cached === 'object' && cached.summary) {
-          console.log('[Groq] Cache hit:', cacheKey);
-          return new Response(JSON.stringify({
-            summary: cached.summary,
-            model: cached.model || MODEL,
-            provider: 'cache',
-            cached: true,
-          }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-      } catch (cacheError) {
-        console.warn('[Groq] Cache read error:', cacheError.message);
-      }
+    const cached = await getCachedJson(cacheKey);
+    if (cached && typeof cached === 'object' && cached.summary) {
+      console.log('[Groq] Cache hit:', cacheKey);
+      return new Response(JSON.stringify({
+        summary: cached.summary,
+        model: cached.model || MODEL,
+        provider: 'cache',
+        cached: true,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     // Deduplicate similar headlines (same story from multiple sources)
@@ -261,19 +219,12 @@ Rules:
       });
     }
 
-    // Store in Redis cache
-    if (redisClient) {
-      try {
-        await redisClient.set(cacheKey, {
-          summary,
-          model: MODEL,
-          timestamp: Date.now(),
-        }, { ex: CACHE_TTL_SECONDS });
-        console.log('[Groq] Cached:', cacheKey);
-      } catch (cacheError) {
-        console.warn('[Groq] Cache write error:', cacheError.message);
-      }
-    }
+    // Store in cache
+    await setCachedJson(cacheKey, {
+      summary,
+      model: MODEL,
+      timestamp: Date.now(),
+    }, CACHE_TTL_SECONDS);
 
     return new Response(JSON.stringify({
       summary,
@@ -285,7 +236,7 @@ Rules:
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=1800',
+        'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300',
       },
     });
 

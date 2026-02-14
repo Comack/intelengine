@@ -70,7 +70,7 @@ export default async function handler(req) {
       return Response.json(data, {
         headers: {
           ...corsHeaders,
-          'Cache-Control': 'public, max-age=86400', // 24h - aircraft details rarely change
+          'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600', // 24h - aircraft details rarely change
         },
       });
     } catch (error) {
@@ -194,7 +194,7 @@ export default async function handler(req) {
       return Response.json(data, {
         headers: {
           ...corsHeaders,
-          'Cache-Control': 'public, max-age=30', // 30 seconds - live data
+          'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=15', // 30 seconds - live data
         },
       });
     } catch (error) {
@@ -259,7 +259,7 @@ export default async function handler(req) {
       return Response.json(data, {
         headers: {
           ...corsHeaders,
-          'Cache-Control': 'public, max-age=30',
+          'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=15',
         },
       });
     } catch (error) {

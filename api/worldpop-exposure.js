@@ -62,7 +62,7 @@ async function handleCountries(corsHeaders, now) {
     recordCacheTelemetry('/api/worldpop-exposure?countries', 'REDIS-HIT');
     return Response.json(cached, {
       status: 200,
-      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=86400', 'X-Cache': 'REDIS-HIT' },
+      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600', 'X-Cache': 'REDIS-HIT' },
     });
   }
 
@@ -70,7 +70,7 @@ async function handleCountries(corsHeaders, now) {
     recordCacheTelemetry('/api/worldpop-exposure?countries', 'MEMORY-HIT');
     return Response.json(countriesFallback.data, {
       status: 200,
-      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=86400', 'X-Cache': 'MEMORY-HIT' },
+      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600', 'X-Cache': 'MEMORY-HIT' },
     });
   }
 
@@ -88,7 +88,7 @@ async function handleCountries(corsHeaders, now) {
 
   return Response.json(result, {
     status: 200,
-    headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=86400', 'X-Cache': 'MISS' },
+    headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600', 'X-Cache': 'MISS' },
   });
 }
 
@@ -125,7 +125,7 @@ function handleExposure(corsHeaders, lat, lon, radius) {
     densityPerKm2: Math.round(density),
   }, {
     status: 200,
-    headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=3600' },
+    headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
   });
 }
 

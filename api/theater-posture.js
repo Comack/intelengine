@@ -4,7 +4,7 @@
  * TTL: 5 minutes (matches OpenSky refresh rate)
  */
 
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -219,29 +219,16 @@ function isMilitaryCallsign(callsign) {
   return false;
 }
 
-// Initialize Redis
-let redis = null;
-function getRedis() {
-  if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    try {
-      redis = new Redis({ url, token });
-    } catch (err) {
-      console.warn('[TheaterPosture] Redis init failed:', err.message);
-      return null;
-    }
-  }
-  return redis;
-}
-
-// Fetch military flights from OpenSky via Railway relay (avoids rate limits)
+// Fetch military flights from OpenSky
 async function fetchMilitaryFlights() {
-  // Use Railway relay to avoid OpenSky rate limits
-  // VITE_* vars aren't available server-side, so check WS_RELAY_URL or use known production URL
-  const relayUrl = process.env.WS_RELAY_URL || 'https://worldmonitor-production-ws.up.railway.app';
-  const baseUrl = relayUrl + '/opensky';
+  const isSidecar = (process.env.LOCAL_API_MODE || '').includes('sidecar');
+  // Desktop sidecar: fetch directly from OpenSky (single user, no rate limit concern)
+  // Cloud: use Railway relay to avoid OpenSky rate limits across many users
+  const baseUrl = isSidecar
+    ? 'https://opensky-network.org/api/states/all'
+    : (process.env.WS_RELAY_URL ? process.env.WS_RELAY_URL + '/opensky' : null);
+
+  if (!baseUrl) return [];
 
   // Fetch global data with 20s timeout (Edge has 25s limit)
   const controller = new AbortController();
@@ -518,25 +505,18 @@ export default async function handler(req) {
 
   try {
     // Try to get from cache first
-    const redisClient = getRedis();
-    if (redisClient) {
-      try {
-        const cached = await redisClient.get(CACHE_KEY);
-        if (cached) {
-          console.log('[TheaterPosture] Cache hit');
-          return Response.json({
-            ...cached,
-            cached: true,
-          }, {
-            headers: {
-              ...corsHeaders,
-              'Cache-Control': 'public, max-age=60',
-            },
-          });
-        }
-      } catch (err) {
-        console.warn('[TheaterPosture] Cache read error:', err.message);
-      }
+    const cached = await getCachedJson(CACHE_KEY);
+    if (cached) {
+      console.log('[TheaterPosture] Cache hit');
+      return Response.json({
+        ...cached,
+        cached: true,
+      }, {
+        headers: {
+          ...corsHeaders,
+          'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
+        },
+      });
     }
 
     // Fetch and calculate - try OpenSky first, then Wingbits fallback
@@ -571,72 +551,52 @@ export default async function handler(req) {
     };
 
     // Cache the result (regular, stale, and long-term backup)
-    if (redisClient) {
-      try {
-        await Promise.all([
-          redisClient.set(CACHE_KEY, result, { ex: CACHE_TTL_SECONDS }),
-          redisClient.set(STALE_CACHE_KEY, result, { ex: STALE_CACHE_TTL_SECONDS }),
-          redisClient.set(BACKUP_CACHE_KEY, result, { ex: BACKUP_CACHE_TTL_SECONDS }),
-        ]);
-        console.log('[TheaterPosture] Cached result (5min/24h/7d)');
-      } catch (err) {
-        console.warn('[TheaterPosture] Cache write error:', err.message);
-      }
-    }
+    await Promise.all([
+      setCachedJson(CACHE_KEY, result, CACHE_TTL_SECONDS),
+      setCachedJson(STALE_CACHE_KEY, result, STALE_CACHE_TTL_SECONDS),
+      setCachedJson(BACKUP_CACHE_KEY, result, BACKUP_CACHE_TTL_SECONDS),
+    ]);
 
     return Response.json(result, {
       headers: {
         ...corsHeaders,
-        'Cache-Control': 'public, max-age=60',
+        'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
       },
     });
   } catch (error) {
     console.warn('[TheaterPosture] Error:', error.message);
 
     // Try to return cached data when API fails (stale first, then backup)
-    const staleRedisClient = getRedis();
-    if (staleRedisClient) {
-      // Try stale cache (24h TTL)
-      try {
-        const stale = await staleRedisClient.get(STALE_CACHE_KEY);
-        if (stale) {
-          console.log('[TheaterPosture] Returning stale cached data (24h) due to API error');
-          return Response.json({
-            ...stale,
-            cached: true,
-            stale: true,
-            error: 'Using cached data - live feed temporarily unavailable',
-          }, {
-            headers: {
-              ...corsHeaders,
-              'Cache-Control': 'public, max-age=30',
-            },
-          });
-        }
-      } catch (cacheErr) {
-        console.warn('[TheaterPosture] Stale cache read error:', cacheErr.message);
-      }
+    const stale = await getCachedJson(STALE_CACHE_KEY);
+    if (stale) {
+      console.log('[TheaterPosture] Returning stale cached data (24h) due to API error');
+      return Response.json({
+        ...stale,
+        cached: true,
+        stale: true,
+        error: 'Using cached data - live feed temporarily unavailable',
+      }, {
+        headers: {
+          ...corsHeaders,
+          'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=15',
+        },
+      });
+    }
 
-      // Try backup cache (7d TTL) as last resort
-      try {
-        const backup = await staleRedisClient.get(BACKUP_CACHE_KEY);
-        if (backup) {
-          console.log('[TheaterPosture] Returning backup cached data (7d) due to API error');
-          return Response.json({
-            ...backup,
-            cached: true,
-            stale: true,
-            error: 'Using backup data - live feed temporarily unavailable',
-          }, {
-            headers: {
-              ...corsHeaders,
-              'Cache-Control': 'public, max-age=30',
-            },
-          });
-        }
-      } catch (cacheErr) {
-        console.warn('[TheaterPosture] Backup cache read error:', cacheErr.message);
-      }
+    const backup = await getCachedJson(BACKUP_CACHE_KEY);
+    if (backup) {
+      console.log('[TheaterPosture] Returning backup cached data (7d) due to API error');
+      return Response.json({
+        ...backup,
+        cached: true,
+        stale: true,
+        error: 'Using backup data - live feed temporarily unavailable',
+      }, {
+        headers: {
+          ...corsHeaders,
+          'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=15',
+        },
+      });
     }
 
     // No cached data available - return error

@@ -278,7 +278,7 @@ export default async function handler(req) {
     cacheTimestamp = now;
     return new Response(JSON.stringify(fallback), {
       status: 200,
-      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, s-maxage=60' },
+      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=30' },
     });
   }
 }

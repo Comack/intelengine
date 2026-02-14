@@ -215,7 +215,7 @@ export default function handler(req, res) {
 </svg>`;
 
   res.setHeader('Content-Type', 'image/svg+xml');
-  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600');
   res.status(200).send(svg);
 }
 

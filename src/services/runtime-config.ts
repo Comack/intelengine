@@ -226,7 +226,18 @@ export async function setSecretValue(key: RuntimeSecretKey, value: string): Prom
     delete runtimeConfig.secrets[key];
   }
 
+  // Push to sidecar so handlers pick it up immediately
+  pushSecretToSidecar(key, sanitized || '');
+
   notifyConfigChanged();
+}
+
+function pushSecretToSidecar(key: string, value: string): void {
+  fetch('http://127.0.0.1:46123/api/local-env-update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value: value || null }),
+  }).catch(() => { /* sidecar not running */ });
 }
 
 export async function loadDesktopSecrets(): Promise<void> {
@@ -239,6 +250,7 @@ export async function loadDesktopSecrets(): Promise<void> {
       const value = await invokeTauri<string | null>('get_secret', { key });
       if (value && value.trim()) {
         runtimeConfig.secrets[key] = { value: value.trim(), source: 'vault' };
+        pushSecretToSidecar(key, value.trim());
       }
     }));
 

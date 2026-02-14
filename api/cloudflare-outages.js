@@ -52,7 +52,7 @@ export default async function handler(req) {
     const data = await response.text();
     return new Response(data, {
       status: response.status,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60', ...corsHeaders },
     });
   } catch (error) {
     // Return empty result on error so client circuit breaker doesn't trigger unnecessarily

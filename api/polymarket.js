@@ -1,5 +1,7 @@
 export const config = { runtime: 'edge' };
 
+const GAMMA_BASE = 'https://gamma-api.polymarket.com';
+
 const ALLOWED_ORDER = ['volume', 'liquidity', 'startDate', 'endDate', 'spread'];
 const MAX_LIMIT = 100;
 const MIN_LIMIT = 1;
@@ -24,6 +26,32 @@ function sanitizeTagSlug(val) {
   return val.replace(/[^a-z0-9-]/gi, '').slice(0, 100) || null;
 }
 
+async function tryFetch(url, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.text();
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
+function buildUrl(base, endpoint, params) {
+  if (endpoint === 'events') {
+    return `${base}/events?${params}`;
+  }
+  return `${base}/markets?${params}`;
+}
+
 export default async function handler(req) {
   const url = new URL(req.url);
   const endpoint = url.searchParams.get('endpoint') || 'markets';
@@ -33,40 +61,42 @@ export default async function handler(req) {
   const ascending = validateBoolean(url.searchParams.get('ascending'), 'false');
   const limit = validateLimit(url.searchParams.get('limit'));
 
+  const params = new URLSearchParams({
+    closed,
+    order,
+    ascending,
+    limit: String(limit),
+  });
+
+  if (endpoint === 'events') {
+    const tag = sanitizeTagSlug(url.searchParams.get('tag'));
+    if (tag) params.set('tag_slug', tag);
+  }
+
+  // Gamma API is behind Cloudflare which blocks server-side TLS connections
+  // (JA3 fingerprint detection). Only browser-originated requests succeed.
+  // We still try in case Cloudflare policy changes, but gracefully return empty on failure.
   try {
-    let polyUrl;
-
-    if (endpoint === 'events') {
-      const tag = sanitizeTagSlug(url.searchParams.get('tag'));
-      const params = new URLSearchParams({
-        closed: closed,
-        order: order,
-        ascending: ascending,
-        limit: String(limit),
-      });
-      if (tag) params.set('tag_slug', tag);
-      polyUrl = `https://gamma-api.polymarket.com/events?${params}`;
-    } else {
-      polyUrl = `https://gamma-api.polymarket.com/markets?closed=${closed}&order=${order}&ascending=${ascending}&limit=${limit}`;
-    }
-
-    const response = await fetch(polyUrl, {
-      headers: { 'Accept': 'application/json' },
-    });
-
-    const data = await response.text();
+    const data = await tryFetch(buildUrl(GAMMA_BASE, endpoint, params));
     return new Response(data, {
-      status: response.status,
+      status: 200,
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=120',
+        'Cache-Control': 'public, max-age=120, s-maxage=120, stale-while-revalidate=60',
+        'X-Polymarket-Source': 'gamma',
       },
     });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: 'Failed to fetch data' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  } catch (err) {
+    // Expected: Cloudflare blocks non-browser TLS connections
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'X-Polymarket-Error': err.message,
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
+      },
     });
   }
 }

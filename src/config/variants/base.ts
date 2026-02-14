@@ -28,8 +28,8 @@ export const API_URLS = {
 // Refresh intervals - shared across all variants
 export const REFRESH_INTERVALS = {
   feeds: 5 * 60 * 1000,
-  markets: 60 * 1000,
-  crypto: 60 * 1000,
+  markets: 2 * 60 * 1000,
+  crypto: 2 * 60 * 1000,
   predictions: 5 * 60 * 1000,
   ais: 10 * 60 * 1000,
   arxiv: 60 * 60 * 1000,

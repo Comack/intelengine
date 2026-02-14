@@ -729,8 +729,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url === '/health' || req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
+    sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
       status: 'ok',
       clients: clients.size,
       messages: messageCount,
@@ -801,12 +800,11 @@ const server = http.createServer(async (req, res) => {
       // Serve from cache if fresh (5 min TTL)
       const rssCached = rssResponseCache.get(feedUrl);
       if (rssCached && Date.now() - rssCached.timestamp < RSS_CACHE_TTL_MS) {
-        res.writeHead(200, {
+        return sendCompressed(req, res, 200, {
           'Content-Type': rssCached.contentType || 'application/xml',
           'Cache-Control': 'public, max-age=300',
           'X-Cache': 'HIT',
-        });
-        return res.end(rssCached.data);
+        }, rssCached.data);
       }
 
       console.log('[Relay] RSS request (MISS):', feedUrl);
@@ -862,12 +860,11 @@ const server = http.createServer(async (req, res) => {
             if (response.statusCode >= 200 && response.statusCode < 300) {
               rssResponseCache.set(feedUrl, { data, contentType: 'application/xml', timestamp: Date.now() });
             }
-            res.writeHead(response.statusCode, {
+            sendCompressed(req, res, response.statusCode, {
               'Content-Type': 'application/xml',
               'Cache-Control': 'public, max-age=300',
               'X-Cache': 'MISS',
-            });
-            res.end(data);
+            }, data);
           });
           stream.on('error', (err) => {
             console.error('[Relay] Decompression error:', err.message);
@@ -881,8 +878,7 @@ const server = http.createServer(async (req, res) => {
           if (rssCached) {
             if (!responseHandled && !res.headersSent) {
               responseHandled = true;
-              res.writeHead(200, { 'Content-Type': 'application/xml', 'X-Cache': 'STALE' });
-              res.end(rssCached.data);
+              sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'X-Cache': 'STALE' }, rssCached.data);
             }
             return;
           }
@@ -893,8 +889,7 @@ const server = http.createServer(async (req, res) => {
           request.destroy();
           if (rssCached && !responseHandled && !res.headersSent) {
             responseHandled = true;
-            res.writeHead(200, { 'Content-Type': 'application/xml', 'X-Cache': 'STALE' });
-            return res.end(rssCached.data);
+            return sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'X-Cache': 'STALE' }, rssCached.data);
           }
           sendError(504, 'Request timeout');
         });

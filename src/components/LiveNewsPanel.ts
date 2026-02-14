@@ -284,8 +284,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private async resolveChannelVideo(channel: LiveChannel, forceFallback = false): Promise<void> {
-    const preferStableDesktopFallback = this.useDesktopEmbedProxy && !!channel.fallbackVideoId;
-    const useFallbackVideo = channel.useFallbackOnly || forceFallback || preferStableDesktopFallback;
+    const useFallbackVideo = channel.useFallbackOnly || forceFallback;
     const liveVideoId = useFallbackVideo ? null : await fetchLiveVideoId(channel.handle);
     channel.videoId = liveVideoId || channel.fallbackVideoId;
     channel.isLive = !!liveVideoId;

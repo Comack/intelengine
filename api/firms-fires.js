@@ -71,7 +71,7 @@ function parseCSV(csv) {
 
 export default async function handler(request) {
   if (!FIRMS_API_KEY) {
-    return json({ error: 'FIRMS_API_KEY not configured' }, 503);
+    return json({ regions: {}, totalCount: 0, skipped: true, reason: 'NASA_FIRMS_API_KEY not configured', source: SOURCE, days: 0, timestamp: new Date().toISOString() });
   }
 
   try {
@@ -132,7 +132,7 @@ function json(data, status = 200) {
     status,
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=600', // 10 min cache
+      'Cache-Control': 'public, max-age=600, s-maxage=600, stale-while-revalidate=120', // 10 min cache
     },
   });
 }

@@ -1,6 +1,5 @@
 import type { PanelConfig, MapLayers } from '@/types';
-
-const SITE_VARIANT = import.meta.env.VITE_VARIANT || 'full';
+import { SITE_VARIANT } from './variant';
 
 // ============================================
 // FULL VARIANT (Geopolitical)

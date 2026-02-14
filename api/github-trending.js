@@ -51,7 +51,7 @@ export default async function handler(request) {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=1800', // 30 min cache
+          'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300', // 30 min cache
         },
       });
     }
@@ -63,7 +63,7 @@ export default async function handler(request) {
       headers: {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=1800', // 30 min cache
+        'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300', // 30 min cache
       },
     });
   } catch (error) {

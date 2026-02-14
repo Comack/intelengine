@@ -4,7 +4,7 @@
  * Uses Upstash Redis for cross-user caching (10-minute TTL)
  */
 
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -60,18 +60,6 @@ const COUNTRY_KEYWORDS = {
   MM: ['myanmar', 'burma'],
   VE: ['venezuela', 'caracas', 'maduro'],
 };
-
-// Initialize Redis (lazy)
-let redis = null;
-function getRedis() {
-  if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    redis = new Redis({ url, token });
-  }
-  return redis;
-}
 
 function normalizeCountryName(text) {
   const lower = text.toLowerCase();
@@ -241,34 +229,38 @@ export default async function handler(request) {
   }
 
   if (!process.env.ACLED_ACCESS_TOKEN) {
-    return new Response(JSON.stringify({ error: 'ACLED_ACCESS_TOKEN not configured' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' },
+    const baselineScores = computeCIIScores([]);
+    const baselineStrategic = computeStrategicRisk(baselineScores);
+    return new Response(JSON.stringify({
+      cii: baselineScores,
+      strategicRisk: baselineStrategic,
+      protestCount: 0,
+      computedAt: new Date().toISOString(),
+      baseline: true,
+      error: 'ACLED token not configured - showing baseline risk assessments',
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
+      },
     });
   }
 
-  const redisClient = getRedis();
-
   // Check cache first
-  if (redisClient) {
-    try {
-      const cached = await redisClient.get(CACHE_KEY);
-      if (cached && typeof cached === 'object') {
-        console.log('[RiskScores] Cache hit');
-        return new Response(JSON.stringify({
-          ...cached,
-          cached: true,
-        }), {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'public, max-age=300',
-          },
-        });
-      }
-    } catch (cacheError) {
-      console.warn('[RiskScores] Cache read error:', cacheError.message);
-    }
+  const cached = await getCachedJson(CACHE_KEY);
+  if (cached && typeof cached === 'object') {
+    console.log('[RiskScores] Cache hit');
+    return new Response(JSON.stringify({
+      ...cached,
+      cached: true,
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
+      },
+    });
   }
 
   try {
@@ -289,18 +281,11 @@ export default async function handler(request) {
       computedAt: new Date().toISOString(),
     };
 
-    // Cache in Redis (both regular and stale backup)
-    if (redisClient) {
-      try {
-        await Promise.all([
-          redisClient.set(CACHE_KEY, result, { ex: CACHE_TTL_SECONDS }),
-          redisClient.set(STALE_CACHE_KEY, result, { ex: STALE_CACHE_TTL_SECONDS }),
-        ]);
-        console.log('[RiskScores] Cached scores');
-      } catch (cacheError) {
-        console.warn('[RiskScores] Cache write error:', cacheError.message);
-      }
-    }
+    // Cache (both regular and stale backup)
+    await Promise.all([
+      setCachedJson(CACHE_KEY, result, CACHE_TTL_SECONDS),
+      setCachedJson(STALE_CACHE_KEY, result, STALE_CACHE_TTL_SECONDS),
+    ]);
 
     return new Response(JSON.stringify({
       ...result,
@@ -309,7 +294,7 @@ export default async function handler(request) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
       },
     });
 
@@ -317,27 +302,21 @@ export default async function handler(request) {
     console.error('[RiskScores] Error:', error);
 
     // Try to return stale cached data
-    if (redisClient) {
-      try {
-        const stale = await redisClient.get(STALE_CACHE_KEY);
-        if (stale && typeof stale === 'object') {
-          console.log('[RiskScores] Returning stale cache due to error');
-          return new Response(JSON.stringify({
-            ...stale,
-            cached: true,
-            stale: true,
-            error: 'Using cached data - ACLED temporarily unavailable',
-          }), {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-              'Cache-Control': 'public, max-age=60',
-            },
-          });
-        }
-      } catch (cacheError) {
-        console.warn('[RiskScores] Stale cache read error:', cacheError.message);
-      }
+    const stale = await getCachedJson(STALE_CACHE_KEY);
+    if (stale && typeof stale === 'object') {
+      console.log('[RiskScores] Returning stale cache due to error');
+      return new Response(JSON.stringify({
+        ...stale,
+        cached: true,
+        stale: true,
+        error: 'Using cached data - ACLED temporarily unavailable',
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
+        },
+      });
     }
 
     // Final fallback: return baseline scores without unrest data
@@ -356,7 +335,7 @@ export default async function handler(request) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=60',
+        'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
       },
     });
   }

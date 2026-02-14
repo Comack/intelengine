@@ -67,7 +67,7 @@ export default async function handler(req) {
       results,
       fetched: Object.keys(results).length,
       requested: limitedList.length,
-    }, { headers: corsHeaders });
+    }, { headers: { 'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60', ...corsHeaders } });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500, headers: corsHeaders });
   }

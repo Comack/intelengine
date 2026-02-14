@@ -89,7 +89,7 @@ export default async function handler(req) {
       headers: {
         'Content-Type': format === 'csv' ? 'text/csv' : 'application/json',
         'Access-Control-Allow-Origin': corsOrigin,
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
       },
     });
   } catch (error) {

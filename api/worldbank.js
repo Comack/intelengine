@@ -1,4 +1,8 @@
-// Node.js serverless function (Edge gets 403 from World Bank)
+// World Bank API proxy (Web API handler for Edge + sidecar compatibility)
+
+export const config = {
+  runtime: 'edge',
+};
 
 const TECH_INDICATORS = {
   'IT.NET.USER.ZS': 'Internet Users (% of population)',
@@ -20,61 +24,56 @@ const TECH_INDICATORS = {
 };
 
 const TECH_COUNTRIES = [
-  // Major tech economies
   'USA', 'CHN', 'JPN', 'DEU', 'KOR', 'GBR', 'IND', 'ISR', 'SGP', 'TWN',
   'FRA', 'CAN', 'SWE', 'NLD', 'CHE', 'FIN', 'IRL', 'AUS', 'BRA', 'IDN',
-  // Middle East & emerging tech hubs
   'ARE', 'SAU', 'QAT', 'BHR', 'EGY', 'TUR',
-  // Additional Asia
   'MYS', 'THA', 'VNM', 'PHL',
-  // Europe
   'ESP', 'ITA', 'POL', 'CZE', 'DNK', 'NOR', 'AUT', 'BEL', 'PRT', 'EST',
-  // Americas
   'MEX', 'ARG', 'CHL', 'COL',
-  // Africa
   'ZAF', 'NGA', 'KEN',
 ];
 
-export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+};
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+function json(data, status = 200, extra = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...CORS, ...extra },
+  });
+}
+
+export default async function handler(request) {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS });
   }
 
-  const { indicator, country, countries, years = '5', action } = req.query;
+  const url = new URL(request.url);
+  const indicator = url.searchParams.get('indicator');
+  const country = url.searchParams.get('country');
+  const countries = url.searchParams.get('countries');
+  const years = url.searchParams.get('years') || '5';
+  const action = url.searchParams.get('action');
 
-  // Return available indicators
   if (action === 'indicators') {
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    return res.json({
-      indicators: TECH_INDICATORS,
-      defaultCountries: TECH_COUNTRIES,
-    });
+    return json({ indicators: TECH_INDICATORS, defaultCountries: TECH_COUNTRIES }, 200, { 'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600' });
   }
 
-  // Validate indicator
   if (!indicator) {
-    return res.status(400).json({
-      error: 'Missing indicator parameter',
-      availableIndicators: Object.keys(TECH_INDICATORS),
-    });
+    return json({ error: 'Missing indicator parameter', availableIndicators: Object.keys(TECH_INDICATORS) }, 400);
   }
 
   try {
-    // Build country list
     let countryList = country || countries || TECH_COUNTRIES.join(';');
     if (countries) {
       countryList = countries.split(',').join(';');
     }
 
-    // Calculate date range
     const currentYear = new Date().getFullYear();
     const startYear = currentYear - parseInt(years);
 
-    // World Bank API v2
     const wbUrl = `https://api.worldbank.org/v2/country/${countryList}/indicator/${indicator}?format=json&date=${startYear}:${currentYear}&per_page=1000`;
 
     const response = await fetch(wbUrl, {
@@ -90,30 +89,23 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // World Bank returns [metadata, data] array
     if (!data || !Array.isArray(data) || data.length < 2 || !data[1]) {
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      return res.json({
+      return json({
         indicator,
         indicatorName: TECH_INDICATORS[indicator] || indicator,
         metadata: { page: 1, pages: 1, total: 0 },
         byCountry: {},
         latestByCountry: {},
         timeSeries: [],
-      });
+      }, 200, { 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' });
     }
 
     const [metadata, records] = data;
 
-    // Transform data for easier frontend consumption
     const transformed = {
       indicator,
       indicatorName: TECH_INDICATORS[indicator] || (records[0]?.indicator?.value || indicator),
-      metadata: {
-        page: metadata.page,
-        pages: metadata.pages,
-        total: metadata.total,
-      },
+      metadata: { page: metadata.page, pages: metadata.pages, total: metadata.total },
       byCountry: {},
       latestByCountry: {},
       timeSeries: [],
@@ -128,46 +120,25 @@ export default async function handler(req, res) {
       if (!countryCode || value === null) continue;
 
       if (!transformed.byCountry[countryCode]) {
-        transformed.byCountry[countryCode] = {
-          code: countryCode,
-          name: countryName,
-          values: [],
-        };
+        transformed.byCountry[countryCode] = { code: countryCode, name: countryName, values: [] };
       }
       transformed.byCountry[countryCode].values.push({ year, value });
 
-      if (!transformed.latestByCountry[countryCode] ||
-          year > transformed.latestByCountry[countryCode].year) {
-        transformed.latestByCountry[countryCode] = {
-          code: countryCode,
-          name: countryName,
-          year,
-          value,
-        };
+      if (!transformed.latestByCountry[countryCode] || year > transformed.latestByCountry[countryCode].year) {
+        transformed.latestByCountry[countryCode] = { code: countryCode, name: countryName, year, value };
       }
 
-      transformed.timeSeries.push({
-        countryCode,
-        countryName,
-        year,
-        value,
-      });
+      transformed.timeSeries.push({ countryCode, countryName, year, value });
     }
 
-    // Sort each country's values by year
     for (const c of Object.values(transformed.byCountry)) {
       c.values.sort((a, b) => a.year - b.year);
     }
 
-    // Sort time series by year descending
     transformed.timeSeries.sort((a, b) => b.year - a.year || a.countryCode.localeCompare(b.countryCode));
 
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    return res.json(transformed);
+    return json(transformed, 200, { 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' });
   } catch (error) {
-    return res.status(500).json({
-      error: error.message,
-      indicator,
-    });
+    return json({ error: error.message, indicator }, 500);
   }
 }

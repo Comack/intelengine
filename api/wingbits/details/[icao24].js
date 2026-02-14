@@ -49,7 +49,7 @@ export default async function handler(req, { params }) {
 
     const data = await response.json();
     return Response.json(data, {
-      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=86400' },
+      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=3600' },
     });
   } catch (error) {
     return Response.json({ error: error.message, icao24 }, { status: 500, headers: corsHeaders });

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -158,6 +159,44 @@ const failedImports = new Set();
 const fallbackCounts = new Map();
 const cloudPreferred = new Set();
 
+const TRAFFIC_LOG_MAX = 200;
+const trafficLog = [];
+let verboseMode = false;
+let _verboseStatePath = null;
+
+function loadVerboseState(resourceDir) {
+  _verboseStatePath = path.join(resourceDir, 'verbose-mode.json');
+  try {
+    const data = JSON.parse(readFileSync(_verboseStatePath, 'utf-8'));
+    verboseMode = !!data.verboseMode;
+  } catch { /* file missing or invalid — keep default false */ }
+}
+
+function saveVerboseState() {
+  if (!_verboseStatePath) return;
+  try { writeFileSync(_verboseStatePath, JSON.stringify({ verboseMode })); } catch { /* ignore */ }
+}
+
+function recordTraffic(entry) {
+  trafficLog.push(entry);
+  if (trafficLog.length > TRAFFIC_LOG_MAX) trafficLog.shift();
+  if (verboseMode) {
+    const ts = entry.timestamp.split('T')[1].replace('Z', '');
+    console.log(`[traffic] ${ts} ${entry.method} ${entry.path} → ${entry.status} ${entry.durationMs}ms`);
+  }
+}
+
+function logOnce(logger, route, message) {
+  const key = `${route}:${message}`;
+  const count = (fallbackCounts.get(key) || 0) + 1;
+  fallbackCounts.set(key, count);
+  if (count === 1) {
+    logger.warn(`[local-api] ${route} → ${message}`);
+  } else if (count === 5 || count % 100 === 0) {
+    logger.warn(`[local-api] ${route} → ${message} (x${count})`);
+  }
+}
+
 async function importHandler(modulePath) {
   if (failedImports.has(modulePath)) {
     throw new Error(`cached-failure:${path.basename(modulePath)}`);
@@ -189,6 +228,7 @@ function resolveConfig(options = {}) {
       path.join(resourceDir, '_up_', 'api'),
     ].find((candidate) => existsSync(candidate)) ?? path.join(resourceDir, 'api');
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
+  const cloudFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
   const logger = options.logger ?? console;
 
   return {
@@ -197,6 +237,7 @@ function resolveConfig(options = {}) {
     resourceDir,
     apiDir,
     mode,
+    cloudFallback,
     logger,
   };
 }
@@ -241,7 +282,18 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
   }
 }
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Max-Age': '86400',
+};
+
 async function dispatch(requestUrl, req, routes, context) {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
   if (requestUrl.pathname === '/api/service-status') {
     return handleLocalServiceStatus(context);
   }
@@ -252,82 +304,171 @@ async function dispatch(requestUrl, req, routes, context) {
       port: context.port,
       apiDir: context.apiDir,
       remoteBase: context.remoteBase,
+      cloudFallback: context.cloudFallback,
       routes: routes.length,
     });
   }
+  if (requestUrl.pathname === '/api/local-traffic-log') {
+    if (req.method === 'DELETE') {
+      trafficLog.length = 0;
+      return json({ cleared: true });
+    }
+    return json({ entries: [...trafficLog], verboseMode, maxEntries: TRAFFIC_LOG_MAX });
+  }
+  if (requestUrl.pathname === '/api/local-debug-toggle') {
+    if (req.method === 'POST') {
+      verboseMode = !verboseMode;
+      saveVerboseState();
+      context.logger.log(`[local-api] verbose logging ${verboseMode ? 'ON' : 'OFF'}`);
+    }
+    return json({ verboseMode });
+  }
+  if (requestUrl.pathname === '/api/local-env-update') {
+    if (req.method === 'POST') {
+      const body = await readBody(req);
+      if (body) {
+        try {
+          const { key, value } = JSON.parse(body.toString());
+          if (typeof key === 'string' && key.length > 0 && key.length < 100) {
+            if (value == null || value === '') {
+              delete process.env[key];
+              context.logger.log(`[local-api] env unset: ${key}`);
+            } else {
+              process.env[key] = String(value);
+              context.logger.log(`[local-api] env set: ${key}`);
+            }
+            // Clear cached handler modules so they pick up new env on next call
+            moduleCache.clear();
+            failedImports.clear();
+            cloudPreferred.clear();
+            return json({ ok: true, key });
+          }
+        } catch { /* bad JSON */ }
+      }
+      return json({ error: 'expected { key, value }' }, 400);
+    }
+    return json({ error: 'POST required' }, 405);
+  }
 
-  if (cloudPreferred.has(requestUrl.pathname)) {
+  if (context.cloudFallback && cloudPreferred.has(requestUrl.pathname)) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context);
     if (cloudResponse) return cloudResponse;
   }
 
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler missing');
-    if (cloudResponse) return cloudResponse;
-    return json({ error: 'Local handler missing and cloud fallback unavailable' }, 502);
+    if (context.cloudFallback) {
+      const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler missing');
+      if (cloudResponse) return cloudResponse;
+    }
+    logOnce(context.logger, requestUrl.pathname, 'no local handler');
+    return json({ error: 'No local handler for this endpoint', endpoint: requestUrl.pathname }, 404);
   }
 
   try {
     const mod = await importHandler(modulePath);
     if (typeof mod.default !== 'function') {
-      const cloudResponse = await tryCloudFallback(requestUrl, req, context, `invalid handler module ${path.basename(modulePath)}`);
-      if (cloudResponse) return cloudResponse;
-      return json({ error: `Invalid handler module: ${path.basename(modulePath)}` }, 500);
+      logOnce(context.logger, requestUrl.pathname, 'invalid handler module');
+      if (context.cloudFallback) {
+        const cloudResponse = await tryCloudFallback(requestUrl, req, context, `invalid handler module`);
+        if (cloudResponse) return cloudResponse;
+      }
+      return json({ error: 'Invalid handler module', endpoint: requestUrl.pathname }, 500);
     }
 
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
     const request = new Request(requestUrl.toString(), {
       method: req.method,
-      // Local handler execution does not need browser-origin metadata.
       headers: toHeaders(req.headers, { stripOrigin: true }),
       body,
     });
 
     const response = await mod.default(request);
     if (!(response instanceof Response)) {
-      const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
-      if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
-      return json({ error: `Handler returned invalid response for ${requestUrl.pathname}` }, 500);
+      logOnce(context.logger, requestUrl.pathname, 'handler returned non-Response');
+      if (context.cloudFallback) {
+        const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
+        if (cloudResponse) return cloudResponse;
+      }
+      return json({ error: 'Handler returned invalid response', endpoint: requestUrl.pathname }, 500);
     }
 
-    // Local handlers can return 4xx/5xx when desktop keys are missing.
-    // Prefer cloud parity response when available.
-    if (!response.ok) {
+    if (!response.ok && context.cloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, `local status ${response.status}`);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
 
     return response;
   } catch (error) {
-    const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
-    if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
-    return json({ error: 'Local handler failed and cloud fallback unavailable' }, 502);
+    const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
+    context.logger.error(`[local-api] ${requestUrl.pathname} → ${reason}`);
+    if (context.cloudFallback) {
+      const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
+      if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
+    }
+    return json({ error: 'Local handler error', reason, endpoint: requestUrl.pathname }, 502);
   }
 }
 
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
+  loadVerboseState(context.resourceDir);
   const routes = await buildRouteTable(context.apiDir);
 
   const server = createServer(async (req, res) => {
     const requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
 
     if (!requestUrl.pathname.startsWith('/api/')) {
-      res.writeHead(404, { 'content-type': 'application/json' });
+      res.writeHead(404, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
       res.end(JSON.stringify({ error: 'Not found' }));
       return;
     }
 
+    const start = Date.now();
+    const skipRecord = requestUrl.pathname === '/api/local-traffic-log' || requestUrl.pathname === '/api/local-debug-toggle' || requestUrl.pathname === '/api/local-env-update';
+
     try {
       const response = await dispatch(requestUrl, req, routes, context);
-      const body = Buffer.from(await response.arrayBuffer());
+      const durationMs = Date.now() - start;
+      let body = Buffer.from(await response.arrayBuffer());
       const headers = Object.fromEntries(response.headers.entries());
+      headers['access-control-allow-origin'] = '*';
+
+      if (!skipRecord) {
+        recordTraffic({
+          timestamp: new Date().toISOString(),
+          method: req.method,
+          path: requestUrl.pathname + (requestUrl.search || ''),
+          status: response.status,
+          durationMs,
+        });
+      }
+
+      const acceptEncoding = req.headers['accept-encoding'] || '';
+      if (acceptEncoding.includes('gzip') && body.length > 1024) {
+        body = gzipSync(body);
+        headers['content-encoding'] = 'gzip';
+        headers['vary'] = 'Accept-Encoding';
+      }
+
       res.writeHead(response.status, headers);
       res.end(body);
     } catch (error) {
+      const durationMs = Date.now() - start;
       context.logger.error('[local-api] fatal', error);
-      res.writeHead(500, { 'content-type': 'application/json' });
+
+      if (!skipRecord) {
+        recordTraffic({
+          timestamp: new Date().toISOString(),
+          method: req.method,
+          path: requestUrl.pathname + (requestUrl.search || ''),
+          status: 500,
+          durationMs,
+          error: error.message,
+        });
+      }
+
+      res.writeHead(500, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
       res.end(JSON.stringify({ error: 'Internal server error' }));
     }
   });
@@ -354,7 +495,7 @@ export async function createLocalApiServer(options = {}) {
 
       const address = server.address();
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
-      context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length})`);
+      context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
       return { port: boundPort };
     },
     async close() {

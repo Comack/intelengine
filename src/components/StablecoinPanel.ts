@@ -56,7 +56,7 @@ export class StablecoinPanel extends Panel {
   constructor() {
     super({ id: 'stablecoins', title: 'Stablecoins', showCount: false });
     void this.fetchData();
-    this.refreshInterval = setInterval(() => this.fetchData(), 60000);
+    this.refreshInterval = setInterval(() => this.fetchData(), 3 * 60000);
   }
 
   public destroy(): void {

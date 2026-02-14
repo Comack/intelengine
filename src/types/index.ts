@@ -1136,3 +1136,50 @@ export interface FocalPointSummary {
   topCountries: FocalPoint[];
   topCompanies: FocalPoint[];
 }
+
+export interface MapProtestCluster {
+  id: string;
+  lat: number;
+  lon: number;
+  count: number;
+  items: SocialUnrestEvent[];
+  country: string;
+  maxSeverity: 'low' | 'medium' | 'high';
+  hasRiot: boolean;
+  totalFatalities: number;
+}
+
+export interface MapTechHQCluster {
+  id: string;
+  lat: number;
+  lon: number;
+  count: number;
+  items: import('@/config/tech-geo').TechHQ[];
+  city: string;
+  country: string;
+  primaryType: 'faang' | 'unicorn' | 'public';
+}
+
+export interface MapTechEventCluster {
+  id: string;
+  lat: number;
+  lon: number;
+  count: number;
+  items: Array<{ id: string; title: string; location: string; lat: number; lng: number; country: string; startDate: string; endDate: string; url: string | null; daysUntil: number }>;
+  location: string;
+  country: string;
+  soonestDaysUntil: number;
+}
+
+export interface MapDatacenterCluster {
+  id: string;
+  lat: number;
+  lon: number;
+  count: number;
+  items: AIDataCenter[];
+  region: string;
+  country: string;
+  totalChips: number;
+  totalPowerMW: number;
+  majorityExisting: boolean;
+}

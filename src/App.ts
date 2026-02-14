@@ -87,6 +87,7 @@ import { AI_RESEARCH_LABS } from '@/config/ai-research-labs';
 import { STARTUP_ECOSYSTEMS } from '@/config/startup-ecosystems';
 import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { isDesktopRuntime } from '@/services/runtime';
+
 import type { PredictionMarket, MarketData, ClusteredEvent } from '@/types';
 
 export class App {
@@ -556,13 +557,53 @@ export class App {
           context.stockIndex = `${stockData.indexName}: ${stockData.price} (${pct >= 0 ? '+' : ''}${stockData.weekChangePercent}% week)`;
         }
 
-        const res = await fetch('/api/country-intel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ country: geo.country, code: geo.code, context }),
-        });
-        const data = await res.json();
-        this.countryIntelModal!.updateBrief({ ...data, code: geo.code });
+        let data: Record<string, unknown> | null = null;
+        try {
+          const res = await fetch('/api/country-intel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ country: geo.country, code: geo.code, context }),
+          });
+          data = await res.json();
+        } catch { /* server unreachable — will fall through to browser fallback */ }
+
+        if (data && data.brief && !data.skipped) {
+          this.countryIntelModal!.updateBrief({ ...data, code: geo.code } as Parameters<typeof this.countryIntelModal.updateBrief>[0]);
+        } else {
+          // Fallback: generate a basic brief from headlines using browser T5
+          const briefHeadlines = (context.headlines as string[] | undefined) || [];
+          let fallbackBrief = '';
+          if (briefHeadlines.length >= 2 && mlWorker.isAvailable) {
+            try {
+              const prompt = `Summarize the current situation in ${geo.country} based on these headlines: ${briefHeadlines.slice(0, 8).join('. ')}`;
+              const [summary] = await mlWorker.summarize([prompt]);
+              if (summary && summary.length > 20) fallbackBrief = summary;
+            } catch { /* T5 failed */ }
+          }
+
+          if (fallbackBrief) {
+            this.countryIntelModal!.updateBrief({ brief: fallbackBrief, country: geo.country, code: geo.code, fallback: true });
+          } else {
+            // Build a data-only brief from available context
+            const lines: string[] = [];
+            if (score) lines.push(`**Instability Index: ${score.score}/100** (${score.level}, ${score.trend})`);
+            if (signals.protests > 0) lines.push(`${signals.protests} active protests detected`);
+            if (signals.militaryFlights > 0) lines.push(`${signals.militaryFlights} military aircraft tracked`);
+            if (signals.militaryVessels > 0) lines.push(`${signals.militaryVessels} military vessels tracked`);
+            if (signals.outages > 0) lines.push(`${signals.outages} internet outages`);
+            if (signals.earthquakes > 0) lines.push(`${signals.earthquakes} recent earthquakes`);
+            if (context.stockIndex) lines.push(`Stock index: ${context.stockIndex}`);
+            if (briefHeadlines.length > 0) {
+              lines.push('', '**Recent headlines:**');
+              briefHeadlines.slice(0, 5).forEach(h => lines.push(`• ${h}`));
+            }
+            if (lines.length > 0) {
+              this.countryIntelModal!.updateBrief({ brief: lines.join('\n'), country: geo.country, code: geo.code, fallback: true });
+            } else {
+              this.countryIntelModal!.updateBrief({ brief: '', country: geo.country, code: geo.code, error: 'No AI service available. Configure GROQ_API_KEY in Settings for full briefs.' });
+            }
+          }
+        }
       } catch (err) {
         console.error('[CountryIntel] fetch error:', err);
         this.countryIntelModal!.updateBrief({ brief: '', country: geo.country, code: geo.code, error: 'Failed to generate brief' });
@@ -1107,20 +1148,20 @@ export class App {
       <div class="header">
         <div class="header-left">
           <div class="variant-switcher">
-            <a href="${SITE_VARIANT === 'tech' ? 'https://worldmonitor.app' : '#'}"
+            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'tech' ? 'https://worldmonitor.app' : '#')}"
                class="variant-option ${SITE_VARIANT !== 'tech' ? 'active' : ''}"
-               data-variant="world"
-               ${SITE_VARIANT !== 'tech' && this.isDesktopApp ? '' : 'target="_blank" rel="noopener"'}
-               title="Geopolitical Intelligence${this.isDesktopApp && SITE_VARIANT !== 'tech' ? ' (current)' : ''}">
+               data-variant="full"
+               ${!this.isDesktopApp && SITE_VARIANT === 'tech' ? 'target="_blank" rel="noopener"' : ''}
+               title="Geopolitical Intelligence${SITE_VARIANT !== 'tech' ? ' (current)' : ''}">
               <span class="variant-icon">🌍</span>
               <span class="variant-label">WORLD</span>
             </a>
             <span class="variant-divider"></span>
-            <a href="${SITE_VARIANT === 'tech' ? '#' : 'https://tech.worldmonitor.app'}"
+            <a href="${this.isDesktopApp ? '#' : (SITE_VARIANT === 'tech' ? '#' : 'https://tech.worldmonitor.app')}"
                class="variant-option ${SITE_VARIANT === 'tech' ? 'active' : ''}"
                data-variant="tech"
-               ${SITE_VARIANT === 'tech' && this.isDesktopApp ? '' : 'target="_blank" rel="noopener"'}
-               title="Tech & AI Intelligence${this.isDesktopApp && SITE_VARIANT === 'tech' ? ' (current)' : ''}">
+               ${!this.isDesktopApp && SITE_VARIANT !== 'tech' ? 'target="_blank" rel="noopener"' : ''}
+               title="Tech & AI Intelligence${SITE_VARIANT === 'tech' ? ' (current)' : ''}">
               <span class="variant-icon">💻</span>
               <span class="variant-label">TECH</span>
             </a>
@@ -1837,6 +1878,20 @@ export class App {
 
     // Sources modal
     this.setupSourcesModal();
+
+    // Variant switcher: switch variant locally on desktop (reload with new config)
+    if (this.isDesktopApp) {
+      this.container.querySelectorAll<HTMLAnchorElement>('.variant-option').forEach(link => {
+        link.addEventListener('click', (e) => {
+          const variant = link.dataset.variant;
+          if (variant && variant !== SITE_VARIANT) {
+            e.preventDefault();
+            localStorage.setItem('worldmonitor-variant', variant);
+            window.location.reload();
+          }
+        });
+      });
+    }
 
     // Fullscreen toggle
     const fullscreenBtn = document.getElementById('fullscreenBtn');

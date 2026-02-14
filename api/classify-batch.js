@@ -1,4 +1,4 @@
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson, mget, hashString } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -9,34 +9,6 @@ const MODEL = 'llama-3.1-8b-instant';
 const CACHE_TTL_SECONDS = 86400;
 const CACHE_VERSION = 'v1';
 const MAX_BATCH_SIZE = 20;
-
-let redis = null;
-let redisInitFailed = false;
-function getRedis() {
-  if (redis) return redis;
-  if (redisInitFailed) return null;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    try {
-      redis = new Redis({ url, token });
-    } catch (err) {
-      console.warn('[ClassifyBatch] Redis init failed:', err.message);
-      redisInitFailed = true;
-      return null;
-    }
-  }
-  return redis;
-}
-
-function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
-}
 
 const VALID_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
 const VALID_CATEGORIES = [
@@ -55,8 +27,8 @@ export default async function handler(request) {
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ fallback: true }), {
-      status: 503,
+    return new Response(JSON.stringify({ results: [], fallback: true, skipped: true, reason: 'GROQ_API_KEY not configured' }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -83,33 +55,23 @@ export default async function handler(request) {
   const results = new Array(batch.length).fill(null);
   const uncachedIndices = [];
 
-  const redisClient = getRedis();
-  if (redisClient) {
-    try {
-      const cacheKeys = batch.map(
-        (t) => `classify:${CACHE_VERSION}:${hashString(t.toLowerCase() + ':' + variant)}`
-      );
-      const cached = await redisClient.mget(...cacheKeys);
-      for (let i = 0; i < cached.length; i++) {
-        const val = cached[i];
-        if (val && typeof val === 'object' && val.level) {
-          results[i] = { level: val.level, category: val.category, cached: true };
-        } else {
-          uncachedIndices.push(i);
-        }
-      }
-    } catch (e) {
-      console.warn('[ClassifyBatch] Cache read error:', e.message);
-      for (let i = 0; i < batch.length; i++) uncachedIndices.push(i);
+  const cacheKeys = batch.map(
+    (t) => `classify:${CACHE_VERSION}:${hashString(t.toLowerCase() + ':' + variant)}`
+  );
+  const cached = await mget(...cacheKeys);
+  for (let i = 0; i < cached.length; i++) {
+    const val = cached[i];
+    if (val && typeof val === 'object' && val.level) {
+      results[i] = { level: val.level, category: val.category, cached: true };
+    } else {
+      uncachedIndices.push(i);
     }
-  } else {
-    for (let i = 0; i < batch.length; i++) uncachedIndices.push(i);
   }
 
   if (uncachedIndices.length === 0) {
     return new Response(JSON.stringify({ results }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
     });
   }
 
@@ -190,13 +152,10 @@ Return a JSON array with one object per headline in order: [{"level":"...","cate
       const idx = uncachedIndices[i];
       results[idx] = { level, category, cached: false };
 
-      if (redisClient) {
-        const cacheKey = `classify:${CACHE_VERSION}:${hashString(batch[idx].toLowerCase() + ':' + variant)}`;
-        cacheWrites.push(
-          redisClient.set(cacheKey, { level, category, timestamp: Date.now() }, { ex: CACHE_TTL_SECONDS })
-            .catch((e) => console.warn('[ClassifyBatch] Cache write error:', e.message))
-        );
-      }
+      const cacheKey = `classify:${CACHE_VERSION}:${hashString(batch[idx].toLowerCase() + ':' + variant)}`;
+      cacheWrites.push(
+        setCachedJson(cacheKey, { level, category, timestamp: Date.now() }, CACHE_TTL_SECONDS)
+      );
     }
 
     if (cacheWrites.length > 0) {
@@ -205,7 +164,7 @@ Return a JSON array with one object per headline in order: [{"level":"...","cate
 
     return new Response(JSON.stringify({ results }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
     });
   } catch (error) {
     console.error('[ClassifyBatch] Error:', error.message);

@@ -85,7 +85,7 @@ export default async function handler(req) {
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=1800',
+        'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300',
       },
     });
   } catch (error) {

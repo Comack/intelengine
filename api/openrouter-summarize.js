@@ -6,7 +6,7 @@
  * Server-side Redis cache for cross-user deduplication
  */
 
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson, hashString } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -16,37 +16,13 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
 const CACHE_TTL_SECONDS = 86400; // 24 hours
 
-// Initialize Redis (lazy - only if env vars present)
-let redis = null;
-function getRedis() {
-  if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    redis = new Redis({ url, token });
-  }
-  return redis;
-}
-
-// Cache version - increment to bust old caches after breaking changes
 const CACHE_VERSION = 'v3';
 
-// Generate cache key from headlines, geoContext, and variant (same as groq endpoint)
 function getCacheKey(headlines, mode, geoContext = '', variant = 'full') {
   const sorted = headlines.slice(0, 8).sort().join('|');
   const geoHash = geoContext ? ':g' + hashString(geoContext).slice(0, 6) : '';
   const hash = hashString(`${mode}:${sorted}`);
-  // Include variant and version to prevent cross-site cache collisions
   return `summary:${CACHE_VERSION}:${variant}:${hash}${geoHash}`;
-}
-
-function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
 }
 
 // Deduplicate similar headlines (same story from different sources)
@@ -95,8 +71,8 @@ export default async function handler(request) {
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'OpenRouter API key not configured', fallback: true }), {
-      status: 503,
+    return new Response(JSON.stringify({ summary: null, fallback: true, skipped: true, reason: 'OPENROUTER_API_KEY not configured' }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -111,28 +87,20 @@ export default async function handler(request) {
       });
     }
 
-    // Check Redis cache first (shared with Groq endpoint)
-    const redisClient = getRedis();
+    // Check cache first (shared with Groq endpoint)
     const cacheKey = getCacheKey(headlines, mode, geoContext, variant);
-
-    if (redisClient) {
-      try {
-        const cached = await redisClient.get(cacheKey);
-        if (cached && typeof cached === 'object' && cached.summary) {
-          console.log('[OpenRouter] Cache hit:', cacheKey);
-          return new Response(JSON.stringify({
-            summary: cached.summary,
-            model: cached.model || MODEL,
-            provider: 'cache',
-            cached: true,
-          }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-      } catch (cacheError) {
-        console.warn('[OpenRouter] Cache read error:', cacheError.message);
-      }
+    const cached = await getCachedJson(cacheKey);
+    if (cached && typeof cached === 'object' && cached.summary) {
+      console.log('[OpenRouter] Cache hit:', cacheKey);
+      return new Response(JSON.stringify({
+        summary: cached.summary,
+        model: cached.model || MODEL,
+        provider: 'cache',
+        cached: true,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     // Deduplicate similar headlines (same story from different sources)
@@ -254,19 +222,12 @@ Rules:
       });
     }
 
-    // Store in Redis cache (shared with Groq endpoint)
-    if (redisClient) {
-      try {
-        await redisClient.set(cacheKey, {
-          summary,
-          model: MODEL,
-          timestamp: Date.now(),
-        }, { ex: CACHE_TTL_SECONDS });
-        console.log('[OpenRouter] Cached:', cacheKey);
-      } catch (cacheError) {
-        console.warn('[OpenRouter] Cache write error:', cacheError.message);
-      }
-    }
+    // Store in cache (shared with Groq endpoint)
+    await setCachedJson(cacheKey, {
+      summary,
+      model: MODEL,
+      timestamp: Date.now(),
+    }, CACHE_TTL_SECONDS);
 
     return new Response(JSON.stringify({
       summary,
@@ -278,7 +239,7 @@ Rules:
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=1800',
+        'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300',
       },
     });
 

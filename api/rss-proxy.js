@@ -223,7 +223,7 @@ export default async function handler(req) {
       status: response.status,
       headers: {
         'Content-Type': 'application/xml',
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
         ...corsHeaders,
       },
     });

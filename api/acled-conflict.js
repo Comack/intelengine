@@ -83,7 +83,7 @@ export default async function handler(req) {
       status: 200,
       headers: {
         ...corsHeaders,
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
         'X-Cache': 'REDIS-HIT',
       },
     });
@@ -95,7 +95,7 @@ export default async function handler(req) {
       status: 200,
       headers: {
         ...corsHeaders,
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
         'X-Cache': 'MEMORY-HIT',
       },
     });
@@ -162,7 +162,7 @@ export default async function handler(req) {
       status: 200,
       headers: {
         ...corsHeaders,
-        'Cache-Control': 'public, max-age=300',
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
         'X-Cache': 'MISS',
       },
     });
@@ -173,7 +173,7 @@ export default async function handler(req) {
         status: 200,
         headers: {
           ...corsHeaders,
-          'Cache-Control': 'public, max-age=60',
+          'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
           'X-Cache': 'STALE',
         },
       });

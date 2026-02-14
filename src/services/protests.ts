@@ -97,7 +97,11 @@ async function fetchAcledEvents(): Promise<SocialUnrestEvent[]> {
     acledConfigured = true;
     const events: AcledEvent[] = result.data || [];
 
-    return events.map((e): SocialUnrestEvent => {
+    return events.filter(e => {
+      const lat = parseFloat(e.latitude);
+      const lon = parseFloat(e.longitude);
+      return Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+    }).map((e): SocialUnrestEvent => {
       const lat = parseFloat(e.latitude);
       const lon = parseFloat(e.longitude);
       const fatalities = parseInt(e.fatalities, 10) || 0;
@@ -172,9 +176,13 @@ async function fetchGdeltEvents(): Promise<SocialUnrestEvent[]> {
       const count = feature.properties.count || 1;
       if (count < 5) continue; // Filter noise but keep meaningful events
 
-      seenLocations.add(name);
+      const coords = feature.geometry?.coordinates;
+      if (!Array.isArray(coords) || coords.length < 2) continue;
 
-      const [lon, lat] = feature.geometry.coordinates;
+      const [lon, lat] = coords;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+
+      seenLocations.add(name);
       const lowerName = name.toLowerCase();
 
       let severity: ProtestSeverity = 'medium';

@@ -4,7 +4,7 @@
  * Redis cached (1h TTL)
  */
 
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -61,29 +61,11 @@ const COUNTRY_INDEX = {
   HU: { symbol: '^BUX', name: 'BUX' },
 };
 
-let redis = null;
-let redisInitFailed = false;
-function getRedis() {
-  if (redis) return redis;
-  if (redisInitFailed) return null;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    try {
-      redis = new Redis({ url, token });
-    } catch (err) {
-      console.warn('[StockIndex] Redis init failed:', err.message);
-      redisInitFailed = true;
-    }
-  }
-  return redis;
-}
-
 export default async function handler(request) {
   if (request.method !== 'GET') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
     });
   }
 
@@ -93,7 +75,7 @@ export default async function handler(request) {
   if (!code) {
     return new Response(JSON.stringify({ error: 'code parameter required' }), {
       status: 400,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
     });
   }
 
@@ -101,25 +83,17 @@ export default async function handler(request) {
   if (!index) {
     return new Response(JSON.stringify({ error: 'No stock index for country', code, available: false }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
     });
   }
 
   const cacheKey = `${CACHE_VERSION}:${code}`;
-  const redisClient = getRedis();
-
-  if (redisClient) {
-    try {
-      const cached = await redisClient.get(cacheKey);
-      if (cached && typeof cached === 'object' && cached.indexName) {
-        return new Response(JSON.stringify({ ...cached, cached: true }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-    } catch (e) {
-      console.warn('[StockIndex] Cache read error:', e.message);
-    }
+  const cached = await getCachedJson(cacheKey);
+  if (cached && typeof cached === 'object' && cached.indexName) {
+    return new Response(JSON.stringify({ ...cached, cached: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
+    });
   }
 
   try {
@@ -137,7 +111,7 @@ export default async function handler(request) {
       console.error('[StockIndex] Yahoo error:', res.status, index.symbol);
       return new Response(JSON.stringify({ error: 'Upstream error', available: false }), {
         status: 502,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
       });
     }
 
@@ -146,7 +120,7 @@ export default async function handler(request) {
     if (!result) {
       return new Response(JSON.stringify({ error: 'No data', available: false }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
       });
     }
 
@@ -154,7 +128,7 @@ export default async function handler(request) {
     if (!allCloses || allCloses.length < 2) {
       return new Response(JSON.stringify({ error: 'Insufficient data', available: false }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
       });
     }
 
@@ -176,23 +150,17 @@ export default async function handler(request) {
       fetchedAt: new Date().toISOString(),
     };
 
-    if (redisClient) {
-      try {
-        await redisClient.set(cacheKey, payload, { ex: CACHE_TTL_SECONDS });
-      } catch (e) {
-        console.warn('[StockIndex] Cache write error:', e.message);
-      }
-    }
+    await setCachedJson(cacheKey, payload, CACHE_TTL_SECONDS);
 
     return new Response(JSON.stringify(payload), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
     });
   } catch (err) {
     console.error('[StockIndex] Error:', err);
     return new Response(JSON.stringify({ error: 'Internal error', available: false }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
     });
   }
 }

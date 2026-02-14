@@ -98,27 +98,47 @@ export function toRuntimeUrl(path: string): string {
   return `${baseUrl}${path}`;
 }
 
+const APP_HOSTS = new Set([
+  'worldmonitor.app',
+  'www.worldmonitor.app',
+  'tech.worldmonitor.app',
+  'startups.worldmonitor.app',
+  'localhost',
+  '127.0.0.1',
+]);
+
+function isAppOriginUrl(urlStr: string): boolean {
+  try {
+    const u = new URL(urlStr);
+    const host = u.hostname;
+    return APP_HOSTS.has(host) || host.endsWith('.worldmonitor.app');
+  } catch {
+    return false;
+  }
+}
+
 function getApiTargetFromRequestInput(input: RequestInfo | URL): string | null {
   if (typeof input === 'string') {
     if (input.startsWith('/')) return input;
-    try {
+    if (isAppOriginUrl(input)) {
       const u = new URL(input);
       return `${u.pathname}${u.search}`;
-    } catch {
-      return null;
     }
+    return null;
   }
 
   if (input instanceof URL) {
-    return `${input.pathname}${input.search}`;
-  }
-
-  try {
-    const u = new URL(input.url);
-    return `${u.pathname}${u.search}`;
-  } catch {
+    if (isAppOriginUrl(input.href)) {
+      return `${input.pathname}${input.search}`;
+    }
     return null;
   }
+
+  if (isAppOriginUrl(input.url)) {
+    const u = new URL(input.url);
+    return `${u.pathname}${u.search}`;
+  }
+  return null;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -164,38 +184,33 @@ export function installRuntimeFetchPatch(): void {
 
   const nativeFetch = window.fetch.bind(window);
   const localBase = getApiBaseUrl();
-  const remoteBase = getRemoteApiBaseUrl();
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
+    const debug = localStorage.getItem('wm-debug-log') === '1';
+
     if (!target?.startsWith('/api/')) {
+      if (debug) {
+        const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        console.log(`[fetch] passthrough → ${raw.slice(0, 120)}`);
+      }
       return nativeFetch(input, init);
     }
 
     const localUrl = `${localBase}${target}`;
-    const remoteUrl = `${remoteBase}${target}`;
+    if (debug) console.log(`[fetch] intercept → ${target}`);
 
     try {
-      const localResponse = await fetchLocalWithStartupRetry(nativeFetch, localUrl, init);
-      if (localResponse.ok) {
-        return localResponse;
-      }
-
-      // Desktop local handlers can return 4xx/5xx when API keys are missing.
-      // Prefer remote parity response when available.
-      try {
-        const remoteResponse = await nativeFetch(remoteUrl, init);
-        if (remoteResponse.ok) {
-          return remoteResponse;
-        }
-      } catch (remoteError) {
-        console.warn(`[runtime] Remote API fallback failed for ${target}`, remoteError);
-      }
-
-      return localResponse;
+      const t0 = performance.now();
+      const response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, init);
+      if (debug) console.log(`[fetch] ${target} → ${response.status} (${Math.round(performance.now() - t0)}ms)`);
+      return response;
     } catch (error) {
-      console.warn(`[runtime] Local API fetch failed for ${target}, falling back to cloud`, error);
-      return nativeFetch(remoteUrl, init);
+      console.warn(`[runtime] Local API unavailable for ${target}`, error);
+      return new Response(JSON.stringify({ error: 'Local API unavailable' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' },
+      });
     }
   };
 

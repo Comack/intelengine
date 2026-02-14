@@ -99,7 +99,7 @@ async function setupResourceDirWithUpApi(files) {
   };
 }
 
-test('falls back to cloud when local handler returns a 500', async () => {
+test('returns local error directly when cloudFallback is off (default)', async () => {
   const remote = await setupRemoteServer();
   const localApi = await setupApiDir({
     'fred-data.js': `
@@ -116,6 +116,41 @@ test('falls back to cloud when local handler returns a 500', async () => {
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/fred-data`);
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.equal(body.source, 'local-error');
+    assert.equal(remote.hits.length, 0);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+  }
+});
+
+test('falls back to cloud when cloudFallback is enabled and local handler returns 500', async () => {
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'fred-data.js': `
+      export default async function handler() {
+        return new Response(JSON.stringify({ source: 'local-error' }), {
+          status: 500,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    cloudFallback: 'true',
     logger: { log() {}, warn() {}, error() {} },
   });
   const { port } = await app.start();
@@ -167,7 +202,7 @@ test('uses local handler response when local handler succeeds', async () => {
   }
 });
 
-test('falls back to cloud when local route does not exist', async () => {
+test('returns 404 when local route does not exist and cloudFallback is off', async () => {
   const remote = await setupRemoteServer();
   const localApi = await setupApiDir({});
 
@@ -181,10 +216,10 @@ test('falls back to cloud when local route does not exist', async () => {
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/not-found`);
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 404);
     const body = await response.json();
-    assert.equal(body.source, 'remote');
-    assert.equal(remote.hits.includes('/api/not-found'), true);
+    assert.equal(body.error, 'No local handler for this endpoint');
+    assert.equal(remote.hits.length, 0);
   } finally {
     await app.close();
     await localApi.cleanup();
@@ -233,7 +268,7 @@ test('strips browser origin headers before invoking local handlers', async () =>
   }
 });
 
-test('strips browser origin headers when proxying to cloud fallback', async () => {
+test('strips browser origin headers when proxying to cloud fallback (cloudFallback enabled)', async () => {
   const remote = await setupRemoteServer();
   const localApi = await setupApiDir({});
 
@@ -241,6 +276,7 @@ test('strips browser origin headers when proxying to cloud fallback', async () =
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
+    cloudFallback: 'true',
     logger: { log() {}, warn() {}, error() {} },
   });
   const { port } = await app.start();
@@ -258,6 +294,32 @@ test('strips browser origin headers when proxying to cloud fallback', async () =
     await app.close();
     await localApi.cleanup();
     await remote.close();
+  }
+});
+
+test('responds to OPTIONS preflight with CORS headers', async () => {
+  const localApi = await setupApiDir({
+    'data.js': `
+      export default async function handler() {
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/data`, { method: 'OPTIONS' });
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get('access-control-allow-methods'), 'GET, POST, PUT, DELETE, OPTIONS');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
   }
 });
 

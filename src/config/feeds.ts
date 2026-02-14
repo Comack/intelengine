@@ -1,6 +1,5 @@
 import type { Feed } from '@/types';
-
-const SITE_VARIANT = import.meta.env.VITE_VARIANT || 'full';
+import { SITE_VARIANT } from './variant';
 
 // Helper to create RSS proxy URL (Vercel)
 const rss = (url: string) => `/api/rss-proxy?url=${encodeURIComponent(url)}`;

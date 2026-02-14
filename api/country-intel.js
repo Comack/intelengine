@@ -4,7 +4,7 @@
  * Redis cached (2h TTL) for cross-user deduplication
  */
 
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson, hashString } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -14,33 +14,6 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'llama-3.1-8b-instant';
 const CACHE_TTL_SECONDS = 7200; // 2 hours
 const CACHE_VERSION = 'ci-v2';
-
-let redis = null;
-let redisInitFailed = false;
-function getRedis() {
-  if (redis) return redis;
-  if (redisInitFailed) return null;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    try {
-      redis = new Redis({ url, token });
-    } catch (err) {
-      console.warn('[CountryIntel] Redis init failed:', err.message);
-      redisInitFailed = true;
-    }
-  }
-  return redis;
-}
-
-function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
-}
 
 export default async function handler(request) {
   if (request.method !== 'POST') {
@@ -52,8 +25,8 @@ export default async function handler(request) {
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Groq API key not configured', fallback: true }), {
-      status: 503,
+    return new Response(JSON.stringify({ intel: null, fallback: true, skipped: true, reason: 'GROQ_API_KEY not configured' }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -72,20 +45,13 @@ export default async function handler(request) {
     const contextHash = context ? hashString(JSON.stringify(context)).slice(0, 8) : 'no-ctx';
     const cacheKey = `${CACHE_VERSION}:${code}:${contextHash}`;
 
-    const redisClient = getRedis();
-    if (redisClient) {
-      try {
-        const cached = await redisClient.get(cacheKey);
-        if (cached && typeof cached === 'object' && cached.brief) {
-          console.log('[CountryIntel] Cache hit:', code);
-          return new Response(JSON.stringify({ ...cached, cached: true }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-      } catch (e) {
-        console.warn('[CountryIntel] Cache read error:', e.message);
-      }
+    const cached = await getCachedJson(cacheKey);
+    if (cached && typeof cached === 'object' && cached.brief) {
+      console.log('[CountryIntel] Cache hit:', code);
+      return new Response(JSON.stringify({ ...cached, cached: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
+      });
     }
 
     // Build data context section
@@ -184,19 +150,13 @@ Rules:
       generatedAt: new Date().toISOString(),
     };
 
-    // Cache result
-    if (redisClient && brief) {
-      try {
-        await redisClient.set(cacheKey, result, { ex: CACHE_TTL_SECONDS });
-        console.log('[CountryIntel] Cached:', code);
-      } catch (e) {
-        console.warn('[CountryIntel] Cache write error:', e.message);
-      }
+    if (brief) {
+      await setCachedJson(cacheKey, result, CACHE_TTL_SECONDS);
     }
 
     return new Response(JSON.stringify(result), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600' },
     });
   } catch (err) {
     console.error('[CountryIntel] Error:', err);

@@ -111,7 +111,7 @@ export default async function handler(req) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
+        'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=5`,
         'X-Cache': 'REDIS-HIT',
         ...corsHeaders,
       },
@@ -125,7 +125,7 @@ export default async function handler(req) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
+        'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=5`,
         'X-Cache': 'MEMORY-HIT',
         ...corsHeaders,
       },
@@ -135,8 +135,8 @@ export default async function handler(req) {
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) {
     recordCacheTelemetry('/api/ais-snapshot', 'NO-RELAY-CONFIG');
-    return new Response(JSON.stringify({ error: 'AIS relay not configured' }), {
-      status: 503,
+    return new Response(JSON.stringify({ vessels: [], skipped: true, reason: 'AIS relay not configured' }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     });
   }
@@ -175,7 +175,7 @@ export default async function handler(req) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
+        'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=5`,
         'X-Cache': 'MISS',
         ...corsHeaders,
       },
@@ -188,7 +188,7 @@ export default async function handler(req) {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
+          'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}, s-maxage=${CACHE_TTL_SECONDS}, stale-while-revalidate=5`,
           'X-Cache': 'MEMORY-ERROR-FALLBACK',
           ...corsHeaders,
         },

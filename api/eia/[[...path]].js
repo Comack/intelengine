@@ -33,10 +33,11 @@ export default async function handler(req) {
 
   if (!apiKey) {
     return Response.json({
-      error: 'EIA API not configured',
       configured: false,
+      skipped: true,
+      reason: 'EIA_API_KEY not configured',
     }, {
-      status: 503,
+      status: 200,
       headers: { 'Access-Control-Allow-Origin': corsOrigin },
     });
   }
@@ -113,7 +114,7 @@ export default async function handler(req) {
       return Response.json(results, {
         headers: {
           'Access-Control-Allow-Origin': corsOrigin,
-          'Cache-Control': 'public, max-age=1800', // 30 min cache
+          'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300', // 30 min cache
         },
       });
     } catch (error) {

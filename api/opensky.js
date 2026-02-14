@@ -51,7 +51,7 @@ export default async function handler(req) {
       status: response.status,
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=30',
+        'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=15',
       },
     });
   } catch (error) {

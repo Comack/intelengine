@@ -1,4 +1,4 @@
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson, hashString } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -8,34 +8,6 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'llama-3.1-8b-instant';
 const CACHE_TTL_SECONDS = 86400;
 const CACHE_VERSION = 'v1';
-
-let redis = null;
-let redisInitFailed = false;
-function getRedis() {
-  if (redis) return redis;
-  if (redisInitFailed) return null;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    try {
-      redis = new Redis({ url, token });
-    } catch (err) {
-      console.warn('[Classify] Redis init failed:', err.message);
-      redisInitFailed = true;
-      return null;
-    }
-  }
-  return redis;
-}
-
-function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
-}
 
 const VALID_LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
 const VALID_CATEGORIES = [
@@ -54,8 +26,8 @@ export default async function handler(request) {
 
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ fallback: true }), {
-      status: 503,
+    return new Response(JSON.stringify({ fallback: true, skipped: true, reason: 'GROQ_API_KEY not configured' }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -74,25 +46,18 @@ export default async function handler(request) {
   const cacheKey = `classify:${CACHE_VERSION}:${hashString(title.toLowerCase() + ':' + variant)}`;
 
   try {
-    const redisClient = getRedis();
-    if (redisClient) {
-      try {
-        const cached = await redisClient.get(cacheKey);
-        if (cached && typeof cached === 'object' && cached.level) {
-          return new Response(JSON.stringify({
-            level: cached.level,
-            category: cached.category,
-            confidence: 0.9,
-            source: 'llm',
-            cached: true,
-          }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-      } catch (e) {
-        console.warn('[Classify] Cache read error:', e.message);
-      }
+    const cached = await getCachedJson(cacheKey);
+    if (cached && typeof cached === 'object' && cached.level) {
+      return new Response(JSON.stringify({
+        level: cached.level,
+        category: cached.category,
+        confidence: 0.9,
+        source: 'llm',
+        cached: true,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     const isTech = variant === 'tech';
@@ -159,13 +124,7 @@ Return: {"level":"...","category":"..."}`;
       });
     }
 
-    if (redisClient) {
-      try {
-        await redisClient.set(cacheKey, { level, category, timestamp: Date.now() }, { ex: CACHE_TTL_SECONDS });
-      } catch (e) {
-        console.warn('[Classify] Cache write error:', e.message);
-      }
-    }
+    await setCachedJson(cacheKey, { level, category, timestamp: Date.now() }, CACHE_TTL_SECONDS);
 
     return new Response(JSON.stringify({
       level,
@@ -177,7 +136,7 @@ Return: {"level":"...","category":"..."}`;
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600',
       },
     });
 

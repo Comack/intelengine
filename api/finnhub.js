@@ -76,9 +76,9 @@ export default async function handler(req) {
   const apiKey = process.env.FINNHUB_API_KEY;
 
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Finnhub API key not configured' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    return new Response(JSON.stringify({ quotes: [], skipped: true, reason: 'FINNHUB_API_KEY not configured' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30', ...corsHeaders },
     });
   }
 
@@ -102,7 +102,7 @@ export default async function handler(req) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=30',
+        'Cache-Control': 'public, max-age=30, s-maxage=30, stale-while-revalidate=15',
         ...corsHeaders,
       },
     });

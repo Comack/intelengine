@@ -104,7 +104,7 @@ export default async function handler(req) {
     recordCacheTelemetry('/api/unhcr-population', 'REDIS-HIT');
     return Response.json(cached, {
       status: 200,
-      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=3600', 'X-Cache': 'REDIS-HIT' },
+      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600', 'X-Cache': 'REDIS-HIT' },
     });
   }
 
@@ -112,7 +112,7 @@ export default async function handler(req) {
     recordCacheTelemetry('/api/unhcr-population', 'MEMORY-HIT');
     return Response.json(fallbackCache.data, {
       status: 200,
-      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=3600', 'X-Cache': 'MEMORY-HIT' },
+      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600', 'X-Cache': 'MEMORY-HIT' },
     });
   }
 
@@ -251,14 +251,14 @@ export default async function handler(req) {
 
     return Response.json(result, {
       status: 200,
-      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=3600', 'X-Cache': 'MISS' },
+      headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=600', 'X-Cache': 'MISS' },
     });
   } catch (error) {
     if (isValidResult(fallbackCache.data)) {
       recordCacheTelemetry('/api/unhcr-population', 'STALE');
       return Response.json(fallbackCache.data, {
         status: 200,
-        headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=600', 'X-Cache': 'STALE' },
+        headers: { ...corsHeaders, 'Cache-Control': 'public, max-age=600, s-maxage=600, stale-while-revalidate=120', 'X-Cache': 'STALE' },
       });
     }
 

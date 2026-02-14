@@ -9,7 +9,7 @@ const COIN_ID_PATTERN = /^[a-z0-9-]+$/;
 
 const CACHE_TTL_SECONDS = 120; // 2 minutes
 const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
-const RESPONSE_CACHE_CONTROL = 'public, max-age=120, stale-while-revalidate=60';
+const RESPONSE_CACHE_CONTROL = 'public, max-age=120, s-maxage=120, stale-while-revalidate=60';
 const CACHE_VERSION = 'v2';
 
 // In-memory fallback cache for the current instance.

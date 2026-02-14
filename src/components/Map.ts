@@ -1113,8 +1113,9 @@ export class MapComponent {
       if (assigned.has(i)) continue;
 
       const item = items[i]!;
+      if (!Number.isFinite(item.lat) || !Number.isFinite(item.lon)) continue;
       const pos = projection([item.lon, item.lat]);
-      if (!pos) continue;
+      if (!pos || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) continue;
 
       const cluster: T[] = [item];
       assigned.add(i);
@@ -1128,8 +1129,9 @@ export class MapComponent {
         // Skip if different group keys (e.g., different cities)
         if (getGroupKey && getGroupKey(other) !== itemKey) continue;
 
+        if (!Number.isFinite(other.lat) || !Number.isFinite(other.lon)) continue;
         const otherPos = projection([other.lon, other.lat]);
-        if (!otherPos) continue;
+        if (!otherPos || !Number.isFinite(otherPos[0]) || !Number.isFinite(otherPos[1])) continue;
 
         const dx = pos[0] - otherPos[0];
         const dy = pos[1] - otherPos[1];
@@ -1150,11 +1152,13 @@ export class MapComponent {
       const centerLat = sumLat / cluster.length;
       const centerLon = sumLon / cluster.length;
       const centerPos = projection([centerLon, centerLat]);
+      const finalPos = (centerPos && Number.isFinite(centerPos[0]) && Number.isFinite(centerPos[1]))
+        ? centerPos : pos;
 
       clusters.push({
         items: cluster,
         center: [centerLon, centerLat],
-        pos: centerPos || pos,
+        pos: finalPos,
       });
     }
 
@@ -1274,12 +1278,7 @@ export class MapComponent {
         div.style.left = `${pos[0]}px`;
         div.style.top = `${pos[1]}px`;
 
-        const breakingBadge = spot.hasBreaking
-          ? '<div class="hotspot-breaking">BREAKING</div>'
-          : '';
-
         div.innerHTML = `
-          ${breakingBadge}
           <div class="hotspot-marker ${escapeHtml(spot.level || 'low')}"></div>
         `;
 

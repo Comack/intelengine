@@ -7,7 +7,7 @@
  * POST { updates: [{ type, region, count }] } — batch update baselines
  */
 
-import { Redis } from '@upstash/redis';
+import { getCachedJson, setCachedJson, mget } from './_upstash-cache.js';
 
 export const config = {
   runtime: 'edge',
@@ -21,27 +21,6 @@ const Z_THRESHOLD_HIGH = 3.0;
 
 const VALID_TYPES = ['military_flights', 'vessels', 'protests', 'news', 'ais_gaps', 'satellite_fires'];
 
-// Lazy Redis init (same pattern as groq-summarize.js)
-let redis = null;
-let redisInitFailed = false;
-function getRedis() {
-  if (redis) return redis;
-  if (redisInitFailed) return null;
-
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    try {
-      redis = new Redis({ url, token });
-    } catch (err) {
-      console.warn('[TemporalBaseline] Redis init failed:', err.message);
-      redisInitFailed = true;
-      return null;
-    }
-  }
-  return redis;
-}
-
 function makeKey(type, region, weekday, month) {
   return `baseline:${type}:${region}:${weekday}:${month}`;
 }
@@ -54,19 +33,11 @@ function getSeverity(zScore) {
 }
 
 export default async function handler(request) {
-  const r = getRedis();
-  if (!r) {
-    return new Response(JSON.stringify({ error: 'Redis not configured' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
   try {
     if (request.method === 'GET') {
-      return await handleGet(r, request);
+      return await handleGet(request);
     } else if (request.method === 'POST') {
-      return await handlePost(r, request);
+      return await handlePost(request);
     }
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -81,7 +52,7 @@ export default async function handler(request) {
   }
 }
 
-async function handleGet(r, request) {
+async function handleGet(request) {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
   const region = searchParams.get('region') || 'global';
@@ -96,7 +67,7 @@ async function handleGet(r, request) {
   const month = now.getUTCMonth() + 1;
   const key = makeKey(type, region, weekday, month);
 
-  const baseline = await r.get(key);
+  const baseline = await getCachedJson(key);
 
   if (!baseline || baseline.sampleCount < MIN_SAMPLES) {
     return json({
@@ -130,7 +101,7 @@ async function handleGet(r, request) {
   });
 }
 
-async function handlePost(r, request) {
+async function handlePost(request) {
   const body = await request.json();
   const updates = body?.updates;
 
@@ -138,19 +109,15 @@ async function handlePost(r, request) {
     return json({ error: 'Body must have updates array' }, 400);
   }
 
-  // Cap batch size
   const batch = updates.slice(0, 20);
   const now = new Date();
   const weekday = now.getUTCDay();
   const month = now.getUTCMonth() + 1;
 
-  // Read all existing baselines
   const keys = batch.map(u => makeKey(u.type, u.region || 'global', weekday, month));
-  const existing = await r.mget(...keys);
+  const existing = await mget(...keys);
 
-  // Compute Welford updates and pipeline writes
-  const pipeline = r.pipeline();
-  let updated = 0;
+  const writes = [];
 
   for (let i = 0; i < batch.length; i++) {
     const { type, region = 'global', count } = batch[i];
@@ -158,28 +125,25 @@ async function handlePost(r, request) {
 
     const prev = existing[i] || { mean: 0, m2: 0, sampleCount: 0 };
 
-    // Welford's online algorithm
     const n = prev.sampleCount + 1;
     const delta = count - prev.mean;
     const newMean = prev.mean + delta / n;
     const delta2 = count - newMean;
     const newM2 = prev.m2 + delta * delta2;
 
-    pipeline.set(keys[i], {
+    writes.push(setCachedJson(keys[i], {
       mean: newMean,
       m2: newM2,
       sampleCount: n,
       lastUpdated: now.toISOString(),
-    }, { ex: BASELINE_TTL });
-
-    updated++;
+    }, BASELINE_TTL));
   }
 
-  if (updated > 0) {
-    await pipeline.exec();
+  if (writes.length > 0) {
+    await Promise.all(writes);
   }
 
-  return json({ updated });
+  return json({ updated: writes.length });
 }
 
 function json(data, status = 200) {
