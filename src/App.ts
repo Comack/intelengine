@@ -1809,8 +1809,10 @@ export class App {
     const serviceStatusPanel = new ServiceStatusPanel();
     this.panels['service-status'] = serviceStatusPanel;
 
-    const runtimeConfigPanel = new RuntimeConfigPanel({ mode: this.isDesktopApp ? 'alert' : 'full' });
-    this.panels['runtime-config'] = runtimeConfigPanel;
+    if (this.isDesktopApp) {
+      const runtimeConfigPanel = new RuntimeConfigPanel({ mode: 'alert' });
+      this.panels['runtime-config'] = runtimeConfigPanel;
+    }
 
     // Tech Readiness Panel (tech variant only - World Bank tech indicators)
     const techReadinessPanel = new TechReadinessPanel();
