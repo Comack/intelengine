@@ -37,7 +37,7 @@ Sentry.init({
     /Fullscreen request denied/,
     /requestFullscreen/,
     /vc_text_indicators_context/,
-    /Program failed to link/,
+    /Program failed to link: null/,
     /this\.light is null/,
     /can't access property "type", \w+ is undefined/,
   ],
