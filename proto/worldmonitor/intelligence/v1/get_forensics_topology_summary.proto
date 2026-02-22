@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intelligence/v1/forensics.proto";
+
+// GetForensicsTopologySummaryRequest retrieves topology alerts, trends, and baseline stats.
+message GetForensicsTopologySummaryRequest {
+  // Optional run id. Empty means latest run for domain.
+  string run_id = 1;
+  // Optional domain filter. Empty defaults to run domain.
+  string domain = 2;
+  // Whether to return only rows flagged as anomalies in alerts.
+  bool anomalies_only = 3;
+  // Maximum topology alert rows to return (1-500). Zero uses server default.
+  int32 alert_limit = 4 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 500
+  ];
+  // Number of runs to inspect for trend series (1-120). Zero uses server default.
+  int32 history_limit = 5 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 120
+  ];
+  // Maximum baseline rows to return (1-500). Zero uses server default.
+  int32 baseline_limit = 6 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 500
+  ];
+}
+
+// ForensicsTopologyMetricPoint captures one historical metric value for a run.
+message ForensicsTopologyMetricPoint {
+  // Run identifier.
+  string run_id = 1;
+  // Run completion timestamp as Unix epoch milliseconds.
+  int64 completed_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Metric value.
+  double value = 3;
+  // Region associated with this point.
+  string region = 4;
+}
+
+// ForensicsTopologyMetricSeries contains one metric trend.
+message ForensicsTopologyMetricSeries {
+  // Metric key (for example "topology_tsi").
+  string metric = 1;
+  // Human label for display.
+  string label = 2;
+  // Ordered historical points.
+  repeated ForensicsTopologyMetricPoint points = 3;
+}
+
+// ForensicsTopologyBaselineSummary contains current baseline stats for one metric key.
+message ForensicsTopologyBaselineSummary {
+  // Domain namespace.
+  string domain = 1;
+  // Region key.
+  string region = 2;
+  // Signal type key.
+  string signal_type = 3;
+  // Number of observations in this baseline.
+  int32 count = 4;
+  // Running mean.
+  double mean = 5;
+  // Running standard deviation.
+  double std_dev = 6;
+  // Minimum observed value.
+  double min_value = 7;
+  // Maximum observed value.
+  double max_value = 8;
+  // Last observed value.
+  double last_value = 9;
+  // Last update timestamp as Unix epoch milliseconds.
+  int64 last_updated = 10 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// GetForensicsTopologySummaryResponse returns topology-specific summaries.
+message GetForensicsTopologySummaryResponse {
+  // Run metadata for the evaluated run.
+  ForensicsRunMetadata run = 1;
+  // Topology alerts for the run.
+  repeated ForensicsCalibratedAnomaly alerts = 2;
+  // Topology metric trend series.
+  repeated ForensicsTopologyMetricSeries trends = 3;
+  // Baseline stats currently stored for this domain.
+  repeated ForensicsTopologyBaselineSummary baselines = 4;
+  // Error message if retrieval failed.
+  string error = 5;
+}

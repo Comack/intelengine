@@ -220,6 +220,29 @@ export interface CyberThreat {
   lastSeen?: string;
 }
 
+export interface ForensicsAnomalyOverlay {
+  id: string;
+  runId: string;
+  sourceId: string;
+  region: string;
+  domain: string;
+  signalType: string;
+  monitorCategory: 'market' | 'maritime' | 'cyber' | 'infrastructure' | 'security' | 'other';
+  monitorLabel: string;
+  monitorPriority: number;
+  ageMinutes: number;
+  isNearLive: boolean;
+  value: number;
+  pValue: number;
+  legacyZScore: number;
+  calibrationCenter: number;
+  severity: 'low' | 'medium' | 'high' | 'unspecified';
+  isAnomaly: boolean;
+  supportCount: number;
+  lat: number;
+  lon: number;
+}
+
 export interface ConflictZone {
   id: string;
   name: string;
@@ -493,6 +516,7 @@ export interface MapLayers {
   economic: boolean;
   waterways: boolean;
   outages: boolean;
+  forensics: boolean;
   cyberThreats: boolean;
   datacenters: boolean;
   protests: boolean;

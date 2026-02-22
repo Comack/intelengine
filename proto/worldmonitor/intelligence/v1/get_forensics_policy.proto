@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/intelligence/v1/forensics.proto";
+
+// GetForensicsPolicyRequest retrieves learned orchestration policy rows.
+message GetForensicsPolicyRequest {
+  // Domain namespace. Empty defaults to "infrastructure".
+  string domain = 1;
+  // Optional state hash filter.
+  string state_hash = 2;
+  // Maximum rows to return (1-500). Zero uses server default.
+  int32 limit = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 500
+  ];
+}
+
+// GetForensicsPolicyResponse returns policy rows for inspection.
+message GetForensicsPolicyResponse {
+  // Learned policy rows.
+  repeated ForensicsPolicyEntry entries = 1;
+  // Error message if retrieval failed.
+  string error = 2;
+}

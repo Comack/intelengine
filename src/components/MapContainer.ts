@@ -25,6 +25,7 @@ import type {
   UcdpGeoEvent,
   CyberThreat,
   CableHealthRecord,
+  ForensicsAnomalyOverlay,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -216,6 +217,14 @@ export class MapContainer {
       this.deckGLMap?.setOutages(outages);
     } else {
       this.svgMap?.setOutages(outages);
+    }
+  }
+
+  public setForensicsAnomalies(anomalies: ForensicsAnomalyOverlay[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setForensicsAnomalies(anomalies);
+    } else {
+      this.svgMap?.setForensicsAnomalies(anomalies);
     }
   }
 

@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/intelligence/v1/forensics.proto";
+
+// ListForensicsRunsRequest retrieves recent run summaries.
+message ListForensicsRunsRequest {
+  // Optional domain filter.
+  string domain = 1;
+  // Optional run status filter ("completed", "failed", "running").
+  string status = 2;
+  // Maximum results to return (1-500). Zero uses server default.
+  int32 limit = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 500
+  ];
+  // Optional pagination offset for run history listing.
+  int32 offset = 4 [
+    (buf.validate.field).int32.gte = 0
+  ];
+}
+
+// ListForensicsRunsResponse contains run summaries.
+message ListForensicsRunsResponse {
+  // Run summaries sorted by newest first.
+  repeated ForensicsRunSummary runs = 1;
+  // Error message if retrieval failed.
+  string error = 2;
+}

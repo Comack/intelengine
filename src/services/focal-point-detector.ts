@@ -19,6 +19,7 @@ const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
   military_vessel: 'naval vessels',
   protest: 'protests',
   ais_disruption: 'shipping disruption',
+  cyber_threat: 'cyber threats',
   satellite_fire: 'satellite fires',
   temporal_anomaly: 'anomaly detection',
 };
@@ -29,6 +30,7 @@ const SIGNAL_TYPE_ICONS: Record<SignalType, string> = {
   military_vessel: '⚓',
   protest: '📢',
   ais_disruption: '🚢',
+  cyber_threat: '🛡️',
   satellite_fire: '🔥',
   temporal_anomaly: '📊',
 };
@@ -267,7 +269,8 @@ class FocalPointDetector {
       return (signals.signalTypes.has('military_flight') && /military|troops|forces|army|air force/.test(lower)) ||
              (signals.signalTypes.has('military_vessel') && /navy|naval|ships|fleet|carrier/.test(lower)) ||
              (signals.signalTypes.has('protest') && /protest|demonstrat|unrest|riot/.test(lower)) ||
-             (signals.signalTypes.has('internet_outage') && /internet|blackout|outage|connectivity/.test(lower));
+             (signals.signalTypes.has('internet_outage') && /internet|blackout|outage|connectivity/.test(lower)) ||
+             (signals.signalTypes.has('cyber_threat') && /cyber|malware|ransomware|phishing|hack|breach/.test(lower));
     })) {
       bonus += 5;
     }

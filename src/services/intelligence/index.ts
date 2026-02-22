@@ -42,3 +42,15 @@ export {
   extractDomain,
 } from '../gdelt-intel';
 export type { GdeltArticle } from '../gdelt-intel';
+
+// Forensics shadow pipeline (server-first weak supervision + conformal anomalies)
+export {
+  runForensicsShadow,
+  listFusedSignals,
+  listCalibratedAnomalies,
+  getForensicsTopologySummary,
+  getForensicsTrace,
+  getForensicsRun,
+  listForensicsRuns,
+  getForensicsPolicy,
+} from '../forensics';

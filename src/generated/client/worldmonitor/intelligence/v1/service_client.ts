@@ -136,11 +136,232 @@ export interface GdeltArticle {
   tone: number;
 }
 
+export interface RunForensicsShadowRequest {
+  domain: string;
+  signals: ForensicsSignalInput[];
+  alpha: number;
+  persist: boolean;
+}
+
+export interface ForensicsSignalInput {
+  sourceId: string;
+  region: string;
+  domain: string;
+  signalType: string;
+  value: number;
+  confidence: number;
+  observedAt: number;
+}
+
+export interface RunForensicsShadowResponse {
+  run?: ForensicsRunMetadata;
+  fusedSignals: ForensicsFusedSignal[];
+  anomalies: ForensicsCalibratedAnomaly[];
+  trace: ForensicsPhaseTrace[];
+  error: string;
+}
+
+export interface ForensicsRunMetadata {
+  runId: string;
+  domain: string;
+  startedAt: number;
+  completedAt: number;
+  status: string;
+  backend: string;
+  workerMode: string;
+}
+
+export interface ForensicsFusedSignal {
+  sourceId: string;
+  region: string;
+  domain: string;
+  probability: number;
+  score: number;
+  confidenceLower: number;
+  confidenceUpper: number;
+  contributors: ForensicsSignalContributor[];
+}
+
+export interface ForensicsSignalContributor {
+  signalType: string;
+  contribution: number;
+  learnedWeight: number;
+}
+
+export interface ForensicsCalibratedAnomaly {
+  sourceId: string;
+  region: string;
+  domain: string;
+  signalType: string;
+  value: number;
+  pValue: number;
+  alpha: number;
+  legacyZScore: number;
+  isAnomaly: boolean;
+  severity: SeverityLevel;
+  calibrationCount: number;
+  calibrationCenter: number;
+  nonconformity: number;
+  pValueValue: number;
+  pValueTiming: number;
+  timingNonconformity: number;
+  intervalMs: number;
+}
+
+export interface ForensicsPhaseTrace {
+  phase: string;
+  status: ForensicsPhaseStatus;
+  startedAt: number;
+  completedAt: number;
+  elapsedMs: number;
+  error: string;
+}
+
+export interface ListFusedSignalsRequest {
+  runId: string;
+  domain: string;
+  limit: number;
+  region: string;
+  minScore: number;
+  minProbability: number;
+}
+
+export interface ListFusedSignalsResponse {
+  run?: ForensicsRunMetadata;
+  signals: ForensicsFusedSignal[];
+  error: string;
+}
+
+export interface ListCalibratedAnomaliesRequest {
+  runId: string;
+  domain: string;
+  anomaliesOnly: boolean;
+  limit: number;
+  signalType: string;
+  region: string;
+  maxPValue: number;
+  minAbsLegacyZScore: number;
+}
+
+export interface ListCalibratedAnomaliesResponse {
+  run?: ForensicsRunMetadata;
+  anomalies: ForensicsCalibratedAnomaly[];
+  error: string;
+}
+
+export interface GetForensicsTraceRequest {
+  runId: string;
+}
+
+export interface GetForensicsTraceResponse {
+  run?: ForensicsRunMetadata;
+  trace: ForensicsPhaseTrace[];
+  error: string;
+}
+
+export interface GetForensicsRunRequest {
+  runId: string;
+}
+
+export interface GetForensicsRunResponse {
+  run?: ForensicsRunMetadata;
+  fusedCount: number;
+  anomalyCount: number;
+  error: string;
+}
+
+export interface ListForensicsRunsRequest {
+  domain: string;
+  status: string;
+  limit: number;
+  offset: number;
+}
+
+export interface ListForensicsRunsResponse {
+  runs: ForensicsRunSummary[];
+  error: string;
+}
+
+export interface ForensicsRunSummary {
+  run?: ForensicsRunMetadata;
+  fusedCount: number;
+  anomalyCount: number;
+  anomalyFlaggedCount: number;
+  maxFusedScore: number;
+  minPValue: number;
+}
+
+export interface GetForensicsPolicyRequest {
+  domain: string;
+  stateHash: string;
+  limit: number;
+}
+
+export interface GetForensicsPolicyResponse {
+  entries: ForensicsPolicyEntry[];
+  error: string;
+}
+
+export interface ForensicsPolicyEntry {
+  domain: string;
+  stateHash: string;
+  action: string;
+  qValue: number;
+  visitCount: number;
+  lastReward: number;
+  lastUpdated: number;
+}
+
+export interface GetForensicsTopologySummaryRequest {
+  runId: string;
+  domain: string;
+  anomaliesOnly: boolean;
+  alertLimit: number;
+  historyLimit: number;
+  baselineLimit: number;
+}
+
+export interface GetForensicsTopologySummaryResponse {
+  run?: ForensicsRunMetadata;
+  alerts: ForensicsCalibratedAnomaly[];
+  trends: ForensicsTopologyMetricSeries[];
+  baselines: ForensicsTopologyBaselineSummary[];
+  error: string;
+}
+
+export interface ForensicsTopologyMetricSeries {
+  metric: string;
+  label: string;
+  points: ForensicsTopologyMetricPoint[];
+}
+
+export interface ForensicsTopologyMetricPoint {
+  runId: string;
+  completedAt: number;
+  value: number;
+  region: string;
+}
+
+export interface ForensicsTopologyBaselineSummary {
+  domain: string;
+  region: string;
+  signalType: string;
+  count: number;
+  mean: number;
+  stdDev: number;
+  minValue: number;
+  maxValue: number;
+  lastValue: number;
+  lastUpdated: number;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
 
 export type DataFreshness = "DATA_FRESHNESS_UNSPECIFIED" | "DATA_FRESHNESS_FRESH" | "DATA_FRESHNESS_STALE";
+
+export type ForensicsPhaseStatus = "FORENSICS_PHASE_STATUS_UNSPECIFIED" | "FORENSICS_PHASE_STATUS_PENDING" | "FORENSICS_PHASE_STATUS_SUCCESS" | "FORENSICS_PHASE_STATUS_FAILED" | "FORENSICS_PHASE_STATUS_SKIPPED";
 
 export interface FieldViolation {
   field: string;
@@ -308,6 +529,198 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as SearchGdeltDocumentsResponse;
+  }
+
+  async runForensicsShadow(req: RunForensicsShadowRequest, options?: IntelligenceServiceCallOptions): Promise<RunForensicsShadowResponse> {
+    let path = "/api/intelligence/v1/run-forensics-shadow";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as RunForensicsShadowResponse;
+  }
+
+  async listFusedSignals(req: ListFusedSignalsRequest, options?: IntelligenceServiceCallOptions): Promise<ListFusedSignalsResponse> {
+    let path = "/api/intelligence/v1/list-fused-signals";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListFusedSignalsResponse;
+  }
+
+  async listCalibratedAnomalies(req: ListCalibratedAnomaliesRequest, options?: IntelligenceServiceCallOptions): Promise<ListCalibratedAnomaliesResponse> {
+    let path = "/api/intelligence/v1/list-calibrated-anomalies";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListCalibratedAnomaliesResponse;
+  }
+
+  async getForensicsTrace(req: GetForensicsTraceRequest, options?: IntelligenceServiceCallOptions): Promise<GetForensicsTraceResponse> {
+    let path = "/api/intelligence/v1/get-forensics-trace";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetForensicsTraceResponse;
+  }
+
+  async getForensicsRun(req: GetForensicsRunRequest, options?: IntelligenceServiceCallOptions): Promise<GetForensicsRunResponse> {
+    let path = "/api/intelligence/v1/get-forensics-run";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetForensicsRunResponse;
+  }
+
+  async listForensicsRuns(req: ListForensicsRunsRequest, options?: IntelligenceServiceCallOptions): Promise<ListForensicsRunsResponse> {
+    let path = "/api/intelligence/v1/list-forensics-runs";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListForensicsRunsResponse;
+  }
+
+  async getForensicsPolicy(req: GetForensicsPolicyRequest, options?: IntelligenceServiceCallOptions): Promise<GetForensicsPolicyResponse> {
+    let path = "/api/intelligence/v1/get-forensics-policy";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetForensicsPolicyResponse;
+  }
+
+  async getForensicsTopologySummary(req: GetForensicsTopologySummaryRequest, options?: IntelligenceServiceCallOptions): Promise<GetForensicsTopologySummaryResponse> {
+    let path = "/api/intelligence/v1/get-forensics-topology-summary";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetForensicsTopologySummaryResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

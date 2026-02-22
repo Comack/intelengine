@@ -33,6 +33,7 @@ import type {
   MapDatacenterCluster,
   CyberThreat,
   CableHealthRecord,
+  ForensicsAnomalyOverlay,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -247,6 +248,7 @@ export class DeckGLMap {
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
   private outages: InternetOutage[] = [];
+  private forensicsAnomalies: ForensicsAnomalyOverlay[] = [];
   private cyberThreats: CyberThreat[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
@@ -1006,6 +1008,13 @@ export class DeckGLMap {
       layers.push(this.createGhostLayer('outages-layer', filteredOutages, d => [d.lon, d.lat], { radiusMinPixels: 12 }));
     }
 
+    // Calibrated forensics anomalies
+    if (mapLayers.forensics && this.forensicsAnomalies.length > 0) {
+      layers.push(this.createForensicsAnomaliesLayer());
+      const pulseLayer = this.createForensicsAnomaliesPulseLayer();
+      if (pulseLayer) layers.push(pulseLayer);
+    }
+
     // Cyber threat IOC layer
     if (mapLayers.cyberThreats && this.cyberThreats.length > 0) {
       layers.push(this.createCyberThreatsLayer());
@@ -1524,6 +1533,91 @@ export class DeckGLMap {
       radiusMinPixels: 6,
       radiusMaxPixels: 18,
       pickable: true,
+    });
+  }
+
+  private getForensicsCategoryColor(
+    anomaly: ForensicsAnomalyOverlay,
+  ): [number, number, number, number] {
+    switch (anomaly.monitorCategory) {
+      case 'market':
+        return [16, 185, 129, 200] as [number, number, number, number]; // emerald
+      case 'maritime':
+        return [6, 182, 212, 200] as [number, number, number, number]; // cyan
+      case 'cyber':
+        return [239, 68, 68, 205] as [number, number, number, number]; // red
+      case 'security':
+        return [249, 115, 22, 200] as [number, number, number, number]; // orange
+      case 'infrastructure':
+        return [59, 130, 246, 195] as [number, number, number, number]; // blue
+      default:
+        return [148, 163, 184, 190] as [number, number, number, number]; // slate
+    }
+  }
+
+  private getForensicsMarkerRadius(anomaly: ForensicsAnomalyOverlay): number {
+    const magnitude = Math.min(8, Math.max(1, Math.abs(anomaly.legacyZScore || 0)));
+    const supportBoost = Math.min(4, Math.max(0, (anomaly.supportCount || 1) - 1)) * 1200;
+    const priorityBoost = Math.round((anomaly.monitorPriority || 0) * 2600);
+    const nearLiveBoost = anomaly.isNearLive ? 2800 : 0;
+    return 9000 + (magnitude * 4200) + supportBoost + priorityBoost + nearLiveBoost;
+  }
+
+  private shouldPulseForensicsAnomaly(anomaly: ForensicsAnomalyOverlay): boolean {
+    return anomaly.isNearLive
+      || anomaly.pValue <= 0.02
+      || (anomaly.supportCount || 0) >= 3
+      || (anomaly.monitorPriority || 0) >= 0.72;
+  }
+
+  private createForensicsAnomaliesLayer(): ScatterplotLayer<ForensicsAnomalyOverlay> {
+    return new ScatterplotLayer<ForensicsAnomalyOverlay>({
+      id: 'forensics-anomalies-layer',
+      data: this.forensicsAnomalies,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => this.getForensicsMarkerRadius(d),
+      getFillColor: (d) => {
+        const [r, g, b, baseAlpha] = this.getForensicsCategoryColor(d);
+        const significanceBoost = d.pValue <= 0.01 ? 32 : d.pValue <= 0.05 ? 22 : d.pValue <= 0.1 ? 10 : 0;
+        const nearLiveBoost = d.isNearLive ? 14 : 0;
+        const alpha = Math.min(245, baseAlpha + significanceBoost + nearLiveBoost);
+        return [r, g, b, alpha] as [number, number, number, number];
+      },
+      radiusMinPixels: 6,
+      radiusMaxPixels: 22,
+      stroked: true,
+      getLineColor: (d) => d.isNearLive
+        ? [255, 255, 255, 235] as [number, number, number, number]
+        : [255, 255, 255, 170] as [number, number, number, number],
+      getLineWidth: (d) => d.isNearLive ? 2.2 : 1.2,
+      lineWidthMinPixels: 1,
+      pickable: true,
+    });
+  }
+
+  private createForensicsAnomaliesPulseLayer(): ScatterplotLayer<ForensicsAnomalyOverlay> | null {
+    const pulseCandidates = this.forensicsAnomalies.filter((anomaly) => this.shouldPulseForensicsAnomaly(anomaly));
+    if (pulseCandidates.length === 0) return null;
+
+    const pulse = 1.0 + 1.1 * (0.5 + 0.5 * Math.sin((this.pulseTime || Date.now()) / 360));
+    return new ScatterplotLayer<ForensicsAnomalyOverlay>({
+      id: 'forensics-anomalies-pulse',
+      data: pulseCandidates,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => this.getForensicsMarkerRadius(d),
+      radiusScale: pulse,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 34,
+      pickable: false,
+      stroked: true,
+      filled: false,
+      getLineColor: (d) => {
+        const [r, g, b] = this.getForensicsCategoryColor(d);
+        const alpha = d.isNearLive ? 160 : 120;
+        return [r, g, b, alpha] as [number, number, number, number];
+      },
+      lineWidthMinPixels: 1.5,
+      updateTriggers: { radiusScale: this.pulseTime },
     });
   }
 
@@ -2204,10 +2298,20 @@ export class DeckGLMap {
     });
   }
 
+  private hasRecentForensicsAnomaly(windowMs = 45 * 60 * 1000): boolean {
+    return this.forensicsAnomalies.some((anomaly) => {
+      if (anomaly.isNearLive) return true;
+      const ageMs = Math.max(0, anomaly.ageMinutes || 0) * 60_000;
+      if (ageMs <= windowMs && this.shouldPulseForensicsAnomaly(anomaly)) return true;
+      return (anomaly.monitorPriority || 0) >= 0.8 && (ageMs <= (2 * windowMs));
+    });
+  }
+
   private needsPulseAnimation(now = Date.now()): boolean {
     return this.hasRecentNews(now)
       || this.hasRecentRiot(now)
-      || this.hotspots.some(h => h.hasBreaking);
+      || this.hotspots.some(h => h.hasBreaking)
+      || this.hasRecentForensicsAnomaly();
   }
 
   private syncPulseAnimation(now = Date.now()): void {
@@ -2447,6 +2551,15 @@ export class DeckGLMap {
       }
       case 'outages-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.asn || t('components.deckgl.tooltip.internetOutage'))}</strong><br/>${text(obj.country)}</div>` };
+      case 'forensics-anomalies-layer': {
+        const freshness = Number(obj.ageMinutes || 0);
+        const freshnessLabel = Number(obj.isNearLive)
+          ? `near-live (${freshness}m)`
+          : `${freshness}m old`;
+        return {
+          html: `<div class="deckgl-tooltip"><strong>${text(obj.monitorLabel || 'Forensics anomaly')}</strong><br/>${text(obj.monitorCategory || 'other')} · ${text(obj.signalType)} · ${text(obj.region || 'global')}<br/>p=${Number(obj.pValue || 0).toFixed(3)} · z=${Number(obj.legacyZScore || 0).toFixed(2)} · support=${Number(obj.supportCount || 1)}<br/>${text(freshnessLabel)}</div>`,
+        };
+      }
       case 'cyber-threats-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('popups.cyberThreat.title')}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.medium'))} · ${text(obj.country || t('popups.unknown'))}</div>` };
       case 'news-locations-layer':
@@ -2612,6 +2725,7 @@ export class DeckGLMap {
       'earthquakes-layer': 'earthquake',
       'weather-layer': 'weather',
       'outages-layer': 'outage',
+      'forensics-anomalies-layer': 'forensicsAnomaly',
       'cyber-threats-layer': 'cyberThreat',
       'protests-layer': 'protest',
       'military-flights-layer': 'militaryFlight',
@@ -2785,6 +2899,7 @@ export class DeckGLMap {
           { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
           { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
           { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
+          { key: 'forensics', label: 'Forensics Anomalies', icon: '&#129514;' },
         ]
       : [
         { key: 'hotspots', label: t('components.deckgl.layers.intelHotspots'), icon: '&#127919;' },
@@ -2806,6 +2921,7 @@ export class DeckGLMap {
         { key: 'weather', label: t('components.deckgl.layers.weatherAlerts'), icon: '&#9928;' },
         { key: 'outages', label: t('components.deckgl.layers.internetOutages'), icon: '&#128225;' },
         { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
+        { key: 'forensics', label: 'Forensics Anomalies', icon: '&#129514;' },
         { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
         { key: 'fires', label: t('components.deckgl.layers.fires'), icon: '&#128293;' },
         { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
@@ -3264,6 +3380,12 @@ export class DeckGLMap {
   public setOutages(outages: InternetOutage[]): void {
     this.outages = outages;
     this.render();
+  }
+
+  public setForensicsAnomalies(anomalies: ForensicsAnomalyOverlay[]): void {
+    this.forensicsAnomalies = anomalies;
+    this.render();
+    this.syncPulseAnimation();
   }
 
   public setCyberThreats(threats: CyberThreat[]): void {

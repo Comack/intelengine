@@ -8,6 +8,14 @@ import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
 import "worldmonitor/intelligence/v1/classify_event.proto";
 import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
 import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
+import "worldmonitor/intelligence/v1/run_forensics_shadow.proto";
+import "worldmonitor/intelligence/v1/list_fused_signals.proto";
+import "worldmonitor/intelligence/v1/list_calibrated_anomalies.proto";
+import "worldmonitor/intelligence/v1/get_forensics_trace.proto";
+import "worldmonitor/intelligence/v1/get_forensics_run.proto";
+import "worldmonitor/intelligence/v1/list_forensics_runs.proto";
+import "worldmonitor/intelligence/v1/get_forensics_policy.proto";
+import "worldmonitor/intelligence/v1/get_forensics_topology_summary.proto";
 
 // IntelligenceService provides APIs for cross-domain intelligence synthesis including
 // risk scores, PizzINT monitoring, GDELT tension analysis, and AI-powered classification.
@@ -37,5 +45,45 @@ service IntelligenceService {
   // SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
   rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
     option (sebuf.http.config) = {path: "/search-gdelt-documents"};
+  }
+
+  // RunForensicsShadow executes deterministic shadow forensics orchestration.
+  rpc RunForensicsShadow(RunForensicsShadowRequest) returns (RunForensicsShadowResponse) {
+    option (sebuf.http.config) = {path: "/run-forensics-shadow"};
+  }
+
+  // ListFusedSignals returns weak-supervision fusion outputs for a run/domain.
+  rpc ListFusedSignals(ListFusedSignalsRequest) returns (ListFusedSignalsResponse) {
+    option (sebuf.http.config) = {path: "/list-fused-signals"};
+  }
+
+  // ListCalibratedAnomalies returns conformal anomaly outputs for a run/domain.
+  rpc ListCalibratedAnomalies(ListCalibratedAnomaliesRequest) returns (ListCalibratedAnomaliesResponse) {
+    option (sebuf.http.config) = {path: "/list-calibrated-anomalies"};
+  }
+
+  // GetForensicsTrace returns phase-level trace data for a run.
+  rpc GetForensicsTrace(GetForensicsTraceRequest) returns (GetForensicsTraceResponse) {
+    option (sebuf.http.config) = {path: "/get-forensics-trace"};
+  }
+
+  // GetForensicsRun returns run metadata and aggregate output counts.
+  rpc GetForensicsRun(GetForensicsRunRequest) returns (GetForensicsRunResponse) {
+    option (sebuf.http.config) = {path: "/get-forensics-run"};
+  }
+
+  // ListForensicsRuns returns recent run summaries for observability.
+  rpc ListForensicsRuns(ListForensicsRunsRequest) returns (ListForensicsRunsResponse) {
+    option (sebuf.http.config) = {path: "/list-forensics-runs"};
+  }
+
+  // GetForensicsPolicy returns learned phase-order policy rows.
+  rpc GetForensicsPolicy(GetForensicsPolicyRequest) returns (GetForensicsPolicyResponse) {
+    option (sebuf.http.config) = {path: "/get-forensics-policy"};
+  }
+
+  // GetForensicsTopologySummary returns topology alerts, trends, and baselines.
+  rpc GetForensicsTopologySummary(GetForensicsTopologySummaryRequest) returns (GetForensicsTopologySummaryResponse) {
+    option (sebuf.http.config) = {path: "/get-forensics-topology-summary"};
   }
 }

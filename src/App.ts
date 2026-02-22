@@ -1,4 +1,4 @@
-import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, CyberThreat } from '@/types';
+import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, CyberThreat, ForensicsAnomalyOverlay } from '@/types';
 import {
   FEEDS,
   INTEL_SOURCES,
@@ -14,7 +14,7 @@ import {
   LAYER_TO_SOURCE,
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
-import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchCableHealth, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, fetchUSNIFleetReport, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals } from '@/services';
+import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchCableHealth, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, fetchUSNIFleetReport, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals, listForensicsRuns, listFusedSignals, listCalibratedAnomalies, getForensicsTopologySummary, getForensicsTrace, getForensicsPolicy, runForensicsShadow } from '@/services';
 import { fetchCountryMarkets } from '@/services/prediction';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
@@ -81,6 +81,7 @@ import {
   PopulationExposurePanel,
   InvestmentsPanel,
   LanguageSelector,
+  ForensicsPanel,
 } from '@/components';
 import type { SearchResult } from '@/components/SearchModal';
 import { collectStoryData } from '@/services/story-data';
@@ -97,7 +98,7 @@ import { STARTUP_ECOSYSTEMS } from '@/config/startup-ecosystems';
 import { TECH_HQS, ACCELERATORS } from '@/config/tech-geo';
 import { STOCK_EXCHANGES, FINANCIAL_CENTERS, CENTRAL_BANKS, COMMODITY_HUBS } from '@/config/finance-geo';
 import { isDesktopRuntime } from '@/services/runtime';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { IntelligenceServiceClient, type ForensicsSignalInput, type ForensicsCalibratedAnomaly } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { trackEvent, trackPanelView, trackVariantSwitch, trackThemeChanged, trackMapViewChange, trackMapLayerToggle, trackCountrySelected, trackCountryBriefOpened, trackSearchResultSelected, trackPanelToggled, trackUpdateShown, trackUpdateClicked, trackUpdateDismissed, trackCriticalBannerAction, trackDeeplinkOpened } from '@/services/analytics';
@@ -164,6 +165,16 @@ export class App {
   private latestPredictions: PredictionMarket[] = [];
   private latestMarkets: MarketData[] = [];
   private latestClusters: ClusteredEvent[] = [];
+  private forensicsShadowInFlight: Set<'intelligence' | 'market'> = new Set();
+  private forensicsShadowLastRunAt: Record<'intelligence' | 'market', number> = {
+    intelligence: 0,
+    market: 0,
+  };
+  private forensicsShadowLastStateKey: Record<'intelligence' | 'market', string> = {
+    intelligence: '',
+    market: '',
+  };
+  private readonly FORENSICS_SHADOW_MIN_INTERVAL_MS = 4 * 60 * 1000;
   private readonly applyTimeRangeFilterToNewsPanelsDebounced = debounce(() => {
     this.applyTimeRangeFilterToNewsPanels();
   }, 120);
@@ -314,7 +325,7 @@ export class App {
     if (this.initialUrlState.layers) {
       // For tech variant, filter out geopolitical layers from URL
       if (currentVariant === 'tech') {
-        const geoLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals'];
+        const geoLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals', 'forensics'];
         const urlLayers = this.initialUrlState.layers;
         geoLayers.forEach(layer => {
           urlLayers[layer] = false;
@@ -324,6 +335,9 @@ export class App {
     }
     if (!CYBER_LAYER_ENABLED) {
       this.mapLayers.cyberThreats = false;
+    }
+    if (typeof this.mapLayers.forensics !== 'boolean') {
+      this.mapLayers.forensics = SITE_VARIANT === 'full' || SITE_VARIANT === 'finance';
     }
     this.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
   }
@@ -392,6 +406,9 @@ export class App {
     }
     if (!CYBER_LAYER_ENABLED) {
       this.map?.hideLayerToggle('cyberThreats');
+    }
+    if (!this.panels['forensics']) {
+      this.map?.hideLayerToggle('forensics');
     }
 
     this.setupRefreshIntervals();
@@ -797,6 +814,13 @@ export class App {
           this.waitForAisData();
         } else {
           disconnectAisStream();
+        }
+        return;
+      }
+
+      if (layer === 'forensics') {
+        if (enabled) {
+          void this.loadForensicsPanel();
         }
         return;
       }
@@ -2345,6 +2369,11 @@ export class App {
       this.panels['gcc-investments'] = investmentsPanel;
     }
 
+    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
+      const forensicsPanel = new ForensicsPanel(DEFAULT_PANELS.forensics?.name || 'Forensics Signals');
+      this.panels['forensics'] = forensicsPanel;
+    }
+
     const liveNewsPanel = new LiveNewsPanel();
     this.panels['live-news'] = liveNewsPanel;
 
@@ -3130,6 +3159,10 @@ export class App {
       tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
 
+    if (this.panels['forensics']) {
+      tasks.push({ name: 'forensics', task: runGuarded('forensics', () => this.loadForensicsPanel()) });
+    }
+
     // Conditionally load non-intelligence layers
     // NOTE: outages, protests, military are handled by loadIntelligenceSignals() above
     // They update the map when layers are enabled, so no duplicate tasks needed here
@@ -3182,6 +3215,9 @@ export class App {
           break;
         case 'cyberThreats':
           await this.loadCyberThreats();
+          break;
+        case 'forensics':
+          await this.loadForensicsPanel();
           break;
         case 'ais':
           await this.loadAisSignals();
@@ -3578,6 +3614,7 @@ export class App {
       (this.panels['commodities'] as CommoditiesPanel).renderCommodities(
         commoditiesResult.data.map((c) => ({ display: c.display, price: c.price, change: c.change, sparkline: c.sparkline }))
       );
+      void this.runOperationalForensicsShadow('market');
     } catch {
       this.statusPanel?.updateApi('Finnhub', { status: 'error' });
     }
@@ -3605,6 +3642,7 @@ export class App {
 
       // Run correlation analysis in background (fire-and-forget via Web Worker)
       void this.runCorrelationAnalysis();
+      void this.runOperationalForensicsShadow('market');
     } catch (error) {
       this.statusPanel?.updateFeed('Polymarket', { status: 'error', errorMessage: String(error) });
       this.statusPanel?.updateApi('Polymarket', { status: 'error' });
@@ -3731,6 +3769,762 @@ export class App {
     usniFleet?: import('@/types').USNIFleetReport;
   } = {};
   private cyberThreatsCache: CyberThreat[] | null = null;
+
+  private clampNumber(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  private buildIntelligenceForensicsSignals(): ForensicsSignalInput[] {
+    const summary = signalAggregator.getSummary();
+    const typeDomain: Record<string, string> = {
+      internet_outage: 'infrastructure',
+      military_flight: 'military',
+      military_vessel: 'military',
+      protest: 'conflict',
+      ais_disruption: 'maritime',
+      cyber_threat: 'cyber',
+      satellite_fire: 'climate',
+      temporal_anomaly: 'infrastructure',
+    };
+    const severityWeight: Record<'low' | 'medium' | 'high', number> = {
+      low: 1,
+      medium: 2,
+      high: 3,
+    };
+    const now = Date.now();
+
+    const bucket = new Map<string, {
+      sourceId: string;
+      region: string;
+      domain: string;
+      signalType: string;
+      count: number;
+      severityTotal: number;
+      maxSeverity: number;
+      latestObservedAt: number;
+      convergenceScore: number;
+    }>();
+
+    for (const cluster of summary.topCountries.slice(0, 20)) {
+      for (const signal of cluster.signals) {
+        const sourceId = `${cluster.country}:${signal.type}`;
+        const existing = bucket.get(sourceId);
+        const severity = severityWeight[signal.severity];
+        const observedAt = signal.timestamp?.getTime?.() || now;
+        if (existing) {
+          existing.count += 1;
+          existing.severityTotal += severity;
+          existing.maxSeverity = Math.max(existing.maxSeverity, severity);
+          existing.latestObservedAt = Math.max(existing.latestObservedAt, observedAt);
+          existing.convergenceScore = Math.max(existing.convergenceScore, cluster.convergenceScore);
+        } else {
+          bucket.set(sourceId, {
+            sourceId,
+            region: cluster.country,
+            domain: typeDomain[signal.type] || 'infrastructure',
+            signalType: signal.type,
+            count: 1,
+            severityTotal: severity,
+            maxSeverity: severity,
+            latestObservedAt: observedAt,
+            convergenceScore: cluster.convergenceScore,
+          });
+        }
+      }
+    }
+
+    for (const [signalType, count] of Object.entries(summary.byType)) {
+      if (!count) continue;
+      const sourceId = `global:${signalType}`;
+      bucket.set(sourceId, {
+        sourceId,
+        region: 'global',
+        domain: typeDomain[signalType] || 'infrastructure',
+        signalType,
+        count,
+        severityTotal: count > 8 ? 3 : count > 3 ? 2 : 1,
+        maxSeverity: count > 8 ? 3 : count > 3 ? 2 : 1,
+        latestObservedAt: now,
+        convergenceScore: 50,
+      });
+    }
+
+    return Array.from(bucket.values())
+      .map((entry) => {
+        const severityAverage = entry.severityTotal / Math.max(1, entry.count);
+        const value = (entry.count * 2.5) + (severityAverage * 3) + (entry.convergenceScore / 12);
+        const confidence = this.clampNumber(
+          0.45 + (entry.maxSeverity * 0.12) + Math.min(0.25, entry.count * 0.03),
+          0.45,
+          0.98,
+        );
+        return {
+          sourceId: entry.sourceId,
+          region: entry.region,
+          domain: entry.domain,
+          signalType: entry.signalType,
+          value: Math.round(value * 100) / 100,
+          confidence: Math.round(confidence * 1000) / 1000,
+          observedAt: entry.latestObservedAt,
+        };
+      })
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 120);
+  }
+
+  private buildMarketForensicsSignals(): ForensicsSignalInput[] {
+    const now = Date.now();
+    const signals: ForensicsSignalInput[] = [];
+    const absChanges: number[] = [];
+    const convictions: number[] = [];
+
+    for (const market of this.latestMarkets) {
+      const change = market.change;
+      if (typeof change !== 'number' || !Number.isFinite(change)) continue;
+      const absChange = Math.abs(change);
+      if (absChange < 0.25) continue;
+      absChanges.push(absChange);
+      const confidence = this.clampNumber(0.62 + Math.min(0.28, absChange / 10), 0.62, 0.95);
+      signals.push({
+        sourceId: `market:${market.symbol}`,
+        region: 'global',
+        domain: 'market',
+        signalType: 'market_change_pct',
+        value: Math.round(absChange * 100) / 100,
+        confidence: Math.round(confidence * 1000) / 1000,
+        observedAt: now,
+      });
+    }
+
+    for (const prediction of this.latestPredictions) {
+      if (!Number.isFinite(prediction.yesPrice)) continue;
+      const conviction = Math.abs(prediction.yesPrice - 50) / 50 * 100;
+      if (conviction < 12) continue;
+      convictions.push(conviction);
+      const titleSlug = prediction.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48) || 'untitled';
+      const confidence = this.clampNumber(0.6 + Math.min(0.3, conviction / 100), 0.6, 0.9);
+      signals.push({
+        sourceId: `prediction:${titleSlug}`,
+        region: 'global',
+        domain: 'prediction',
+        signalType: 'prediction_conviction',
+        value: Math.round(conviction * 100) / 100,
+        confidence: Math.round(confidence * 1000) / 1000,
+        observedAt: now,
+      });
+    }
+
+    if (absChanges.length > 0) {
+      const avgVolatility = absChanges.reduce((sum, value) => sum + value, 0) / absChanges.length;
+      signals.push({
+        sourceId: 'global:market_volatility',
+        region: 'global',
+        domain: 'market',
+        signalType: 'market_volatility',
+        value: Math.round(avgVolatility * 100) / 100,
+        confidence: 0.85,
+        observedAt: now,
+      });
+    }
+
+    if (convictions.length > 0) {
+      const avgConviction = convictions.reduce((sum, value) => sum + value, 0) / convictions.length;
+      signals.push({
+        sourceId: 'global:prediction_conviction',
+        region: 'global',
+        domain: 'prediction',
+        signalType: 'prediction_conviction',
+        value: Math.round(avgConviction * 100) / 100,
+        confidence: 0.8,
+        observedAt: now,
+      });
+    }
+
+    return signals
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 120);
+  }
+
+  private forensicsSeverityToTemporal(
+    severity: 'SEVERITY_LEVEL_UNSPECIFIED' | 'SEVERITY_LEVEL_LOW' | 'SEVERITY_LEVEL_MEDIUM' | 'SEVERITY_LEVEL_HIGH',
+  ): 'medium' | 'high' | 'critical' {
+    if (severity === 'SEVERITY_LEVEL_HIGH') return 'critical';
+    if (severity === 'SEVERITY_LEVEL_MEDIUM') return 'high';
+    return 'medium';
+  }
+
+  private static readonly FORENSICS_GLOBAL_HUBS: Array<{ lat: number; lon: number }> = [
+    { lat: 40.7128, lon: -74.0060 }, // New York
+    { lat: 51.5074, lon: -0.1278 },  // London
+    { lat: 35.6762, lon: 139.6503 }, // Tokyo
+    { lat: 1.3521, lon: 103.8198 },  // Singapore
+    { lat: 25.2048, lon: 55.2708 },  // Dubai
+  ];
+  private static readonly FORENSICS_MARKET_HUBS: Array<{ lat: number; lon: number }> = FINANCIAL_CENTERS
+    .slice(0, 12)
+    .map((center) => ({ lat: center.lat, lon: center.lon }));
+  private static readonly FORENSICS_MARITIME_HUBS: Array<{ lat: number; lon: number }> = COMMODITY_HUBS
+    .filter((hub) => hub.type === 'port' || hub.type === 'exchange')
+    .slice(0, 12)
+    .map((hub) => ({ lat: hub.lat, lon: hub.lon }));
+
+  private static hashString(value: string): number {
+    let hash = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      hash = ((hash << 5) - hash) + value.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  }
+
+  private normalizeForensicsSeverity(
+    severity: ForensicsCalibratedAnomaly['severity'],
+  ): ForensicsAnomalyOverlay['severity'] {
+    if (severity === 'SEVERITY_LEVEL_HIGH') return 'high';
+    if (severity === 'SEVERITY_LEVEL_MEDIUM') return 'medium';
+    if (severity === 'SEVERITY_LEVEL_LOW') return 'low';
+    return 'unspecified';
+  }
+
+  private classifyForensicsMonitor(anomaly: ForensicsCalibratedAnomaly): {
+    category: ForensicsAnomalyOverlay['monitorCategory'];
+    label: string;
+  } {
+    const signal = anomaly.signalType.toLowerCase();
+    const source = anomaly.sourceId.toLowerCase();
+    const domain = anomaly.domain.toLowerCase();
+
+    if (signal.startsWith('topology_')) {
+      return { category: 'market', label: 'Financial topology instability' };
+    }
+    if (
+      signal.includes('market')
+      || signal.includes('prediction')
+      || source.startsWith('market:')
+      || source.startsWith('prediction:')
+      || domain === 'market'
+      || domain === 'prediction'
+    ) {
+      if (signal.includes('volatility')) {
+        return { category: 'market', label: 'Market volatility spike' };
+      }
+      if (signal.includes('conviction')) {
+        return { category: 'market', label: 'Prediction conviction anomaly' };
+      }
+      return { category: 'market', label: 'Unusual market movement' };
+    }
+    if (
+      signal.includes('ais')
+      || signal.includes('maritime')
+      || signal.includes('vessel')
+      || signal.includes('shipping')
+      || source.includes('ais')
+      || domain === 'maritime'
+    ) {
+      return { category: 'maritime', label: 'Unusual maritime activity' };
+    }
+    if (signal.includes('cyber') || domain === 'cyber') {
+      return { category: 'cyber', label: 'Cyber activity anomaly' };
+    }
+    if (
+      signal.includes('protest')
+      || signal.includes('conflict')
+      || signal.includes('military')
+      || domain === 'conflict'
+      || domain === 'military'
+    ) {
+      return { category: 'security', label: 'Security activity anomaly' };
+    }
+    if (
+      signal.includes('outage')
+      || signal.includes('infrastructure')
+      || signal.includes('cable')
+      || domain === 'infrastructure'
+    ) {
+      return { category: 'infrastructure', label: 'Infrastructure stress anomaly' };
+    }
+    return { category: 'other', label: 'Cross-signal anomaly' };
+  }
+
+  private computeForensicsMonitorPriority(
+    anomaly: ForensicsCalibratedAnomaly,
+    supportCount: number,
+    isNearLive: boolean,
+  ): number {
+    const zScoreWeight = Math.min(1, Math.abs(anomaly.legacyZScore || 0) / 8);
+    const pValueWeight = 1 - this.clampNumber(anomaly.pValue || 0, 0, 1);
+    const supportWeight = Math.min(1, Math.max(1, supportCount) / 4);
+    const freshnessWeight = isNearLive ? 1 : 0;
+    const priority = (zScoreWeight * 0.38) + (pValueWeight * 0.37) + (supportWeight * 0.15) + (freshnessWeight * 0.10);
+    return Math.round(this.clampNumber(priority, 0, 1) * 1000) / 1000;
+  }
+
+  private resolveMarketSourceCoordinate(sourceId: string): { lat: number; lon: number } | null {
+    const sourceUpper = sourceId.toUpperCase();
+    const symbol = sourceUpper.includes(':')
+      ? sourceUpper.slice(sourceUpper.indexOf(':') + 1)
+      : sourceUpper;
+
+    const exchangeIdHints: string[] = [];
+    if (/\.HK$/.test(symbol)) exchangeIdHints.push('hkex');
+    if (/\.SS$/.test(symbol)) exchangeIdHints.push('sse');
+    if (/\.SZ$/.test(symbol)) exchangeIdHints.push('szse');
+    if (/\.KS$/.test(symbol)) exchangeIdHints.push('krx');
+    if (/\.TO$/.test(symbol)) exchangeIdHints.push('tsx');
+    if (/\.AX$/.test(symbol)) exchangeIdHints.push('asx');
+    if (/\.L$/.test(symbol)) exchangeIdHints.push('lse');
+    if (/\.T$/.test(symbol)) exchangeIdHints.push('jpx');
+    if (/\.NS$/.test(symbol)) exchangeIdHints.push('nse-india');
+    if (/\.BO$/.test(symbol)) exchangeIdHints.push('bse-india');
+    if (/\.TW$/.test(symbol)) exchangeIdHints.push('twse');
+    if (/^(BTC|ETH|SOL|XRP|BNB)/.test(symbol)) exchangeIdHints.push('nasdaq');
+    if (/^(\^GSPC|\^DJI|\^IXIC|SPY|QQQ|DIA|IWM|AAPL|MSFT|NVDA|AMZN|META|GOOGL|GOOG|TSLA)/.test(symbol)) {
+      exchangeIdHints.push('nasdaq', 'nyse');
+    }
+
+    for (const exchangeId of exchangeIdHints) {
+      const exchange = STOCK_EXCHANGES.find((candidate) => candidate.id === exchangeId);
+      if (exchange) return { lat: exchange.lat, lon: exchange.lon };
+    }
+    return null;
+  }
+
+  private resolveForensicsCoordinate(
+    region: string,
+    sourceId: string,
+    domain: string,
+    category: ForensicsAnomalyOverlay['monitorCategory'],
+  ): { lat: number; lon: number } | null {
+    if (category === 'market') {
+      const marketCoordinate = this.resolveMarketSourceCoordinate(sourceId);
+      if (marketCoordinate) return marketCoordinate;
+    }
+
+    const trimmed = region.trim();
+    const normalized = trimmed.toLowerCase();
+
+    const latLonMatch = trimmed.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (latLonMatch?.[1] && latLonMatch?.[2]) {
+      const lat = Number(latLonMatch[1]);
+      const lon = Number(latLonMatch[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+        return { lat, lon };
+      }
+    }
+
+    const directCode = trimmed.toUpperCase();
+    const directBounds = App.COUNTRY_BOUNDS[directCode];
+    if (directBounds) {
+      return {
+        lat: (directBounds.n + directBounds.s) / 2,
+        lon: (directBounds.e + directBounds.w) / 2,
+      };
+    }
+
+    for (const [code, name] of Object.entries(TIER1_COUNTRIES)) {
+      if (name.toLowerCase() === normalized) {
+        const bounds = App.COUNTRY_BOUNDS[code];
+        if (bounds) {
+          return {
+            lat: (bounds.n + bounds.s) / 2,
+            lon: (bounds.e + bounds.w) / 2,
+          };
+        }
+      }
+    }
+
+    for (const [code, aliases] of Object.entries(App.COUNTRY_ALIASES)) {
+      if (aliases.some((alias) => alias.toLowerCase() === normalized)) {
+        const bounds = App.COUNTRY_BOUNDS[code];
+        if (bounds) {
+          return {
+            lat: (bounds.n + bounds.s) / 2,
+            lon: (bounds.e + bounds.w) / 2,
+          };
+        }
+      }
+    }
+
+    const regionCenters: Record<string, { lat: number; lon: number }> = {
+      'middle east': { lat: 29, lon: 45 },
+      'east asia': { lat: 33, lon: 121 },
+      'south asia': { lat: 22, lon: 78 },
+      'eastern europe': { lat: 50, lon: 30 },
+      'north africa': { lat: 27, lon: 17 },
+      'sahel region': { lat: 15, lon: 2 },
+    };
+    const namedCenter = regionCenters[normalized];
+    if (namedCenter) return namedCenter;
+
+    if (!normalized || normalized === 'global' || normalized === 'world' || normalized === 'all') {
+      const hubs = category === 'market'
+        ? (App.FORENSICS_MARKET_HUBS.length > 0 ? App.FORENSICS_MARKET_HUBS : App.FORENSICS_GLOBAL_HUBS)
+        : category === 'maritime'
+        ? (App.FORENSICS_MARITIME_HUBS.length > 0 ? App.FORENSICS_MARITIME_HUBS : App.FORENSICS_GLOBAL_HUBS)
+        : App.FORENSICS_GLOBAL_HUBS;
+      const hash = App.hashString(`${sourceId}:${domain}`);
+      return hubs[hash % hubs.length] || null;
+    }
+
+    return null;
+  }
+
+  private buildForensicsMapAnomalies(
+    runId: string,
+    anomalies: ForensicsCalibratedAnomaly[],
+    runCompletedAt = Date.now(),
+  ): ForensicsAnomalyOverlay[] {
+    if (!runId) return [];
+    const flagged = anomalies.filter((anomaly) => anomaly.isAnomaly);
+    if (flagged.length === 0) return [];
+    const referenceCompletedAt = Number.isFinite(runCompletedAt) && runCompletedAt > 0
+      ? runCompletedAt
+      : Date.now();
+
+    const agreementByRegionAndType = new Map<string, number>();
+    for (const anomaly of flagged) {
+      const agreementKey = `${(anomaly.region || 'global').toLowerCase()}::${anomaly.signalType}`;
+      agreementByRegionAndType.set(agreementKey, (agreementByRegionAndType.get(agreementKey) || 0) + 1);
+    }
+
+    const overlay: ForensicsAnomalyOverlay[] = [];
+    flagged.forEach((anomaly, index) => {
+      const monitor = this.classifyForensicsMonitor(anomaly);
+      const coordinate = this.resolveForensicsCoordinate(
+        anomaly.region || 'global',
+        anomaly.sourceId,
+        anomaly.domain,
+        monitor.category,
+      );
+      if (!coordinate) return;
+
+      const agreementKey = `${(anomaly.region || 'global').toLowerCase()}::${anomaly.signalType}`;
+      const supportCount = agreementByRegionAndType.get(agreementKey) || 1;
+      const ageMinutes = Math.max(0, Math.round((Date.now() - referenceCompletedAt) / 60000));
+      const isNearLive = ageMinutes <= 45;
+      overlay.push({
+        id: `${runId}:${anomaly.sourceId}:${anomaly.signalType}:${index}`,
+        runId,
+        sourceId: anomaly.sourceId,
+        region: anomaly.region || 'global',
+        domain: anomaly.domain,
+        signalType: anomaly.signalType,
+        monitorCategory: monitor.category,
+        monitorLabel: monitor.label,
+        monitorPriority: this.computeForensicsMonitorPriority(anomaly, supportCount, isNearLive),
+        ageMinutes,
+        isNearLive,
+        value: anomaly.value,
+        pValue: anomaly.pValue,
+        legacyZScore: anomaly.legacyZScore,
+        calibrationCenter: anomaly.calibrationCenter,
+        severity: this.normalizeForensicsSeverity(anomaly.severity),
+        isAnomaly: anomaly.isAnomaly,
+        supportCount,
+        lat: coordinate.lat,
+        lon: coordinate.lon,
+      });
+    });
+
+    return overlay
+      .sort((a, b) =>
+        (Number(b.isNearLive) - Number(a.isNearLive))
+        || (b.monitorPriority - a.monitorPriority)
+        || (a.pValue - b.pValue)
+        || (Math.abs(b.legacyZScore) - Math.abs(a.legacyZScore))
+      )
+      .slice(0, 120);
+  }
+
+  private applyForensicsMapOverlay(
+    runId: string,
+    anomalies: ForensicsCalibratedAnomaly[],
+    runCompletedAt = Date.now(),
+  ): void {
+    const overlay = this.buildForensicsMapAnomalies(runId, anomalies, runCompletedAt);
+    this.map?.setForensicsAnomalies(overlay);
+    this.map?.setLayerReady('forensics', overlay.length > 0);
+  }
+
+  private async runOperationalForensicsShadow(scope: 'intelligence' | 'market'): Promise<void> {
+    if (!this.panels['forensics']) return;
+    if (scope === 'intelligence' && SITE_VARIANT !== 'full') return;
+    if (scope === 'market' && SITE_VARIANT !== 'finance') return;
+    if (this.forensicsShadowInFlight.has(scope)) return;
+
+    const signals = scope === 'intelligence'
+      ? this.buildIntelligenceForensicsSignals()
+      : this.buildMarketForensicsSignals();
+    if (signals.length < 4) return;
+
+    const now = Date.now();
+    const stateKey = signals
+      .slice(0, 60)
+      .map((signal) => `${signal.sourceId}:${signal.signalType}:${signal.value.toFixed(2)}`)
+      .join('|');
+
+    const lastRunAt = this.forensicsShadowLastRunAt[scope];
+    const lastStateKey = this.forensicsShadowLastStateKey[scope];
+    const minInterval = this.FORENSICS_SHADOW_MIN_INTERVAL_MS;
+    if ((now - lastRunAt) < minInterval) return;
+    if (lastStateKey === stateKey && (now - lastRunAt) < (minInterval * 2)) return;
+
+    this.forensicsShadowInFlight.add(scope);
+    this.forensicsShadowLastRunAt[scope] = now;
+    this.forensicsShadowLastStateKey[scope] = stateKey;
+    try {
+      const domain = scope === 'intelligence' ? 'intelligence' : 'market';
+      const alpha = scope === 'intelligence' ? 0.05 : 0.08;
+      const result = await runForensicsShadow(domain, signals, alpha);
+      if (result.error) {
+        console.warn(`[Forensics] ${scope} shadow run failed:`, result.error);
+        return;
+      }
+
+      const derivedAnomalies = result.anomalies
+        .filter((anomaly) => anomaly.isAnomaly)
+        .map((anomaly) => ({
+          type: anomaly.signalType,
+          region: anomaly.region || 'global',
+          currentCount: Math.round(anomaly.value),
+          expectedCount: Math.round(anomaly.calibrationCenter),
+          zScore: anomaly.legacyZScore,
+          message: `[Forensics:${scope}] ${anomaly.signalType} anomaly in ${anomaly.region || 'global'} (p=${anomaly.pValue.toFixed(3)})`,
+          severity: this.forensicsSeverityToTemporal(anomaly.severity),
+        }));
+      if (derivedAnomalies.length > 0) {
+        signalAggregator.ingestTemporalAnomalies(derivedAnomalies);
+      }
+
+      if (result.run) {
+        this.applyForensicsMapOverlay(
+          result.run.runId,
+          result.anomalies,
+          result.run.completedAt || result.run.startedAt || Date.now(),
+        );
+        void this.loadForensicsPanel();
+      }
+    } finally {
+      this.forensicsShadowInFlight.delete(scope);
+    }
+  }
+
+  private async loadForensicsPanel(): Promise<void> {
+    const panel = this.panels['forensics'] as ForensicsPanel | undefined;
+    if (!panel) return;
+
+    const historyLimit = 10;
+    const trendRunLimit = 6;
+
+    try {
+      const preferredDomain = SITE_VARIANT === 'finance' ? 'market' : SITE_VARIANT === 'full' ? 'intelligence' : '';
+      let runsResult = await listForensicsRuns(preferredDomain, '', historyLimit, 0);
+      if (preferredDomain && (runsResult.error || runsResult.runs.length === 0)) {
+        runsResult = await listForensicsRuns('', '', historyLimit, 0);
+      }
+      if (runsResult.error) {
+        this.applyForensicsMapOverlay('', []);
+        panel.update({
+          fusedSignals: [],
+          anomalies: [],
+          topologyAlerts: [],
+          topologyTrends: [],
+          topologyBaselines: [],
+          trace: [],
+          policy: [],
+          runHistory: [],
+          anomalyTrends: [],
+          error: runsResult.error,
+        });
+        return;
+      }
+
+      const recentRuns = runsResult.runs
+        .filter((entry) => Boolean(entry.run?.runId))
+        .slice(0, historyLimit);
+      const latest = runsResult.runs[0];
+      const runId = latest?.run?.runId;
+      if (!runId) {
+        this.applyForensicsMapOverlay('', []);
+        panel.update({
+          fusedSignals: [],
+          anomalies: [],
+          topologyAlerts: [],
+          topologyTrends: [],
+          topologyBaselines: [],
+          trace: [],
+          policy: [],
+          runHistory: [],
+          anomalyTrends: [],
+        });
+        return;
+      }
+
+      const runHistory = recentRuns.map((entry) => {
+        const run = entry.run;
+        return {
+          runId: run?.runId || '',
+          domain: run?.domain || '',
+          completedAt: run?.completedAt || run?.startedAt || 0,
+          anomalyFlaggedCount: entry.anomalyFlaggedCount || 0,
+          minPValue: Number.isFinite(entry.minPValue) && entry.minPValue > 0 ? entry.minPValue : 1,
+          maxFusedScore: Number.isFinite(entry.maxFusedScore) ? entry.maxFusedScore : 0,
+        };
+      }).filter((point) => point.runId);
+
+      const policyDomain = latest.run?.domain || 'infrastructure';
+      const trendRunIds = recentRuns
+        .slice(0, trendRunLimit)
+        .map((entry) => entry.run?.runId || '')
+        .filter((id) => id);
+
+      const [fusedResult, anomalyResult, topologySummaryResult, traceResult, policyResult, trendAnomalyResults] = await Promise.all([
+        listFusedSignals(runId, '', 6),
+        listCalibratedAnomalies(runId, '', true, 120),
+        getForensicsTopologySummary(runId, policyDomain, {
+          anomaliesOnly: false,
+          alertLimit: 24,
+          historyLimit: trendRunLimit,
+          baselineLimit: 24,
+        }),
+        getForensicsTrace(runId),
+        getForensicsPolicy(policyDomain, '', 6),
+        Promise.all(
+          trendRunIds.map(async (trendRunId) => ({
+            runId: trendRunId,
+            result: await listCalibratedAnomalies(trendRunId, '', false, 80),
+          })),
+        ),
+      ]);
+
+      this.applyForensicsMapOverlay(
+        runId,
+        anomalyResult.anomalies,
+        latest.run?.completedAt || latest.run?.startedAt || Date.now(),
+      );
+
+      const anomaliesByRunId = new Map<string, ForensicsCalibratedAnomaly[]>();
+      const trendErrors: string[] = [];
+      for (const trendResult of trendAnomalyResults) {
+        anomaliesByRunId.set(trendResult.runId, trendResult.result.anomalies);
+        if (trendResult.result.error) {
+          trendErrors.push(`trend(${trendResult.runId.slice(0, 8)}): ${trendResult.result.error}`);
+        }
+      }
+
+      const buildAnomalyKey = (sourceId: string, signalType: string, region: string): string =>
+        `${sourceId}::${signalType}::${region || 'global'}`;
+      const selectedAnomalies = anomalyResult.anomalies.slice(0, 6);
+      const anomalyTrends = selectedAnomalies.map((anomaly) => {
+        const key = buildAnomalyKey(anomaly.sourceId, anomaly.signalType, anomaly.region || 'global');
+        const points = recentRuns
+          .slice(0, trendRunLimit)
+          .map((entry) => {
+            const trendRunId = entry.run?.runId || '';
+            if (!trendRunId) return null;
+            const completedAt = entry.run?.completedAt || entry.run?.startedAt || 0;
+            const match = anomaliesByRunId.get(trendRunId)?.find((candidate) =>
+              buildAnomalyKey(candidate.sourceId, candidate.signalType, candidate.region || 'global') === key,
+            );
+            return {
+              runId: trendRunId,
+              completedAt,
+              pValue: match?.pValue ?? 1,
+              legacyZScore: match?.legacyZScore ?? 0,
+              present: Boolean(match),
+              flagged: Boolean(match?.isAnomaly),
+            };
+          })
+          .filter((point): point is {
+            runId: string;
+            completedAt: number;
+            pValue: number;
+            legacyZScore: number;
+            present: boolean;
+            flagged: boolean;
+          } => Boolean(point))
+          .sort((a, b) => a.completedAt - b.completedAt);
+
+        return {
+          key,
+          sourceId: anomaly.sourceId,
+          signalType: anomaly.signalType,
+          region: anomaly.region || 'global',
+          domain: anomaly.domain,
+          points,
+        };
+      });
+
+      const topologyAlerts = topologySummaryResult.alerts
+        .filter((alert) => alert.isAnomaly)
+        .slice(0, 6);
+      const topologyMetricSeries = topologySummaryResult.trends.map((series) => ({
+        metric: series.metric,
+        label: series.label,
+        points: series.points.map((point) => ({
+          runId: point.runId,
+          completedAt: point.completedAt,
+          value: point.value,
+          region: point.region || 'global',
+        })),
+      }));
+      const topologyBaselines = topologySummaryResult.baselines
+        .slice(0, 24)
+        .map((baseline) => ({
+          domain: baseline.domain || policyDomain,
+          region: baseline.region || 'global',
+          signalType: baseline.signalType,
+          count: baseline.count,
+          mean: baseline.mean,
+          stdDev: baseline.stdDev,
+          minValue: baseline.minValue,
+          maxValue: baseline.maxValue,
+          lastValue: baseline.lastValue,
+          lastUpdated: baseline.lastUpdated,
+        }));
+
+      const errorParts = [
+        fusedResult.error,
+        anomalyResult.error,
+        topologySummaryResult.error,
+        traceResult.error,
+        policyResult.error,
+        ...trendErrors,
+      ].filter((part) => part);
+
+      panel.update({
+        summary: latest,
+        fusedSignals: fusedResult.signals.slice(0, 6),
+        anomalies: selectedAnomalies,
+        topologyAlerts,
+        topologyTrends: topologyMetricSeries,
+        topologyBaselines,
+        trace: traceResult.trace,
+        policy: policyResult.entries.slice(0, 6),
+        runHistory,
+        anomalyTrends,
+        error: errorParts.join(' | ') || undefined,
+      });
+    } catch (error) {
+      this.applyForensicsMapOverlay('', []);
+      panel.update({
+        fusedSignals: [],
+        anomalies: [],
+        topologyAlerts: [],
+        topologyTrends: [],
+        topologyBaselines: [],
+        trace: [],
+        policy: [],
+        runHistory: [],
+        anomalyTrends: [],
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   /**
    * Load intelligence-critical signals for CII/focal point calculation
@@ -3988,6 +4782,7 @@ export class App {
 
     // Now trigger CII refresh with all intelligence data
     (this.panels['cii'] as CIIPanel)?.refresh();
+    void this.runOperationalForensicsShadow('intelligence');
     console.log('[Intelligence] All signals loaded for CII calculation');
   }
 
@@ -4025,8 +4820,10 @@ export class App {
 
     if (this.cyberThreatsCache) {
       this.map?.setCyberThreats(this.cyberThreatsCache);
+      signalAggregator.ingestCyberThreats(this.cyberThreatsCache);
       this.map?.setLayerReady('cyberThreats', this.cyberThreatsCache.length > 0);
       this.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: this.cyberThreatsCache.length });
+      void this.runOperationalForensicsShadow('intelligence');
       return;
     }
 
@@ -4034,10 +4831,12 @@ export class App {
       const threats = await fetchCyberThreats({ limit: 500, days: 14 });
       this.cyberThreatsCache = threats;
       this.map?.setCyberThreats(threats);
+      signalAggregator.ingestCyberThreats(threats);
       this.map?.setLayerReady('cyberThreats', threats.length > 0);
       this.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: threats.length });
       this.statusPanel?.updateApi('Cyber Threats API', { status: 'ok' });
       dataFreshness.recordUpdate('cyber_threats', threats.length);
+      void this.runOperationalForensicsShadow('intelligence');
     } catch (error) {
       this.map?.setLayerReady('cyberThreats', false);
       this.statusPanel?.updateFeed('Cyber Threats', { status: 'error', errorMessage: String(error) });
@@ -4076,6 +4875,7 @@ export class App {
       if (hasData) {
         dataFreshness.recordUpdate('ais', shippingCount);
       }
+      void this.runOperationalForensicsShadow('intelligence');
     } catch (error) {
       this.map?.setLayerReady('ais', false);
       this.statusPanel?.updateFeed('Shipping', { status: 'error', errorMessage: String(error) });
@@ -4568,6 +5368,10 @@ export class App {
         this.intelligenceCache = {}; // Clear cache to force fresh fetch
         return this.loadIntelligenceSignals();
       }, 5 * 60 * 1000);
+    }
+
+    if (this.panels['forensics']) {
+      this.scheduleRefresh('forensics', () => this.loadForensicsPanel(), 5 * 60 * 1000);
     }
 
     // Non-intelligence layer refreshes only

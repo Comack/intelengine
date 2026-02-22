@@ -98,6 +98,7 @@ const layers = {
   economic: false,
   waterways: false,
   outages: false,
+  forensics: false,
   cyberThreats: false,
   datacenters: false,
   protests: false,

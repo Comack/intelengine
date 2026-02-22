@@ -10,6 +10,7 @@ import type {
   MilitaryVessel,
   SocialUnrestEvent,
   AisDisruptionEvent,
+  CyberThreat,
 } from '@/types';
 import { TIER1_COUNTRIES } from '@/config/countries';
 
@@ -19,6 +20,7 @@ export type SignalType =
   | 'military_vessel'
   | 'protest'
   | 'ais_disruption'
+  | 'cyber_threat'
   | 'satellite_fire'        // NASA FIRMS thermal anomalies
   | 'temporal_anomaly'      // Baseline deviation alerts
 
@@ -236,6 +238,61 @@ class SignalAggregator {
     this.pruneOld();
   }
 
+  ingestCyberThreats(threats: CyberThreat[]): void {
+    this.clearSignalType('cyber_threat');
+    const countryCounts = new Map<string, {
+      count: number;
+      highSeverityCount: number;
+      lat: number;
+      lon: number;
+      latestSeen: number;
+    }>();
+
+    for (const threat of threats) {
+      const code = threat.country
+        ? normalizeCountryCode(threat.country)
+        : this.coordsToCountry(threat.lat, threat.lon);
+      const existing = countryCounts.get(code);
+      const seenAt = Date.parse(threat.lastSeen || threat.firstSeen || '') || Date.now();
+      const isHighSeverity = threat.severity === 'critical' || threat.severity === 'high';
+      if (existing) {
+        existing.count += 1;
+        if (isHighSeverity) existing.highSeverityCount += 1;
+        if (seenAt > existing.latestSeen) {
+          existing.latestSeen = seenAt;
+          existing.lat = threat.lat;
+          existing.lon = threat.lon;
+        }
+      } else {
+        countryCounts.set(code, {
+          count: 1,
+          highSeverityCount: isHighSeverity ? 1 : 0,
+          lat: threat.lat,
+          lon: threat.lon,
+          latestSeen: seenAt,
+        });
+      }
+    }
+
+    for (const [code, data] of countryCounts) {
+      this.signals.push({
+        type: 'cyber_threat',
+        country: code,
+        countryName: getCountryName(code),
+        lat: data.lat,
+        lon: data.lon,
+        severity: data.highSeverityCount > 0 || data.count >= 20
+          ? 'high'
+          : data.count >= 8
+            ? 'medium'
+            : 'low',
+        title: `${data.count} cyber threat indicators`,
+        timestamp: new Date(data.latestSeen),
+      });
+    }
+    this.pruneOld();
+  }
+
   // ============ NEW SIGNAL INGESTION METHODS ============
 
   /**
@@ -385,6 +442,7 @@ class SignalAggregator {
           military_vessel: 'naval presence',
           protest: 'civil unrest',
           ais_disruption: 'shipping anomalies',
+          cyber_threat: 'cyber threat activity',
           satellite_fire: 'thermal anomalies',
           temporal_anomaly: 'baseline anomalies',
         };
@@ -440,6 +498,7 @@ class SignalAggregator {
       military_vessel: 0,
       protest: 0,
       ais_disruption: 0,
+      cyber_threat: 0,
       satellite_fire: 0,
       temporal_anomaly: 0,
     };

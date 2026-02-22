@@ -1,0 +1,657 @@
+import { Panel } from './Panel';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import type {
+  ForensicsCalibratedAnomaly,
+  ForensicsFusedSignal,
+  ForensicsPhaseTrace,
+  ForensicsPolicyEntry,
+  ForensicsRunSummary,
+  ForensicsTopologyBaselineSummary,
+} from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+
+export interface ForensicsRunTrendPoint {
+  runId: string;
+  domain: string;
+  completedAt: number;
+  anomalyFlaggedCount: number;
+  minPValue: number;
+  maxFusedScore: number;
+}
+
+export interface ForensicsAnomalyTrendPoint {
+  runId: string;
+  completedAt: number;
+  pValue: number;
+  legacyZScore: number;
+  present: boolean;
+  flagged: boolean;
+}
+
+export interface ForensicsAnomalyTrendSeries {
+  key: string;
+  sourceId: string;
+  signalType: string;
+  region: string;
+  domain: string;
+  points: ForensicsAnomalyTrendPoint[];
+}
+
+export interface ForensicsTopologyTrendPoint {
+  runId: string;
+  completedAt: number;
+  value: number;
+  region: string;
+}
+
+export interface ForensicsTopologyTrendSeries {
+  metric: string;
+  label: string;
+  points: ForensicsTopologyTrendPoint[];
+}
+
+export interface ForensicsPanelSnapshot {
+  summary?: ForensicsRunSummary;
+  fusedSignals: ForensicsFusedSignal[];
+  anomalies: ForensicsCalibratedAnomaly[];
+  topologyAlerts: ForensicsCalibratedAnomaly[];
+  topologyTrends: ForensicsTopologyTrendSeries[];
+  topologyBaselines: ForensicsTopologyBaselineSummary[];
+  trace: ForensicsPhaseTrace[];
+  policy: ForensicsPolicyEntry[];
+  runHistory: ForensicsRunTrendPoint[];
+  anomalyTrends: ForensicsAnomalyTrendSeries[];
+  error?: string;
+}
+
+function formatTimestamp(epochMs: number): string {
+  if (!epochMs || !Number.isFinite(epochMs)) return 'N/A';
+  return new Date(epochMs).toLocaleString();
+}
+
+function formatElapsed(elapsedMs: number): string {
+  if (!elapsedMs || elapsedMs <= 0 || !Number.isFinite(elapsedMs)) return '-';
+  if (elapsedMs < 1000) return `${Math.round(elapsedMs)}ms`;
+  return `${(elapsedMs / 1000).toFixed(2)}s`;
+}
+
+function formatPValue(value: number): string {
+  if (!Number.isFinite(value)) return 'N/A';
+  if (value === 0) return '0';
+  if (value < 0.001) return value.toExponential(1);
+  return value.toFixed(3);
+}
+
+function formatSigned(value: number, digits = 2): string {
+  if (!Number.isFinite(value)) return '0';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toFixed(digits)}`;
+}
+
+function formatCompact(value: number, digits = 2): string {
+  if (!Number.isFinite(value)) return 'N/A';
+  if (Math.abs(value) >= 1000) return value.toFixed(0);
+  return value.toFixed(digits);
+}
+
+function enumLabel(value: string, prefix: string): string {
+  const normalized = value.startsWith(prefix) ? value.slice(prefix.length) : value;
+  return normalized
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ') || 'Unknown';
+}
+
+function severityClass(value: string): string {
+  if (value === 'SEVERITY_LEVEL_HIGH') return 'high';
+  if (value === 'SEVERITY_LEVEL_MEDIUM') return 'medium';
+  if (value === 'SEVERITY_LEVEL_LOW') return 'low';
+  return 'unknown';
+}
+
+function phaseStatusClass(value: string): string {
+  if (value === 'FORENSICS_PHASE_STATUS_SUCCESS') return 'success';
+  if (value === 'FORENSICS_PHASE_STATUS_FAILED') return 'failed';
+  if (value === 'FORENSICS_PHASE_STATUS_SKIPPED') return 'skipped';
+  if (value === 'FORENSICS_PHASE_STATUS_PENDING') return 'pending';
+  return 'unknown';
+}
+
+function anomalyKey(sourceId: string, signalType: string, region: string): string {
+  return `${sourceId}::${signalType}::${region || 'global'}`;
+}
+
+function buildSparkline(
+  values: number[],
+  options: {
+    width?: number;
+    height?: number;
+    invert?: boolean;
+    color?: string;
+  } = {},
+): string {
+  const finiteValues = values.filter((value) => Number.isFinite(value));
+  if (finiteValues.length < 2) {
+    return '<div class="forensics-sparkline-empty">n/a</div>';
+  }
+
+  const width = options.width ?? 92;
+  const height = options.height ?? 24;
+  const min = Math.min(...finiteValues);
+  const max = Math.max(...finiteValues);
+  const range = max - min || 1;
+  const color = options.color || 'var(--accent)';
+
+  const points = finiteValues
+    .map((value, index) => {
+      const x = (index / (finiteValues.length - 1)) * width;
+      const normalized = (value - min) / range;
+      const adjusted = options.invert ? (1 - normalized) : normalized;
+      const y = height - 2 - (adjusted * (height - 4));
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="forensics-sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+interface ForensicsProvenanceLink {
+  label: string;
+  url: string;
+}
+
+function buildProvenanceLinks(anomaly: ForensicsCalibratedAnomaly): ForensicsProvenanceLink[] {
+  const links: ForensicsProvenanceLink[] = [];
+  const sourceId = anomaly.sourceId.toLowerCase();
+  const signalType = anomaly.signalType.toLowerCase();
+
+  if (sourceId.startsWith('market:')) {
+    const symbol = anomaly.sourceId.slice('market:'.length).trim().toUpperCase();
+    if (symbol) {
+      links.push({
+        label: `Yahoo Finance (${symbol})`,
+        url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`,
+      });
+    }
+  }
+
+  if (sourceId.startsWith('prediction:') || signalType.includes('prediction')) {
+    links.push({
+      label: 'Prediction markets',
+      url: 'https://polymarket.com/',
+    });
+  }
+
+  if (signalType.includes('internet_outage')) {
+    links.push({
+      label: 'NetBlocks',
+      url: 'https://netblocks.org/',
+    });
+  }
+
+  if (signalType.includes('protest')) {
+    links.push({
+      label: 'ACLED data',
+      url: 'https://acleddata.com/',
+    });
+  }
+
+  if (signalType.includes('ais')) {
+    links.push({
+      label: 'MarineTraffic',
+      url: 'https://www.marinetraffic.com/',
+    });
+  }
+
+  if (signalType.includes('cyber')) {
+    links.push({
+      label: 'CISA advisories',
+      url: 'https://www.cisa.gov/news-events/cybersecurity-advisories',
+    });
+  }
+
+  const query = `${anomaly.sourceId} ${anomaly.signalType} ${anomaly.region || 'global'} intelligence signal`;
+  links.push({
+    label: 'Web context',
+    url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+  });
+
+  const deduped = new Map<string, ForensicsProvenanceLink>();
+  for (const link of links) {
+    if (!deduped.has(link.url)) deduped.set(link.url, link);
+  }
+  return Array.from(deduped.values());
+}
+
+export class ForensicsPanel extends Panel {
+  private snapshot: ForensicsPanelSnapshot | null = null;
+  private selectedAnomalyKey = '';
+
+  private onContentClick = (event: Event): void => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const row = target.closest('[data-forensics-anomaly-key]') as HTMLElement | null;
+    if (!row) return;
+    const key = row.dataset.forensicsAnomalyKey || '';
+    if (!key || key === this.selectedAnomalyKey) return;
+    this.selectedAnomalyKey = key;
+    this.render();
+  };
+
+  private onContentKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target as HTMLElement | null;
+    const row = target?.closest('[data-forensics-anomaly-key]') as HTMLElement | null;
+    if (!row) return;
+    event.preventDefault();
+    const key = row.dataset.forensicsAnomalyKey || '';
+    if (!key || key === this.selectedAnomalyKey) return;
+    this.selectedAnomalyKey = key;
+    this.render();
+  };
+
+  constructor(title = 'Forensics Signals') {
+    super({
+      id: 'forensics',
+      title,
+      showCount: true,
+      trackActivity: true,
+      infoTooltip: 'Shadow forensics run summaries combining weak supervision and conformal anomalies.',
+    });
+    this.content.addEventListener('click', this.onContentClick);
+    this.content.addEventListener('keydown', this.onContentKeydown);
+    this.showLoading('Loading forensics telemetry...');
+  }
+
+  public update(snapshot: ForensicsPanelSnapshot): void {
+    this.snapshot = snapshot;
+    const flaggedCount = snapshot.summary?.anomalyFlaggedCount
+      ?? snapshot.anomalies.filter((anomaly) => anomaly.isAnomaly).length;
+    this.setCount(flaggedCount);
+
+    if (snapshot.summary?.run) {
+      const run = snapshot.summary.run;
+      const detail = run.workerMode || run.backend || run.status || undefined;
+      this.setDataBadge('live', detail);
+    } else if (snapshot.error) {
+      this.setDataBadge('unavailable');
+    } else {
+      this.clearDataBadge();
+    }
+
+    const availableAnomalyKeys = snapshot.anomalies.map((anomaly) =>
+      anomalyKey(anomaly.sourceId, anomaly.signalType, anomaly.region || 'global'),
+    );
+    if (availableAnomalyKeys.length === 0) {
+      this.selectedAnomalyKey = '';
+    } else if (!availableAnomalyKeys.includes(this.selectedAnomalyKey)) {
+      this.selectedAnomalyKey = availableAnomalyKeys[0] || '';
+    }
+
+    this.render();
+  }
+
+  private render(): void {
+    if (!this.snapshot) {
+      this.showLoading('Loading forensics telemetry...');
+      return;
+    }
+
+    const {
+      summary,
+      fusedSignals,
+      anomalies,
+      topologyAlerts,
+      topologyTrends,
+      topologyBaselines,
+      trace,
+      policy,
+      runHistory,
+      anomalyTrends,
+      error,
+    } = this.snapshot;
+    const run = summary?.run;
+    const statusClass = run?.status
+      ? run.status.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+      : 'unknown';
+
+    const orderedHistory = [...runHistory]
+      .filter((point) => point.runId)
+      .sort((a, b) => a.completedAt - b.completedAt);
+    const trendCardsHtml = orderedHistory.length > 1
+      ? `
+          <div class="forensics-trend-grid">
+            <div class="forensics-trend-card">
+              <div class="forensics-trend-head">
+                <span class="forensics-trend-label">Flagged anomalies</span>
+                <span class="forensics-trend-value">${orderedHistory[orderedHistory.length - 1]?.anomalyFlaggedCount ?? 0}</span>
+              </div>
+              ${buildSparkline(orderedHistory.map((point) => point.anomalyFlaggedCount), { color: 'var(--semantic-high)' })}
+            </div>
+            <div class="forensics-trend-card">
+              <div class="forensics-trend-head">
+                <span class="forensics-trend-label">Minimum p-value</span>
+                <span class="forensics-trend-value">${formatPValue(orderedHistory[orderedHistory.length - 1]?.minPValue ?? 0)}</span>
+              </div>
+              ${buildSparkline(
+                orderedHistory.map((point) => (point.minPValue > 0 ? point.minPValue : 1)),
+                { invert: true, color: 'var(--semantic-critical)' },
+              )}
+            </div>
+            <div class="forensics-trend-card">
+              <div class="forensics-trend-head">
+                <span class="forensics-trend-label">Max fused score</span>
+                <span class="forensics-trend-value">${formatCompact(orderedHistory[orderedHistory.length - 1]?.maxFusedScore ?? 0)}</span>
+              </div>
+              ${buildSparkline(orderedHistory.map((point) => point.maxFusedScore), { color: 'var(--semantic-normal)' })}
+            </div>
+          </div>
+        `
+      : '';
+
+    const topologyTrendHtml = topologyTrends.length > 0
+      ? `
+          <section class="forensics-section">
+            <h4>Topology Trends</h4>
+            <div class="forensics-trend-grid">
+              ${topologyTrends.map((series) => {
+                const points = [...series.points]
+                  .filter((point) => Number.isFinite(point.value))
+                  .sort((a, b) => a.completedAt - b.completedAt);
+                const latest = points[points.length - 1];
+                const latestRegion = latest?.region || 'global';
+                const latestValue = latest ? formatCompact(latest.value, 2) : 'N/A';
+                return `
+                    <div class="forensics-trend-card">
+                      <div class="forensics-trend-head">
+                        <span class="forensics-trend-label">${escapeHtml(series.label)}</span>
+                        <span class="forensics-trend-value">${escapeHtml(latestValue)}</span>
+                      </div>
+                      ${buildSparkline(points.map((point) => point.value), { color: 'var(--semantic-high)' })}
+                      <div class="forensics-trend-meta">${escapeHtml(latestRegion)}</div>
+                    </div>
+                  `;
+              }).join('')}
+            </div>
+          </section>
+        `
+      : '';
+
+    const topologyBaselineHtml = topologyBaselines.length > 0
+      ? `
+          <section class="forensics-section">
+            <h4>Topology Baselines</h4>
+            ${topologyBaselines
+              .slice()
+              .sort((a, b) => (b.lastUpdated - a.lastUpdated) || (b.count - a.count))
+              .slice(0, 8)
+              .map((baseline) => `
+                <div class="forensics-item">
+                  <div class="forensics-item-head">
+                    <span class="forensics-source">${escapeHtml(baseline.signalType)}</span>
+                    <span class="forensics-score">${baseline.count}</span>
+                  </div>
+                  <div class="forensics-item-meta">
+                    <span>${escapeHtml(baseline.region || 'global')}</span>
+                    <span>last=${formatCompact(baseline.lastValue, 2)}</span>
+                    <span>mean=${formatCompact(baseline.mean, 2)} +/- ${formatCompact(baseline.stdDev, 2)}</span>
+                  </div>
+                </div>
+              `).join('')}
+          </section>
+        `
+      : '';
+
+    const summaryHtml = run
+      ? `
+          <div class="forensics-summary-card">
+            <div class="forensics-summary-top">
+              <span class="forensics-run-id">${escapeHtml(run.runId)}</span>
+              <span class="forensics-run-status ${escapeHtml(statusClass)}">${escapeHtml(run.status)}</span>
+            </div>
+            <div class="forensics-summary-meta">
+              <span>Domain: ${escapeHtml(run.domain || 'n/a')}</span>
+              <span>Started: ${escapeHtml(formatTimestamp(run.startedAt))}</span>
+              <span>Completed: ${escapeHtml(formatTimestamp(run.completedAt))}</span>
+              <span>Fused: ${summary?.fusedCount ?? fusedSignals.length}</span>
+              <span>Anomalies: ${summary?.anomalyCount ?? anomalies.length}</span>
+              <span>Flagged: ${summary?.anomalyFlaggedCount ?? anomalies.filter((item) => item.isAnomaly).length}</span>
+            </div>
+          </div>
+        `
+      : '<div class="forensics-empty">No completed forensics runs yet.</div>';
+
+    const fusedHtml = fusedSignals.length > 0
+      ? fusedSignals.map((signal) => {
+        const contributors = signal.contributors
+          .slice(0, 2)
+          .map((contributor) => `${escapeHtml(contributor.signalType)} ${formatSigned(contributor.learnedWeight)}`)
+          .join(' · ');
+        return `
+            <div class="forensics-item">
+              <div class="forensics-item-head">
+                <span class="forensics-source">${escapeHtml(signal.sourceId)}</span>
+                <span class="forensics-score">${signal.score.toFixed(2)}</span>
+              </div>
+              <div class="forensics-item-meta">
+                <span>${escapeHtml(signal.region || 'global')}</span>
+                <span>${(signal.probability * 100).toFixed(1)}%</span>
+                <span>${contributors || 'No contributors'}</span>
+              </div>
+            </div>
+          `;
+      }).join('')
+      : '<div class="forensics-empty">No fused signals for this run.</div>';
+
+    const selectedAnomaly = anomalies.find((anomaly) =>
+      anomalyKey(anomaly.sourceId, anomaly.signalType, anomaly.region || 'global') === this.selectedAnomalyKey,
+    ) || anomalies[0];
+    const selectedKey = selectedAnomaly
+      ? anomalyKey(selectedAnomaly.sourceId, selectedAnomaly.signalType, selectedAnomaly.region || 'global')
+      : '';
+    const selectedTrend = anomalyTrends.find((trend) => trend.key === selectedKey);
+
+    const anomalyHtml = anomalies.length > 0
+      ? anomalies.map((anomaly) => {
+        const key = anomalyKey(anomaly.sourceId, anomaly.signalType, anomaly.region || 'global');
+        const selectedClass = key === selectedKey ? ' selected' : '';
+        return `
+          <button type="button" class="forensics-item forensics-item-selectable${selectedClass}" data-forensics-anomaly-key="${escapeHtml(key)}">
+            <div class="forensics-item-head">
+              <span class="forensics-source">${escapeHtml(anomaly.sourceId)}</span>
+              <span class="forensics-severity ${severityClass(anomaly.severity)}">${escapeHtml(enumLabel(anomaly.severity, 'SEVERITY_LEVEL_'))}</span>
+            </div>
+            <div class="forensics-item-meta">
+              <span>${escapeHtml(anomaly.signalType)} (${escapeHtml(anomaly.region || 'global')})</span>
+              <span>p=${formatPValue(anomaly.pValue)}</span>
+              <span>z=${formatSigned(anomaly.legacyZScore)}</span>
+            </div>
+          </button>
+        `;
+      }).join('')
+      : '<div class="forensics-empty">No calibrated anomalies for this run.</div>';
+
+    const topologyHtml = topologyAlerts.length > 0
+      ? topologyAlerts.map((alert) => `
+          <div class="forensics-item">
+            <div class="forensics-item-head">
+              <span class="forensics-source">${escapeHtml(alert.signalType)}</span>
+              <span class="forensics-severity ${severityClass(alert.severity)}">${escapeHtml(enumLabel(alert.severity, 'SEVERITY_LEVEL_'))}</span>
+            </div>
+            <div class="forensics-item-meta">
+              <span>${escapeHtml(alert.region || 'global')} · ${escapeHtml(alert.sourceId)}</span>
+              <span>p=${formatPValue(alert.pValue)}</span>
+              <span>v=${formatCompact(alert.value, 2)}</span>
+            </div>
+          </div>
+        `).join('')
+      : '<div class="forensics-empty">No topology alerts for this run.</div>';
+
+    const phaseHtml = trace.length > 0
+      ? trace.map((phase) => `
+          <div class="forensics-item">
+            <div class="forensics-item-head">
+              <span class="forensics-source">${escapeHtml(phase.phase)}</span>
+              <span class="forensics-phase ${phaseStatusClass(phase.status)}">${escapeHtml(enumLabel(phase.status, 'FORENSICS_PHASE_STATUS_'))}</span>
+            </div>
+            <div class="forensics-item-meta">
+              <span>${escapeHtml(formatTimestamp(phase.startedAt))}</span>
+              <span>${escapeHtml(formatElapsed(phase.elapsedMs))}</span>
+              <span>${escapeHtml(phase.error || 'OK')}</span>
+            </div>
+          </div>
+        `).join('')
+      : '<div class="forensics-empty">No phase trace available for this run.</div>';
+
+    const policyHtml = policy.length > 0
+      ? policy.map((entry) => `
+          <div class="forensics-item">
+            <div class="forensics-item-head">
+              <span class="forensics-source">${escapeHtml(entry.action)}</span>
+              <span class="forensics-score">${entry.qValue.toFixed(3)}</span>
+            </div>
+            <div class="forensics-item-meta">
+              <span>Visits: ${entry.visitCount}</span>
+              <span>Reward: ${formatSigned(entry.lastReward, 3)}</span>
+              <span>${escapeHtml(formatTimestamp(entry.lastUpdated))}</span>
+            </div>
+          </div>
+        `).join('')
+      : '<div class="forensics-empty">No policy updates yet.</div>';
+
+    const anomalyDetailHtml = selectedAnomaly
+      ? (() => {
+        const trendPoints = [...(selectedTrend?.points || [])]
+          .filter((point) => point.runId)
+          .sort((a, b) => a.completedAt - b.completedAt);
+        const pValueSeries = trendPoints.map((point) => point.pValue);
+        const zSeries = trendPoints.map((point) => Math.abs(point.legacyZScore));
+        const presentCount = trendPoints.filter((point) => point.present).length;
+        const flaggedCount = trendPoints.filter((point) => point.flagged).length;
+
+        const linkedContributors = fusedSignals
+          .flatMap((signal) => signal.contributors
+            .filter((contributor) => contributor.signalType === selectedAnomaly.signalType)
+            .map((contributor) => ({
+              sourceId: signal.sourceId,
+              probability: signal.probability,
+              contribution: contributor.contribution,
+              learnedWeight: contributor.learnedWeight,
+            })))
+          .sort((a, b) => Math.abs(b.learnedWeight) - Math.abs(a.learnedWeight))
+          .slice(0, 4);
+
+        const contributorHtml = linkedContributors.length > 0
+          ? linkedContributors.map((contributor) => `
+              <div class="forensics-detail-item">
+                <span class="forensics-detail-key">${escapeHtml(contributor.sourceId)}</span>
+                <span class="forensics-detail-value">w=${formatSigned(contributor.learnedWeight, 3)} · c=${formatSigned(contributor.contribution, 3)} · p=${formatPValue(contributor.probability)}</span>
+              </div>
+            `).join('')
+          : '<div class="forensics-empty">No contributor trace for this anomaly in current fused window.</div>';
+
+        const provenanceHtml = buildProvenanceLinks(selectedAnomaly)
+          .map((link) => {
+            const href = sanitizeUrl(link.url);
+            if (!href) return '';
+            return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a>`;
+          })
+          .filter(Boolean)
+          .join('');
+
+        return `
+            <section class="forensics-section forensics-detail-section">
+              <h4>Anomaly Detail</h4>
+              <div class="forensics-detail-top">
+                <div class="forensics-detail-title">${escapeHtml(selectedAnomaly.sourceId)}</div>
+                <div class="forensics-detail-subtitle">${escapeHtml(selectedAnomaly.signalType)} · ${escapeHtml(selectedAnomaly.region || 'global')} · ${escapeHtml(selectedAnomaly.domain || run?.domain || 'n/a')}</div>
+              </div>
+              <div class="forensics-detail-grid">
+                <div class="forensics-trend-card compact">
+                  <div class="forensics-trend-head">
+                    <span class="forensics-trend-label">P-value trend</span>
+                    <span class="forensics-trend-value">${formatPValue(selectedAnomaly.pValue)}</span>
+                  </div>
+                  ${buildSparkline(pValueSeries.length > 0 ? pValueSeries : [selectedAnomaly.pValue, selectedAnomaly.pValue], { invert: true, color: 'var(--semantic-critical)' })}
+                </div>
+                <div class="forensics-trend-card compact">
+                  <div class="forensics-trend-head">
+                    <span class="forensics-trend-label">|z| trend</span>
+                    <span class="forensics-trend-value">${formatCompact(Math.abs(selectedAnomaly.legacyZScore), 2)}</span>
+                  </div>
+                  ${buildSparkline(zSeries.length > 0 ? zSeries : [Math.abs(selectedAnomaly.legacyZScore), Math.abs(selectedAnomaly.legacyZScore)], { color: 'var(--semantic-high)' })}
+                </div>
+                <div class="forensics-detail-metric">
+                  <span class="forensics-detail-metric-label">Run coverage</span>
+                  <span class="forensics-detail-metric-value">${presentCount}/${Math.max(trendPoints.length, 1)} runs</span>
+                </div>
+                <div class="forensics-detail-metric">
+                  <span class="forensics-detail-metric-label">Flagged frequency</span>
+                  <span class="forensics-detail-metric-value">${flaggedCount}/${Math.max(trendPoints.length, 1)} runs</span>
+                </div>
+              </div>
+              <div class="forensics-detail-block">
+                <div class="forensics-detail-heading">Signal contributors</div>
+                ${contributorHtml}
+              </div>
+              <div class="forensics-detail-block">
+                <div class="forensics-detail-heading">Provenance links</div>
+                <div class="forensics-provenance-links">
+                  ${provenanceHtml || '<span class="forensics-empty">No provenance links available.</span>'}
+                </div>
+              </div>
+            </section>
+          `;
+      })()
+      : `
+          <section class="forensics-section forensics-detail-section">
+            <h4>Anomaly Detail</h4>
+            <div class="forensics-empty">Select an anomaly to inspect trend and provenance.</div>
+          </section>
+        `;
+
+    const warningHtml = error
+      ? `<div class="forensics-warning">${escapeHtml(error)}</div>`
+      : '';
+
+    this.setContent(`
+      <div class="forensics-panel">
+        ${warningHtml}
+        ${summaryHtml}
+        ${trendCardsHtml}
+        ${topologyTrendHtml}
+        ${topologyBaselineHtml}
+        <div class="forensics-grid">
+          <section class="forensics-section">
+            <h4>Fused Signals</h4>
+            ${fusedHtml}
+          </section>
+          <section class="forensics-section">
+            <h4>Calibrated Anomalies</h4>
+            ${anomalyHtml}
+          </section>
+          <section class="forensics-section">
+            <h4>Topological Alerts</h4>
+            ${topologyHtml}
+          </section>
+          <section class="forensics-section">
+            <h4>Phase Trace</h4>
+            ${phaseHtml}
+          </section>
+          <section class="forensics-section">
+            <h4>Policy Q-Table</h4>
+            ${policyHtml}
+          </section>
+        </div>
+        ${anomalyDetailHtml}
+      </div>
+    `);
+  }
+
+  public destroy(): void {
+    this.content.removeEventListener('click', this.onContentClick);
+    this.content.removeEventListener('keydown', this.onContentKeydown);
+    super.destroy();
+  }
+}

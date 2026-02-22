@@ -1,0 +1,206 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/core/v1/severity.proto";
+
+// ForensicsSignalInput is a normalized scalar signal used by shadow forensics runs.
+message ForensicsSignalInput {
+  // Stable source identifier (for example "ais_gaps:SG" or "military_flights:US").
+  string source_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Optional region key (for example ISO2 country code).
+  string region = 2;
+  // Domain namespace (for example "infrastructure" or "maritime").
+  string domain = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Signal class/type identifier (for example "ais_gaps", "internet_outage").
+  string signal_type = 4 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Scalar value to score.
+  double value = 5;
+  // Optional confidence provided by upstream source (0.0 to 1.0).
+  double confidence = 6 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Observation timestamp, as Unix epoch milliseconds.
+  int64 observed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// ForensicsSignalContributor describes the contribution of one signal type.
+message ForensicsSignalContributor {
+  // Signal class/type.
+  string signal_type = 1;
+  // Contribution to the fused score (0-100 scale).
+  double contribution = 2;
+  // Learned weight used for this signal.
+  double learned_weight = 3;
+}
+
+// ForensicsFusedSignal is the weak-supervision fusion output for one source.
+message ForensicsFusedSignal {
+  // Source identifier.
+  string source_id = 1;
+  // Region key.
+  string region = 2;
+  // Domain namespace.
+  string domain = 3;
+  // Calibrated probability that this source is high-priority (0.0 to 1.0).
+  double probability = 4 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Human-facing score (0-100).
+  double score = 5 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Lower confidence bound for probability.
+  double confidence_lower = 6 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Upper confidence bound for probability.
+  double confidence_upper = 7 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Top contributors used for explainability.
+  repeated ForensicsSignalContributor contributors = 8;
+}
+
+// ForensicsCalibratedAnomaly is a conformal anomaly decision for one signal.
+message ForensicsCalibratedAnomaly {
+  // Source identifier.
+  string source_id = 1;
+  // Region key.
+  string region = 2;
+  // Domain namespace.
+  string domain = 3;
+  // Signal class/type.
+  string signal_type = 4;
+  // Observed signal value.
+  double value = 5;
+  // Conformal p-value.
+  double p_value = 6 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Active significance threshold.
+  double alpha = 7 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Legacy z-score for backward compatibility.
+  double legacy_z_score = 8;
+  // Whether the event is anomalous under p_value <= alpha.
+  bool is_anomaly = 9;
+  // Severity for UI tiering.
+  worldmonitor.core.v1.SeverityLevel severity = 10;
+  // Number of calibration samples used to compute this p-value.
+  int32 calibration_count = 11;
+  // Calibration center (median) used for non-conformity scoring.
+  double calibration_center = 12;
+  // Non-conformity score for this sample (absolute deviation from center).
+  double nonconformity = 13;
+  // Value-only conformal p-value.
+  double p_value_value = 14 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Timing-only conformal p-value.
+  double p_value_timing = 15 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Timing non-conformity score (log-interval deviation).
+  double timing_nonconformity = 16;
+  // Observed inter-arrival interval for this signal (milliseconds).
+  int64 interval_ms = 17 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// ForensicsPhaseStatus reports execution status for each orchestrator phase.
+enum ForensicsPhaseStatus {
+  FORENSICS_PHASE_STATUS_UNSPECIFIED = 0;
+  FORENSICS_PHASE_STATUS_PENDING = 1;
+  FORENSICS_PHASE_STATUS_SUCCESS = 2;
+  FORENSICS_PHASE_STATUS_FAILED = 3;
+  FORENSICS_PHASE_STATUS_SKIPPED = 4;
+}
+
+// ForensicsPhaseTrace is a per-phase execution trace record.
+message ForensicsPhaseTrace {
+  // Phase identifier.
+  string phase = 1;
+  // Phase status.
+  ForensicsPhaseStatus status = 2;
+  // Phase start time, as Unix epoch milliseconds.
+  int64 started_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Phase completion time, as Unix epoch milliseconds.
+  int64 completed_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Phase elapsed time in milliseconds.
+  int64 elapsed_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Optional error message for failed phases.
+  string error = 6;
+}
+
+// ForensicsRunMetadata identifies one shadow pipeline run.
+message ForensicsRunMetadata {
+  // Stable run identifier.
+  string run_id = 1;
+  // Domain namespace for this run.
+  string domain = 2;
+  // Start time, as Unix epoch milliseconds.
+  int64 started_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Completion time, as Unix epoch milliseconds.
+  int64 completed_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Status string (for example "completed", "failed", "running").
+  string status = 5;
+  // Storage backend descriptor (for example "redis" or "memory").
+  string backend = 6;
+  // Worker execution mode descriptor ("local", "remote", or "mixed").
+  string worker_mode = 7;
+}
+
+// ForensicsRunSummary is a compact record for run history listing.
+message ForensicsRunSummary {
+  // Run metadata.
+  ForensicsRunMetadata run = 1;
+  // Number of fused signal rows.
+  int32 fused_count = 2;
+  // Number of calibrated anomaly rows.
+  int32 anomaly_count = 3;
+  // Number of rows flagged as anomalies.
+  int32 anomaly_flagged_count = 4;
+  // Maximum fused score observed in this run (0-100).
+  double max_fused_score = 5;
+  // Minimum p-value observed in this run (0-1). Defaults to 1 when empty.
+  double min_p_value = 6;
+}
+
+// ForensicsPolicyEntry stores one learned policy value (Q-table row).
+message ForensicsPolicyEntry {
+  // Domain namespace.
+  string domain = 1;
+  // Hashed state key used for policy lookup.
+  string state_hash = 2;
+  // Action identifier (phase name).
+  string action = 3;
+  // Learned Q-value for (state, action).
+  double q_value = 4;
+  // Number of updates for this row.
+  int32 visit_count = 5;
+  // Last reward applied to this row.
+  double last_reward = 6;
+  // Last update timestamp, as Unix epoch milliseconds.
+  int64 last_updated = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

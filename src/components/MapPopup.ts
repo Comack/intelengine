@@ -1,4 +1,4 @@
-import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat } from '@/types';
+import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat, ForensicsAnomalyOverlay } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
@@ -14,7 +14,7 @@ import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 import { getCableHealthRecord } from '@/services/cable-health';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'forensicsAnomaly' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
 
 interface TechEventPopupData {
   id: string;
@@ -120,7 +120,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | ForensicsAnomalyOverlay | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -362,6 +362,8 @@ export class MapPopup {
         return this.renderAPTPopup(data.data as APTGroup);
       case 'cyberThreat':
         return this.renderCyberThreatPopup(data.data as CyberThreat);
+      case 'forensicsAnomaly':
+        return this.renderForensicsAnomalyPopup(data.data as ForensicsAnomalyOverlay);
       case 'nuclear':
         return this.renderNuclearPopup(data.data as NuclearFacility);
       case 'economic':
@@ -1089,6 +1091,72 @@ export class MapPopup {
           </div>
         </div>
         <p class="popup-description">${t('popups.apt.description')}</p>
+      </div>
+    `;
+  }
+
+  private renderForensicsAnomalyPopup(anomaly: ForensicsAnomalyOverlay): string {
+    const severityClass = anomaly.severity === 'high'
+      ? 'high'
+      : anomaly.severity === 'medium'
+      ? 'elevated'
+      : 'low';
+    const severityLabel = anomaly.severity === 'unspecified'
+      ? t('popups.unknown').toUpperCase()
+      : anomaly.severity.toUpperCase();
+    const freshnessLabel = anomaly.isNearLive
+      ? `Near-live (${Math.max(0, anomaly.ageMinutes)}m)`
+      : `${Math.max(0, anomaly.ageMinutes)}m old`;
+    const monitorCategoryLabel = anomaly.monitorCategory
+      ? anomaly.monitorCategory.charAt(0).toUpperCase() + anomaly.monitorCategory.slice(1)
+      : 'Other';
+
+    return `
+      <div class="popup-header apt ${severityClass}">
+        <span class="popup-title">Forensics anomaly</span>
+        <span class="popup-badge ${severityClass}">${escapeHtml(severityLabel)}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-subtitle">${escapeHtml(anomaly.monitorLabel || anomaly.signalType)} · ${escapeHtml(anomaly.region || 'global')}</div>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Monitor focus</span>
+            <span class="stat-value">${escapeHtml(monitorCategoryLabel)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Freshness</span>
+            <span class="stat-value">${escapeHtml(freshnessLabel)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">P-value</span>
+            <span class="stat-value">${anomaly.pValue.toFixed(4)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Legacy z-score</span>
+            <span class="stat-value">${anomaly.legacyZScore.toFixed(2)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Observed value</span>
+            <span class="stat-value">${Math.round(anomaly.value)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Calibration center</span>
+            <span class="stat-value">${Math.round(anomaly.calibrationCenter)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Agreement</span>
+            <span class="stat-value">${anomaly.supportCount} source(s)</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Source</span>
+            <span class="stat-value">${escapeHtml(anomaly.sourceId)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Priority</span>
+            <span class="stat-value">${(anomaly.monitorPriority * 100).toFixed(0)}%</span>
+          </div>
+        </div>
       </div>
     `;
   }

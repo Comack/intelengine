@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/intelligence/v1/forensics.proto";
+
+// ListFusedSignalsRequest retrieves fused signal outputs for a run/domain.
+message ListFusedSignalsRequest {
+  // Optional run id. Empty means latest run for domain.
+  string run_id = 1;
+  // Optional domain filter.
+  string domain = 2;
+  // Maximum results to return (1-500). Zero uses server default.
+  int32 limit = 3 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 500
+  ];
+  // Optional region filter.
+  string region = 4;
+  // Optional minimum fused score filter (0-100).
+  double min_score = 5 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 100
+  ];
+  // Optional minimum fused probability filter (0-1).
+  double min_probability = 6 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+}
+
+// ListFusedSignalsResponse contains fused signal outputs.
+message ListFusedSignalsResponse {
+  // Run metadata for returned data.
+  ForensicsRunMetadata run = 1;
+  // Fused signals.
+  repeated ForensicsFusedSignal signals = 2;
+  // Error message if retrieval failed.
+  string error = 3;
+}

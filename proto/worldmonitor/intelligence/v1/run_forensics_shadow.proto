@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "worldmonitor/intelligence/v1/forensics.proto";
+
+// RunForensicsShadowRequest triggers a deterministic shadow forensics run.
+message RunForensicsShadowRequest {
+  // Domain namespace for this run ("infrastructure", "maritime", etc.).
+  string domain = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Input signals for fusion + calibrated anomaly analysis.
+  repeated ForensicsSignalInput signals = 2 [
+    (buf.validate.field).repeated.min_items = 1
+  ];
+  // Significance threshold for conformal anomalies.
+  double alpha = 3 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 1
+  ];
+  // Whether to persist this run and results in blackboard storage.
+  bool persist = 4;
+}
+
+// RunForensicsShadowResponse returns full outputs from the shadow run.
+message RunForensicsShadowResponse {
+  // Run metadata.
+  ForensicsRunMetadata run = 1;
+  // Fused per-source priority outputs.
+  repeated ForensicsFusedSignal fused_signals = 2;
+  // Calibrated anomaly outputs.
+  repeated ForensicsCalibratedAnomaly anomalies = 3;
+  // Per-phase execution trace.
+  repeated ForensicsPhaseTrace trace = 4;
+  // Error message if the run failed.
+  string error = 5;
+}

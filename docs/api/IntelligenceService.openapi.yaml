@@ -163,6 +163,262 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/run-forensics-shadow:
+        post:
+            tags:
+                - IntelligenceService
+            summary: RunForensicsShadow
+            description: RunForensicsShadow executes deterministic shadow forensics orchestration.
+            operationId: RunForensicsShadow
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RunForensicsShadowRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RunForensicsShadowResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-fused-signals:
+        post:
+            tags:
+                - IntelligenceService
+            summary: ListFusedSignals
+            description: ListFusedSignals returns weak-supervision fusion outputs for a run/domain.
+            operationId: ListFusedSignals
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListFusedSignalsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListFusedSignalsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-calibrated-anomalies:
+        post:
+            tags:
+                - IntelligenceService
+            summary: ListCalibratedAnomalies
+            description: ListCalibratedAnomalies returns conformal anomaly outputs for a run/domain.
+            operationId: ListCalibratedAnomalies
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListCalibratedAnomaliesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListCalibratedAnomaliesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-forensics-trace:
+        post:
+            tags:
+                - IntelligenceService
+            summary: GetForensicsTrace
+            description: GetForensicsTrace returns phase-level trace data for a run.
+            operationId: GetForensicsTrace
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetForensicsTraceRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetForensicsTraceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-forensics-run:
+        post:
+            tags:
+                - IntelligenceService
+            summary: GetForensicsRun
+            description: GetForensicsRun returns run metadata and aggregate output counts.
+            operationId: GetForensicsRun
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetForensicsRunRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetForensicsRunResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/list-forensics-runs:
+        post:
+            tags:
+                - IntelligenceService
+            summary: ListForensicsRuns
+            description: ListForensicsRuns returns recent run summaries for observability.
+            operationId: ListForensicsRuns
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListForensicsRunsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListForensicsRunsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-forensics-policy:
+        post:
+            tags:
+                - IntelligenceService
+            summary: GetForensicsPolicy
+            description: GetForensicsPolicy returns learned phase-order policy rows.
+            operationId: GetForensicsPolicy
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetForensicsPolicyRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetForensicsPolicyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-forensics-topology-summary:
+        post:
+            tags:
+                - IntelligenceService
+            summary: GetForensicsTopologySummary
+            description: GetForensicsTopologySummary returns topology alerts, trends, and baselines.
+            operationId: GetForensicsTopologySummary
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetForensicsTopologySummaryRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetForensicsTopologySummaryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -621,3 +877,662 @@ components:
                     format: double
                     description: GDELT tone score (negative = negative tone, positive = positive tone).
             description: GdeltArticle represents a single article from the GDELT document API.
+        RunForensicsShadowRequest:
+            type: object
+            properties:
+                domain:
+                    type: string
+                    minLength: 1
+                    description: Domain namespace for this run ("infrastructure", "maritime", etc.).
+                signals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsSignalInput'
+                    minItems: 1
+                alpha:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Significance threshold for conformal anomalies.
+                persist:
+                    type: boolean
+                    description: Whether to persist this run and results in blackboard storage.
+            required:
+                - domain
+            description: RunForensicsShadowRequest triggers a deterministic shadow forensics run.
+        ForensicsSignalInput:
+            type: object
+            properties:
+                sourceId:
+                    type: string
+                    minLength: 1
+                    description: Stable source identifier (for example "ais_gaps:SG" or "military_flights:US").
+                region:
+                    type: string
+                    description: Optional region key (for example ISO2 country code).
+                domain:
+                    type: string
+                    minLength: 1
+                    description: Domain namespace (for example "infrastructure" or "maritime").
+                signalType:
+                    type: string
+                    minLength: 1
+                    description: Signal class/type identifier (for example "ais_gaps", "internet_outage").
+                value:
+                    type: number
+                    format: double
+                    description: Scalar value to score.
+                confidence:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Optional confidence provided by upstream source (0.0 to 1.0).
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Observation timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            required:
+                - sourceId
+                - domain
+                - signalType
+            description: ForensicsSignalInput is a normalized scalar signal used by shadow forensics runs.
+        RunForensicsShadowResponse:
+            type: object
+            properties:
+                run:
+                    $ref: '#/components/schemas/ForensicsRunMetadata'
+                fusedSignals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsFusedSignal'
+                anomalies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsCalibratedAnomaly'
+                trace:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsPhaseTrace'
+                error:
+                    type: string
+                    description: Error message if the run failed.
+            description: RunForensicsShadowResponse returns full outputs from the shadow run.
+        ForensicsRunMetadata:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: Stable run identifier.
+                domain:
+                    type: string
+                    description: Domain namespace for this run.
+                startedAt:
+                    type: integer
+                    format: int64
+                    description: 'Start time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                completedAt:
+                    type: integer
+                    format: int64
+                    description: 'Completion time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                status:
+                    type: string
+                    description: Status string (for example "completed", "failed", "running").
+                backend:
+                    type: string
+                    description: Storage backend descriptor (for example "redis" or "memory").
+                workerMode:
+                    type: string
+                    description: Worker execution mode descriptor ("local", "remote", or "mixed").
+            description: ForensicsRunMetadata identifies one shadow pipeline run.
+        ForensicsFusedSignal:
+            type: object
+            properties:
+                sourceId:
+                    type: string
+                    description: Source identifier.
+                region:
+                    type: string
+                    description: Region key.
+                domain:
+                    type: string
+                    description: Domain namespace.
+                probability:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Calibrated probability that this source is high-priority (0.0 to 1.0).
+                score:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Human-facing score (0-100).
+                confidenceLower:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Lower confidence bound for probability.
+                confidenceUpper:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Upper confidence bound for probability.
+                contributors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsSignalContributor'
+            description: ForensicsFusedSignal is the weak-supervision fusion output for one source.
+        ForensicsSignalContributor:
+            type: object
+            properties:
+                signalType:
+                    type: string
+                    description: Signal class/type.
+                contribution:
+                    type: number
+                    format: double
+                    description: Contribution to the fused score (0-100 scale).
+                learnedWeight:
+                    type: number
+                    format: double
+                    description: Learned weight used for this signal.
+            description: ForensicsSignalContributor describes the contribution of one signal type.
+        ForensicsCalibratedAnomaly:
+            type: object
+            properties:
+                sourceId:
+                    type: string
+                    description: Source identifier.
+                region:
+                    type: string
+                    description: Region key.
+                domain:
+                    type: string
+                    description: Domain namespace.
+                signalType:
+                    type: string
+                    description: Signal class/type.
+                value:
+                    type: number
+                    format: double
+                    description: Observed signal value.
+                pValue:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Conformal p-value.
+                alpha:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Active significance threshold.
+                legacyZScore:
+                    type: number
+                    format: double
+                    description: Legacy z-score for backward compatibility.
+                isAnomaly:
+                    type: boolean
+                    description: Whether the event is anomalous under p_value <= alpha.
+                severity:
+                    type: string
+                    enum:
+                        - SEVERITY_LEVEL_UNSPECIFIED
+                        - SEVERITY_LEVEL_LOW
+                        - SEVERITY_LEVEL_MEDIUM
+                        - SEVERITY_LEVEL_HIGH
+                    description: |-
+                        SeverityLevel represents a three-tier severity classification used across domains.
+                         Maps to existing TS unions: 'low' | 'medium' | 'high'.
+                calibrationCount:
+                    type: integer
+                    format: int32
+                    description: Number of calibration samples used to compute this p-value.
+                calibrationCenter:
+                    type: number
+                    format: double
+                    description: Calibration center (median) used for non-conformity scoring.
+                nonconformity:
+                    type: number
+                    format: double
+                    description: Non-conformity score for this sample (absolute deviation from center).
+                pValueValue:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Value-only conformal p-value.
+                pValueTiming:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Timing-only conformal p-value.
+                timingNonconformity:
+                    type: number
+                    format: double
+                    description: Timing non-conformity score (log-interval deviation).
+                intervalMs:
+                    type: integer
+                    format: int64
+                    description: 'Observed inter-arrival interval for this signal (milliseconds).. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ForensicsCalibratedAnomaly is a conformal anomaly decision for one signal.
+        ForensicsPhaseTrace:
+            type: object
+            properties:
+                phase:
+                    type: string
+                    description: Phase identifier.
+                status:
+                    type: string
+                    enum:
+                        - FORENSICS_PHASE_STATUS_UNSPECIFIED
+                        - FORENSICS_PHASE_STATUS_PENDING
+                        - FORENSICS_PHASE_STATUS_SUCCESS
+                        - FORENSICS_PHASE_STATUS_FAILED
+                        - FORENSICS_PHASE_STATUS_SKIPPED
+                    description: ForensicsPhaseStatus reports execution status for each orchestrator phase.
+                startedAt:
+                    type: integer
+                    format: int64
+                    description: 'Phase start time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                completedAt:
+                    type: integer
+                    format: int64
+                    description: 'Phase completion time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                elapsedMs:
+                    type: integer
+                    format: int64
+                    description: 'Phase elapsed time in milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                error:
+                    type: string
+                    description: Optional error message for failed phases.
+            description: ForensicsPhaseTrace is a per-phase execution trace record.
+        ListFusedSignalsRequest:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: Optional run id. Empty means latest run for domain.
+                domain:
+                    type: string
+                    description: Optional domain filter.
+                limit:
+                    type: integer
+                    maximum: 500
+                    minimum: 0
+                    format: int32
+                    description: Maximum results to return (1-500). Zero uses server default.
+                region:
+                    type: string
+                    description: Optional region filter.
+                minScore:
+                    type: number
+                    maximum: 100
+                    minimum: 0
+                    format: double
+                    description: Optional minimum fused score filter (0-100).
+                minProbability:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Optional minimum fused probability filter (0-1).
+            description: ListFusedSignalsRequest retrieves fused signal outputs for a run/domain.
+        ListFusedSignalsResponse:
+            type: object
+            properties:
+                run:
+                    $ref: '#/components/schemas/ForensicsRunMetadata'
+                signals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsFusedSignal'
+                error:
+                    type: string
+                    description: Error message if retrieval failed.
+            description: ListFusedSignalsResponse contains fused signal outputs.
+        ListCalibratedAnomaliesRequest:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: Optional run id. Empty means latest run for domain.
+                domain:
+                    type: string
+                    description: Optional domain filter.
+                anomaliesOnly:
+                    type: boolean
+                    description: If true, return only entries flagged as anomalies.
+                limit:
+                    type: integer
+                    maximum: 500
+                    minimum: 0
+                    format: int32
+                    description: Maximum results to return (1-500). Zero uses server default.
+                signalType:
+                    type: string
+                    description: Optional signal type filter.
+                region:
+                    type: string
+                    description: Optional region filter.
+                maxPValue:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Optional maximum p-value filter (0-1). Zero disables this filter.
+                minAbsLegacyZScore:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: Optional minimum absolute legacy z-score filter.
+            description: ListCalibratedAnomaliesRequest retrieves calibrated anomalies for a run/domain.
+        ListCalibratedAnomaliesResponse:
+            type: object
+            properties:
+                run:
+                    $ref: '#/components/schemas/ForensicsRunMetadata'
+                anomalies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsCalibratedAnomaly'
+                error:
+                    type: string
+                    description: Error message if retrieval failed.
+            description: ListCalibratedAnomaliesResponse contains calibrated anomaly outputs.
+        GetForensicsTraceRequest:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    minLength: 1
+                    description: Run id.
+            required:
+                - runId
+            description: GetForensicsTraceRequest retrieves phase-level execution trace for a run.
+        GetForensicsTraceResponse:
+            type: object
+            properties:
+                run:
+                    $ref: '#/components/schemas/ForensicsRunMetadata'
+                trace:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsPhaseTrace'
+                error:
+                    type: string
+                    description: Error message if retrieval failed.
+            description: GetForensicsTraceResponse returns run metadata and phase trace.
+        GetForensicsRunRequest:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    minLength: 1
+                    description: Run id.
+            required:
+                - runId
+            description: GetForensicsRunRequest fetches metadata and aggregate counts for a run.
+        GetForensicsRunResponse:
+            type: object
+            properties:
+                run:
+                    $ref: '#/components/schemas/ForensicsRunMetadata'
+                fusedCount:
+                    type: integer
+                    format: int32
+                    description: Number of fused signal rows stored for the run.
+                anomalyCount:
+                    type: integer
+                    format: int32
+                    description: Number of anomaly rows stored for the run.
+                error:
+                    type: string
+                    description: Error message if retrieval failed.
+            description: GetForensicsRunResponse includes run metadata and output counts.
+        ListForensicsRunsRequest:
+            type: object
+            properties:
+                domain:
+                    type: string
+                    description: Optional domain filter.
+                status:
+                    type: string
+                    description: Optional run status filter ("completed", "failed", "running").
+                limit:
+                    type: integer
+                    maximum: 500
+                    minimum: 0
+                    format: int32
+                    description: Maximum results to return (1-500). Zero uses server default.
+                offset:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Optional pagination offset for run history listing.
+            description: ListForensicsRunsRequest retrieves recent run summaries.
+        ListForensicsRunsResponse:
+            type: object
+            properties:
+                runs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsRunSummary'
+                error:
+                    type: string
+                    description: Error message if retrieval failed.
+            description: ListForensicsRunsResponse contains run summaries.
+        ForensicsRunSummary:
+            type: object
+            properties:
+                run:
+                    $ref: '#/components/schemas/ForensicsRunMetadata'
+                fusedCount:
+                    type: integer
+                    format: int32
+                    description: Number of fused signal rows.
+                anomalyCount:
+                    type: integer
+                    format: int32
+                    description: Number of calibrated anomaly rows.
+                anomalyFlaggedCount:
+                    type: integer
+                    format: int32
+                    description: Number of rows flagged as anomalies.
+                maxFusedScore:
+                    type: number
+                    format: double
+                    description: Maximum fused score observed in this run (0-100).
+                minPValue:
+                    type: number
+                    format: double
+                    description: Minimum p-value observed in this run (0-1). Defaults to 1 when empty.
+            description: ForensicsRunSummary is a compact record for run history listing.
+        GetForensicsPolicyRequest:
+            type: object
+            properties:
+                domain:
+                    type: string
+                    description: Domain namespace. Empty defaults to "infrastructure".
+                stateHash:
+                    type: string
+                    description: Optional state hash filter.
+                limit:
+                    type: integer
+                    maximum: 500
+                    minimum: 0
+                    format: int32
+                    description: Maximum rows to return (1-500). Zero uses server default.
+            description: GetForensicsPolicyRequest retrieves learned orchestration policy rows.
+        GetForensicsPolicyResponse:
+            type: object
+            properties:
+                entries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsPolicyEntry'
+                error:
+                    type: string
+                    description: Error message if retrieval failed.
+            description: GetForensicsPolicyResponse returns policy rows for inspection.
+        ForensicsPolicyEntry:
+            type: object
+            properties:
+                domain:
+                    type: string
+                    description: Domain namespace.
+                stateHash:
+                    type: string
+                    description: Hashed state key used for policy lookup.
+                action:
+                    type: string
+                    description: Action identifier (phase name).
+                qValue:
+                    type: number
+                    format: double
+                    description: Learned Q-value for (state, action).
+                visitCount:
+                    type: integer
+                    format: int32
+                    description: Number of updates for this row.
+                lastReward:
+                    type: number
+                    format: double
+                    description: Last reward applied to this row.
+                lastUpdated:
+                    type: integer
+                    format: int64
+                    description: 'Last update timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ForensicsPolicyEntry stores one learned policy value (Q-table row).
+        GetForensicsTopologySummaryRequest:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: Optional run id. Empty means latest run for domain.
+                domain:
+                    type: string
+                    description: Optional domain filter. Empty defaults to run domain.
+                anomaliesOnly:
+                    type: boolean
+                    description: Whether to return only rows flagged as anomalies in alerts.
+                alertLimit:
+                    type: integer
+                    maximum: 500
+                    minimum: 0
+                    format: int32
+                    description: Maximum topology alert rows to return (1-500). Zero uses server default.
+                historyLimit:
+                    type: integer
+                    maximum: 120
+                    minimum: 0
+                    format: int32
+                    description: Number of runs to inspect for trend series (1-120). Zero uses server default.
+                baselineLimit:
+                    type: integer
+                    maximum: 500
+                    minimum: 0
+                    format: int32
+                    description: Maximum baseline rows to return (1-500). Zero uses server default.
+            description: GetForensicsTopologySummaryRequest retrieves topology alerts, trends, and baseline stats.
+        GetForensicsTopologySummaryResponse:
+            type: object
+            properties:
+                run:
+                    $ref: '#/components/schemas/ForensicsRunMetadata'
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsCalibratedAnomaly'
+                trends:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsTopologyMetricSeries'
+                baselines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsTopologyBaselineSummary'
+                error:
+                    type: string
+                    description: Error message if retrieval failed.
+            description: GetForensicsTopologySummaryResponse returns topology-specific summaries.
+        ForensicsTopologyMetricSeries:
+            type: object
+            properties:
+                metric:
+                    type: string
+                    description: Metric key (for example "topology_tsi").
+                label:
+                    type: string
+                    description: Human label for display.
+                points:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsTopologyMetricPoint'
+            description: ForensicsTopologyMetricSeries contains one metric trend.
+        ForensicsTopologyMetricPoint:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: Run identifier.
+                completedAt:
+                    type: integer
+                    format: int64
+                    description: 'Run completion timestamp as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                value:
+                    type: number
+                    format: double
+                    description: Metric value.
+                region:
+                    type: string
+                    description: Region associated with this point.
+            description: ForensicsTopologyMetricPoint captures one historical metric value for a run.
+        ForensicsTopologyBaselineSummary:
+            type: object
+            properties:
+                domain:
+                    type: string
+                    description: Domain namespace.
+                region:
+                    type: string
+                    description: Region key.
+                signalType:
+                    type: string
+                    description: Signal type key.
+                count:
+                    type: integer
+                    format: int32
+                    description: Number of observations in this baseline.
+                mean:
+                    type: number
+                    format: double
+                    description: Running mean.
+                stdDev:
+                    type: number
+                    format: double
+                    description: Running standard deviation.
+                minValue:
+                    type: number
+                    format: double
+                    description: Minimum observed value.
+                maxValue:
+                    type: number
+                    format: double
+                    description: Maximum observed value.
+                lastValue:
+                    type: number
+                    format: double
+                    description: Last observed value.
+                lastUpdated:
+                    type: integer
+                    format: int64
+                    description: 'Last update timestamp as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: ForensicsTopologyBaselineSummary contains current baseline stats for one metric key.

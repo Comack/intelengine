@@ -136,11 +136,232 @@ export interface GdeltArticle {
   tone: number;
 }
 
+export interface RunForensicsShadowRequest {
+  domain: string;
+  signals: ForensicsSignalInput[];
+  alpha: number;
+  persist: boolean;
+}
+
+export interface ForensicsSignalInput {
+  sourceId: string;
+  region: string;
+  domain: string;
+  signalType: string;
+  value: number;
+  confidence: number;
+  observedAt: number;
+}
+
+export interface RunForensicsShadowResponse {
+  run?: ForensicsRunMetadata;
+  fusedSignals: ForensicsFusedSignal[];
+  anomalies: ForensicsCalibratedAnomaly[];
+  trace: ForensicsPhaseTrace[];
+  error: string;
+}
+
+export interface ForensicsRunMetadata {
+  runId: string;
+  domain: string;
+  startedAt: number;
+  completedAt: number;
+  status: string;
+  backend: string;
+  workerMode: string;
+}
+
+export interface ForensicsFusedSignal {
+  sourceId: string;
+  region: string;
+  domain: string;
+  probability: number;
+  score: number;
+  confidenceLower: number;
+  confidenceUpper: number;
+  contributors: ForensicsSignalContributor[];
+}
+
+export interface ForensicsSignalContributor {
+  signalType: string;
+  contribution: number;
+  learnedWeight: number;
+}
+
+export interface ForensicsCalibratedAnomaly {
+  sourceId: string;
+  region: string;
+  domain: string;
+  signalType: string;
+  value: number;
+  pValue: number;
+  alpha: number;
+  legacyZScore: number;
+  isAnomaly: boolean;
+  severity: SeverityLevel;
+  calibrationCount: number;
+  calibrationCenter: number;
+  nonconformity: number;
+  pValueValue: number;
+  pValueTiming: number;
+  timingNonconformity: number;
+  intervalMs: number;
+}
+
+export interface ForensicsPhaseTrace {
+  phase: string;
+  status: ForensicsPhaseStatus;
+  startedAt: number;
+  completedAt: number;
+  elapsedMs: number;
+  error: string;
+}
+
+export interface ListFusedSignalsRequest {
+  runId: string;
+  domain: string;
+  limit: number;
+  region: string;
+  minScore: number;
+  minProbability: number;
+}
+
+export interface ListFusedSignalsResponse {
+  run?: ForensicsRunMetadata;
+  signals: ForensicsFusedSignal[];
+  error: string;
+}
+
+export interface ListCalibratedAnomaliesRequest {
+  runId: string;
+  domain: string;
+  anomaliesOnly: boolean;
+  limit: number;
+  signalType: string;
+  region: string;
+  maxPValue: number;
+  minAbsLegacyZScore: number;
+}
+
+export interface ListCalibratedAnomaliesResponse {
+  run?: ForensicsRunMetadata;
+  anomalies: ForensicsCalibratedAnomaly[];
+  error: string;
+}
+
+export interface GetForensicsTraceRequest {
+  runId: string;
+}
+
+export interface GetForensicsTraceResponse {
+  run?: ForensicsRunMetadata;
+  trace: ForensicsPhaseTrace[];
+  error: string;
+}
+
+export interface GetForensicsRunRequest {
+  runId: string;
+}
+
+export interface GetForensicsRunResponse {
+  run?: ForensicsRunMetadata;
+  fusedCount: number;
+  anomalyCount: number;
+  error: string;
+}
+
+export interface ListForensicsRunsRequest {
+  domain: string;
+  status: string;
+  limit: number;
+  offset: number;
+}
+
+export interface ListForensicsRunsResponse {
+  runs: ForensicsRunSummary[];
+  error: string;
+}
+
+export interface ForensicsRunSummary {
+  run?: ForensicsRunMetadata;
+  fusedCount: number;
+  anomalyCount: number;
+  anomalyFlaggedCount: number;
+  maxFusedScore: number;
+  minPValue: number;
+}
+
+export interface GetForensicsPolicyRequest {
+  domain: string;
+  stateHash: string;
+  limit: number;
+}
+
+export interface GetForensicsPolicyResponse {
+  entries: ForensicsPolicyEntry[];
+  error: string;
+}
+
+export interface ForensicsPolicyEntry {
+  domain: string;
+  stateHash: string;
+  action: string;
+  qValue: number;
+  visitCount: number;
+  lastReward: number;
+  lastUpdated: number;
+}
+
+export interface GetForensicsTopologySummaryRequest {
+  runId: string;
+  domain: string;
+  anomaliesOnly: boolean;
+  alertLimit: number;
+  historyLimit: number;
+  baselineLimit: number;
+}
+
+export interface GetForensicsTopologySummaryResponse {
+  run?: ForensicsRunMetadata;
+  alerts: ForensicsCalibratedAnomaly[];
+  trends: ForensicsTopologyMetricSeries[];
+  baselines: ForensicsTopologyBaselineSummary[];
+  error: string;
+}
+
+export interface ForensicsTopologyMetricSeries {
+  metric: string;
+  label: string;
+  points: ForensicsTopologyMetricPoint[];
+}
+
+export interface ForensicsTopologyMetricPoint {
+  runId: string;
+  completedAt: number;
+  value: number;
+  region: string;
+}
+
+export interface ForensicsTopologyBaselineSummary {
+  domain: string;
+  region: string;
+  signalType: string;
+  count: number;
+  mean: number;
+  stdDev: number;
+  minValue: number;
+  maxValue: number;
+  lastValue: number;
+  lastUpdated: number;
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
 
 export type DataFreshness = "DATA_FRESHNESS_UNSPECIFIED" | "DATA_FRESHNESS_FRESH" | "DATA_FRESHNESS_STALE";
+
+export type ForensicsPhaseStatus = "FORENSICS_PHASE_STATUS_UNSPECIFIED" | "FORENSICS_PHASE_STATUS_PENDING" | "FORENSICS_PHASE_STATUS_SUCCESS" | "FORENSICS_PHASE_STATUS_FAILED" | "FORENSICS_PHASE_STATUS_SKIPPED";
 
 export interface FieldViolation {
   field: string;
@@ -192,6 +413,14 @@ export interface IntelligenceServiceHandler {
   classifyEvent(ctx: ServerContext, req: ClassifyEventRequest): Promise<ClassifyEventResponse>;
   getCountryIntelBrief(ctx: ServerContext, req: GetCountryIntelBriefRequest): Promise<GetCountryIntelBriefResponse>;
   searchGdeltDocuments(ctx: ServerContext, req: SearchGdeltDocumentsRequest): Promise<SearchGdeltDocumentsResponse>;
+  runForensicsShadow(ctx: ServerContext, req: RunForensicsShadowRequest): Promise<RunForensicsShadowResponse>;
+  listFusedSignals(ctx: ServerContext, req: ListFusedSignalsRequest): Promise<ListFusedSignalsResponse>;
+  listCalibratedAnomalies(ctx: ServerContext, req: ListCalibratedAnomaliesRequest): Promise<ListCalibratedAnomaliesResponse>;
+  getForensicsTrace(ctx: ServerContext, req: GetForensicsTraceRequest): Promise<GetForensicsTraceResponse>;
+  getForensicsRun(ctx: ServerContext, req: GetForensicsRunRequest): Promise<GetForensicsRunResponse>;
+  listForensicsRuns(ctx: ServerContext, req: ListForensicsRunsRequest): Promise<ListForensicsRunsResponse>;
+  getForensicsPolicy(ctx: ServerContext, req: GetForensicsPolicyRequest): Promise<GetForensicsPolicyResponse>;
+  getForensicsTopologySummary(ctx: ServerContext, req: GetForensicsTopologySummaryRequest): Promise<GetForensicsTopologySummaryResponse>;
 }
 
 export function createIntelligenceServiceRoutes(
@@ -393,6 +622,350 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.searchGdeltDocuments(ctx, body);
           return new Response(JSON.stringify(result as SearchGdeltDocumentsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/run-forensics-shadow",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as RunForensicsShadowRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("runForensicsShadow", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.runForensicsShadow(ctx, body);
+          return new Response(JSON.stringify(result as RunForensicsShadowResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/list-fused-signals",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListFusedSignalsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listFusedSignals", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listFusedSignals(ctx, body);
+          return new Response(JSON.stringify(result as ListFusedSignalsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/list-calibrated-anomalies",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListCalibratedAnomaliesRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listCalibratedAnomalies", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listCalibratedAnomalies(ctx, body);
+          return new Response(JSON.stringify(result as ListCalibratedAnomaliesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/get-forensics-trace",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetForensicsTraceRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getForensicsTrace", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getForensicsTrace(ctx, body);
+          return new Response(JSON.stringify(result as GetForensicsTraceResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/get-forensics-run",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetForensicsRunRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getForensicsRun", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getForensicsRun(ctx, body);
+          return new Response(JSON.stringify(result as GetForensicsRunResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/list-forensics-runs",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListForensicsRunsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listForensicsRuns", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listForensicsRuns(ctx, body);
+          return new Response(JSON.stringify(result as ListForensicsRunsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/get-forensics-policy",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetForensicsPolicyRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getForensicsPolicy", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getForensicsPolicy(ctx, body);
+          return new Response(JSON.stringify(result as GetForensicsPolicyResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/get-forensics-topology-summary",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as GetForensicsTopologySummaryRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getForensicsTopologySummary", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getForensicsTopologySummary(ctx, body);
+          return new Response(JSON.stringify(result as GetForensicsTopologySummaryResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

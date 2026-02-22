@@ -3,6 +3,7 @@
 // Backed by InfrastructureService RPCs (GetTemporalBaseline, RecordBaselineSnapshot)
 
 import { InfrastructureServiceClient } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
+import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
 export type TemporalEventType =
   | 'military_flights'
@@ -23,6 +24,8 @@ export interface TemporalAnomaly {
 }
 
 const client = new InfrastructureServiceClient('', { fetch: fetch.bind(globalThis) });
+const forensicsClient = new IntelligenceServiceClient('', { fetch: fetch.bind(globalThis) });
+const USE_CALIBRATED_ANOMALIES = import.meta.env.VITE_ENABLE_CALIBRATED_ANOMALIES === 'true';
 
 const TYPE_LABELS: Record<TemporalEventType, string> = {
   military_flights: 'Military flights',
@@ -55,6 +58,28 @@ function getSeverity(zScore: number): 'medium' | 'high' | 'critical' {
   if (zScore >= 3.0) return 'critical';
   if (zScore >= 2.0) return 'high';
   return 'medium';
+}
+
+function getSeverityFromForensics(
+  severity: 'SEVERITY_LEVEL_UNSPECIFIED' | 'SEVERITY_LEVEL_LOW' | 'SEVERITY_LEVEL_MEDIUM' | 'SEVERITY_LEVEL_HIGH',
+): 'medium' | 'high' | 'critical' {
+  if (severity === 'SEVERITY_LEVEL_HIGH') return 'critical';
+  if (severity === 'SEVERITY_LEVEL_MEDIUM') return 'high';
+  return 'medium';
+}
+
+function toTemporalEventType(signalType: string): TemporalEventType | null {
+  switch (signalType) {
+    case 'military_flights':
+    case 'vessels':
+    case 'protests':
+    case 'news':
+    case 'ais_gaps':
+    case 'satellite_fires':
+      return signalType;
+    default:
+      return null;
+  }
 }
 
 // Fire-and-forget baseline update
@@ -99,6 +124,57 @@ export async function updateAndCheck(
 ): Promise<TemporalAnomaly[]> {
   // Fire-and-forget the update
   reportMetrics(metrics).catch(() => {});
+
+  // Optional calibrated anomaly path (server-side shadow forensics).
+  if (USE_CALIBRATED_ANOMALIES && metrics.length > 0) {
+    try {
+      const signals = metrics.map((m) => ({
+        sourceId: `${m.type}:${m.region || 'global'}`,
+        region: m.region || 'global',
+        domain: m.type === 'vessels' || m.type === 'ais_gaps' ? 'maritime' : 'infrastructure',
+        signalType: m.type,
+        value: m.count,
+        confidence: 1,
+        observedAt: Date.now(),
+      }));
+      const metricBySourceId = new Map(signals.map((s, i) => [s.sourceId, metrics[i]]));
+
+      const forensics = await forensicsClient.runForensicsShadow({
+        domain: 'infrastructure',
+        signals,
+        alpha: 0.05,
+        persist: true,
+      });
+
+      const calibrated = forensics.anomalies
+        .filter((a) => a.isAnomaly)
+        .map((a) => {
+          const mappedType = toTemporalEventType(a.signalType);
+          if (!mappedType) return null;
+
+          const metric = metricBySourceId.get(a.sourceId);
+          const currentCount = metric?.count ?? Math.round(a.value);
+          const region = metric?.region || a.region || 'global';
+          return {
+            type: mappedType,
+            region,
+            currentCount,
+            expectedCount: currentCount,
+            zScore: a.legacyZScore,
+            severity: getSeverityFromForensics(a.severity),
+            message: `[Calibrated] ${TYPE_LABELS[mappedType]} anomaly in ${region}: p=${a.pValue.toFixed(3)}, value=${Math.round(a.value)}`,
+          } as TemporalAnomaly;
+        })
+        .filter((a): a is TemporalAnomaly => a !== null)
+        .sort((a, b) => b.zScore - a.zScore);
+
+      if (calibrated.length > 0) {
+        return calibrated;
+      }
+    } catch (e) {
+      console.warn('[TemporalBaseline] Calibrated anomaly path failed:', e);
+    }
+  }
 
   // Check anomalies in parallel
   const results = await Promise.allSettled(
