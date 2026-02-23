@@ -2293,6 +2293,45 @@ canvas,
   border-radius: 8px;
 }
 
+.forensics-digest-summary {
+  border-left-color: var(--semantic-high);
+  background: rgba(255, 170, 0, 0.08);
+}
+
+.forensics-anomaly-card.forensics-high {
+  border-left-color: var(--semantic-critical);
+}
+
+.forensics-anomaly-card.forensics-medium {
+  border-left-color: var(--semantic-high);
+}
+
+.forensics-anomaly-card.forensics-low {
+  border-left-color: var(--semantic-normal);
+}
+
+.signal-forensics-severity {
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 1px solid currentColor;
+  vertical-align: middle;
+}
+
+.signal-forensics-severity.high {
+  color: var(--semantic-critical);
+}
+
+.signal-forensics-severity.medium {
+  color: var(--semantic-high);
+}
+
+.signal-forensics-severity.low {
+  color: var(--semantic-normal);
+}
+
 .signal-modal-footer {
   display: flex;
   justify-content: space-between;
@@ -5012,6 +5051,81 @@ a.prediction-link:hover {
   border-radius: 2px;
 }
 
+.popup-tag-link {
+  text-decoration: none;
+}
+
+.popup-tag-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.forensics-popup-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.forensics-popup-chip {
+  font-size: 10px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  background: var(--darken-heavy);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.forensics-popup-meter-wrap {
+  margin-bottom: 14px;
+}
+
+.forensics-popup-meter-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.forensics-popup-meter {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.forensics-popup-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--semantic-normal);
+}
+
+.forensics-popup-meter-fill.high {
+  background: var(--semantic-critical);
+}
+
+.forensics-popup-meter-fill.elevated {
+  background: var(--semantic-high);
+}
+
+.forensics-popup-meter-fill.low {
+  background: var(--semantic-normal);
+}
+
+.forensics-popup-list li {
+  color: var(--text);
+}
+
+.forensics-popup-list li::before {
+  color: var(--accent);
+}
+
+.forensics-popup-links {
+  gap: 8px;
+}
+
 .popup-list {
   list-style: none;
   padding: 0;
@@ -6737,6 +6851,49 @@ a.prediction-link:hover {
   background: var(--bg);
   padding: 2px 6px;
   border-radius: 3px;
+}
+
+.search-result-type.forensics-low {
+  color: var(--semantic-normal);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.search-result-type.forensics-medium {
+  color: var(--semantic-high);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.search-result-type.forensics-high {
+  color: var(--semantic-critical);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.search-forensics-low {
+  border-left: 2px solid rgba(34, 197, 94, 0.45);
+}
+
+.search-forensics-medium {
+  border-left: 2px solid rgba(245, 158, 11, 0.5);
+}
+
+.search-forensics-high {
+  border-left: 2px solid rgba(239, 68, 68, 0.6);
+}
+
+.search-result-metrics {
+  margin-top: 4px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.search-result-metric {
+  font-size: 9px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+  line-height: 1.3;
 }
 
 .search-empty {
@@ -9702,6 +9859,15 @@ a.prediction-link:hover {
   border-color: var(--accent);
 }
 
+.risk-metric.forensics {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.risk-metric.forensics .risk-metric-value {
+  color: var(--semantic-high);
+}
+
 .risk-metric-value {
   font-size: 18px;
   font-weight: bold;
@@ -9747,6 +9913,11 @@ a.prediction-link:hover {
   background: rgba(255, 136, 0, 0.08);
   border-radius: 4px;
   border-left: 2px solid var(--yellow);
+}
+
+.risk-item-forensics {
+  border-left-color: var(--semantic-high);
+  background: rgba(245, 158, 11, 0.14);
 }
 
 .risk-rank {
@@ -12437,6 +12608,108 @@ a.prediction-link:hover {
   border-top: 1px solid var(--border);
 }
 
+.insights-forensics {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.insights-forensics .insights-section-title {
+  color: var(--semantic-high);
+}
+
+.insights-forensics-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.insights-forensics-chip {
+  font-size: 9px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  background: var(--overlay-subtle);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.insights-forensics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.insights-forensics-item {
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-dim);
+  background: var(--overlay-subtle);
+  cursor: pointer;
+  color: inherit;
+}
+
+.insights-forensics-item:hover {
+  border-color: var(--accent);
+  background: var(--overlay-light);
+}
+
+.insights-forensics-item.high {
+  border-left-color: var(--semantic-critical);
+}
+
+.insights-forensics-item.medium {
+  border-left-color: var(--semantic-high);
+}
+
+.insights-forensics-item.low {
+  border-left-color: var(--semantic-normal);
+}
+
+.insights-forensics-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.insights-forensics-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.insights-forensics-severity {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+}
+
+.insights-forensics-severity.high {
+  color: var(--semantic-critical);
+}
+
+.insights-forensics-severity.medium {
+  color: var(--semantic-high);
+}
+
+.insights-forensics-severity.low {
+  color: var(--semantic-normal);
+}
+
+.insights-forensics-meta {
+  font-size: 9px;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
 .focal-point {
   padding: 10px;
   margin-bottom: 8px;
@@ -14404,6 +14677,79 @@ body.has-critical-banner .panels-grid {
 .signal-chip.conflict {
   border-color: rgba(255, 80, 80, 0.3);
   color: var(--semantic-critical);
+}
+
+/* Country brief forensics diagnostics */
+.cb-forensics-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.cb-forensics-badge {
+  border-color: var(--overlay-medium);
+}
+
+.cb-forensics-badge.critical {
+  background: rgba(255, 90, 90, 0.14);
+  border-color: rgba(255, 90, 90, 0.32);
+  color: var(--semantic-critical);
+}
+
+.cb-forensics-badge.elevated {
+  background: rgba(255, 180, 80, 0.14);
+  border-color: rgba(255, 180, 80, 0.32);
+  color: var(--semantic-high);
+}
+
+.cb-forensics-badge.normal {
+  background: rgba(100, 220, 170, 0.12);
+  border-color: rgba(100, 220, 170, 0.3);
+  color: var(--semantic-normal);
+}
+
+.cb-forensics-list {
+  display: grid;
+  gap: 6px;
+}
+
+.cb-forensics-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--overlay-light);
+  border-radius: 8px;
+  background: var(--overlay-subtle);
+  color: var(--accent);
+  padding: 9px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.cb-forensics-item:hover {
+  background: var(--overlay-light);
+  border-color: var(--overlay-medium);
+}
+
+.cb-forensics-item:focus-visible {
+  outline: 2px solid var(--semantic-low);
+  outline-offset: 1px;
+}
+
+.cb-forensics-item-main {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.cb-forensics-item-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 /* Brief Text */

@@ -4,7 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListStablecoinMarketsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-type StablecoinResult = ListStablecoinMarketsResponse;
+export type StablecoinResult = ListStablecoinMarketsResponse;
 
 function formatLargeNum(v: number): string {
   if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
@@ -29,6 +29,7 @@ export class StablecoinPanel extends Panel {
   private data: StablecoinResult | null = null;
   private loading = true;
   private error: string | null = null;
+  private onDataUpdated: ((data: StablecoinResult) => void) | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -44,11 +45,17 @@ export class StablecoinPanel extends Panel {
     }
   }
 
+  public setOnDataUpdated(cb: ((data: StablecoinResult) => void) | null): void {
+    this.onDataUpdated = cb;
+    if (cb && this.data) cb(this.data);
+  }
+
   private async fetchData(): Promise<void> {
     try {
       const client = new MarketServiceClient('', { fetch: fetch.bind(globalThis) });
       this.data = await client.listStablecoinMarkets({ coins: [] });
       this.error = null;
+      this.onDataUpdated?.(this.data);
     } catch (err) {
       if (this.isAbortError(err)) return;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';

@@ -301,6 +301,11 @@ function buildProvenanceLinks(anomaly: ForensicsCalibratedAnomaly): ForensicsPro
 export class ForensicsPanel extends Panel {
   private snapshot: ForensicsPanelSnapshot | null = null;
   private selectedAnomalyKey = '';
+  private onAnomalySelected?: (anomalyKey: string) => void;
+
+  public setOnAnomalySelected(handler: (anomalyKey: string) => void): void {
+    this.onAnomalySelected = handler;
+  }
 
   private onContentClick = (event: Event): void => {
     const target = event.target as HTMLElement | null;
@@ -311,6 +316,7 @@ export class ForensicsPanel extends Panel {
     if (!key || key === this.selectedAnomalyKey) return;
     this.selectedAnomalyKey = key;
     this.render();
+    this.onAnomalySelected?.(key);
   };
 
   private onContentKeydown = (event: KeyboardEvent): void => {
@@ -323,6 +329,7 @@ export class ForensicsPanel extends Panel {
     if (!key || key === this.selectedAnomalyKey) return;
     this.selectedAnomalyKey = key;
     this.render();
+    this.onAnomalySelected?.(key);
   };
 
   constructor(title = 'Forensics Signals') {

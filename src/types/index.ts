@@ -229,6 +229,7 @@ export interface ForensicsAnomalyOverlay {
   region: string;
   domain: string;
   signalType: string;
+  observedAt: number;
   monitorCategory: 'market' | 'maritime' | 'cyber' | 'infrastructure' | 'security' | 'other';
   monitorLabel: string;
   monitorPriority: number;

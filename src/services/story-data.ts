@@ -71,6 +71,12 @@ export interface StoryData {
     signalTypes: string[];
     regionalDescriptions: string[];
   } | null;
+  forensics: {
+    flagged: number;
+    nearLive: number;
+    minPValue: number | null;
+    topLabels: string[];
+  };
 }
 
 export function collectStoryData(
@@ -81,6 +87,7 @@ export function collectStoryData(
   predictionMarkets: Array<{ title: string; yesPrice: number }>,
   signals?: { protests: number; militaryFlights: number; militaryVessels: number; outages: number },
   convergence?: { score: number; signalTypes: string[]; regionalDescriptions: string[] } | null,
+  forensics?: { flagged: number; nearLive: number; minPValue: number | null; topLabels: string[] } | null,
 ): StoryData {
   const scores = calculateCII();
   const countryScore = scores.find(s => s.code === countryCode) || null;
@@ -156,6 +163,6 @@ export function collectStoryData(
     },
     signals: signals || { protests: 0, militaryFlights: 0, militaryVessels: 0, outages: 0 },
     convergence: convergence || null,
+    forensics: forensics || { flagged: 0, nearLive: 0, minPValue: null, topLabels: [] },
   };
 }
-

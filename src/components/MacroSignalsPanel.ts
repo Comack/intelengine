@@ -4,7 +4,7 @@ import { t } from '@/services/i18n';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { GetMacroSignalsResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 
-interface MacroSignalData {
+export interface MacroSignalData {
   timestamp: string;
   verdict: string;
   bullishCount: number;
@@ -122,6 +122,7 @@ export class MacroSignalsPanel extends Panel {
   private data: MacroSignalData | null = null;
   private loading = true;
   private error: string | null = null;
+  private onDataUpdated: ((data: MacroSignalData) => void) | null = null;
 
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -138,11 +139,17 @@ export class MacroSignalsPanel extends Panel {
     }
   }
 
+  public setOnDataUpdated(cb: ((data: MacroSignalData) => void) | null): void {
+    this.onDataUpdated = cb;
+    if (cb && this.data) cb(this.data);
+  }
+
   private async fetchData(): Promise<void> {
     try {
       const res = await economicClient.getMacroSignals({});
       this.data = mapProtoToData(res);
       this.error = null;
+      this.onDataUpdated?.(this.data);
     } catch (err) {
       if (this.isAbortError(err)) return;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';

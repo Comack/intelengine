@@ -1132,6 +1132,98 @@ export class MapPopup {
       : anomaly.signalType === 'ais_route_deviation'
       ? 'Route shift away from expected corridor'
       : '';
+    const priorityPercent = Math.round((anomaly.monitorPriority || 0) * 100);
+    const deviation = anomaly.value - anomaly.calibrationCenter;
+    const deviationPct = Math.abs(anomaly.calibrationCenter) > 0
+      ? (deviation / Math.abs(anomaly.calibrationCenter)) * 100
+      : 0;
+    const significanceScore = Math.max(0, Math.min(100, Math.round(
+      (1 - Math.min(1, anomaly.pValue / 0.25)) * 65
+      + Math.min(25, Math.abs(anomaly.legacyZScore) * 7)
+      + Math.min(10, Math.max(0, anomaly.supportCount - 1) * 4),
+    )));
+    const observedAtLabel = anomaly.observedAt > 0
+      ? new Date(anomaly.observedAt).toLocaleString()
+      : t('popups.unknown');
+    const diagnosticSummary = anomaly.isNearLive
+      ? 'Live deviation pattern still active'
+      : Math.abs(anomaly.legacyZScore) >= 3
+      ? 'High-confidence structural deviation'
+      : 'Baseline deviation requiring follow-up';
+
+    const interpretationItems: string[] = [];
+    if (anomaly.isNearLive) {
+      interpretationItems.push(`Near-live anomaly at ${anomaly.region || 'global'} with ${priorityPercent}% monitor priority.`);
+    }
+    if (Math.abs(deviation) > 0) {
+      const sign = deviation >= 0 ? '+' : '';
+      interpretationItems.push(`Observed value ${Math.round(anomaly.value)} is ${sign}${Math.round(deviation)} from baseline center ${Math.round(anomaly.calibrationCenter)}.`);
+    }
+    if (isAisTrajectory && trajectoryDiagnostic) {
+      interpretationItems.push(trajectoryDiagnostic);
+    }
+    if (interpretationItems.length === 0) {
+      interpretationItems.push('Flagged by calibrated forensics model with elevated nonconformity.');
+    }
+
+    const actionItems: string[] = [];
+    if (anomaly.monitorCategory === 'market') {
+      actionItems.push('Cross-check correlated symbols and prediction contracts for spillover.');
+      actionItems.push('Review macro catalysts and event headlines in the last 6 hours.');
+    } else if (anomaly.monitorCategory === 'maritime') {
+      actionItems.push('Validate corridor status against AIS density and chokepoint disruptions.');
+      actionItems.push('Check for concurrent cable advisories and repair-ship movement.');
+    } else if (anomaly.monitorCategory === 'cyber') {
+      actionItems.push('Correlate with active threat IOCs and outage clusters in-region.');
+      actionItems.push('Escalate to incident triage if anomaly persists across refresh cycles.');
+    } else if (anomaly.monitorCategory === 'security') {
+      actionItems.push('Compare with military/protest layers for multi-signal convergence.');
+      actionItems.push('Prioritize regions with repeated high-severity anomalies.');
+    } else if (anomaly.monitorCategory === 'infrastructure') {
+      actionItems.push('Verify nearby critical assets and service degradation reports.');
+      actionItems.push('Track second-order risk to logistics, power, and communications.');
+    } else {
+      actionItems.push('Validate anomaly against supporting sources and recent event stream.');
+      actionItems.push('Monitor persistence across the next two run cycles.');
+    }
+
+    const provenanceLinks: Array<{ label: string; url: string }> = [];
+    const sourceId = anomaly.sourceId.toLowerCase();
+    const signalType = anomaly.signalType.toLowerCase();
+    if (sourceId.startsWith('market:')) {
+      const symbol = anomaly.sourceId.slice('market:'.length).trim().toUpperCase();
+      if (symbol) {
+        provenanceLinks.push({
+          label: `Yahoo Finance (${symbol})`,
+          url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`,
+        });
+      }
+    }
+    if (sourceId.startsWith('prediction:') || signalType.includes('prediction')) {
+      provenanceLinks.push({ label: 'Polymarket', url: 'https://polymarket.com/' });
+    }
+    if (signalType.includes('internet_outage')) {
+      provenanceLinks.push({ label: 'NetBlocks', url: 'https://netblocks.org/' });
+    }
+    if (signalType.includes('protest')) {
+      provenanceLinks.push({ label: 'ACLED', url: 'https://acleddata.com/' });
+    }
+    if (signalType.includes('ais') || signalType.includes('maritime')) {
+      provenanceLinks.push({ label: 'MarineTraffic', url: 'https://www.marinetraffic.com/' });
+    }
+    const query = `${anomaly.sourceId} ${anomaly.signalType} ${anomaly.region || 'global'} anomaly`;
+    provenanceLinks.push({
+      label: 'Web context',
+      url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+    });
+    const provenanceHtml = provenanceLinks
+      .map((link) => {
+        const href = sanitizeUrl(link.url);
+        if (!href) return '';
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="popup-tag popup-tag-link">${escapeHtml(link.label)}</a>`;
+      })
+      .filter(Boolean)
+      .join('');
 
     return `
       <div class="popup-header apt ${severityClass}">
@@ -1141,6 +1233,20 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         <div class="popup-subtitle">${escapeHtml(anomaly.monitorLabel || anomaly.signalType)} · ${escapeHtml(anomaly.region || 'global')}</div>
+        <div class="forensics-popup-summary">
+          <span class="forensics-popup-chip">${escapeHtml(monitorCategoryLabel)}</span>
+          <span class="forensics-popup-chip">${escapeHtml(freshnessLabel)}</span>
+          <span class="forensics-popup-chip">priority ${priorityPercent}%</span>
+        </div>
+        <div class="forensics-popup-meter-wrap">
+          <div class="forensics-popup-meter-label">
+            <span>Anomaly confidence</span>
+            <span>${significanceScore}%</span>
+          </div>
+          <div class="forensics-popup-meter">
+            <div class="forensics-popup-meter-fill ${severityClass}" style="width:${significanceScore}%"></div>
+          </div>
+        </div>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">Monitor focus</span>
@@ -1167,7 +1273,7 @@ export class MapPopup {
           </div>
           <div class="popup-stat">
             <span class="stat-label">Interpretation</span>
-            <span class="stat-value">${escapeHtml(trajectoryDiagnostic || 'AIS trajectory anomaly')}</span>
+            <span class="stat-value">${escapeHtml(trajectoryDiagnostic || diagnosticSummary)}</span>
           </div>
           ` : ''}
           <div class="popup-stat">
@@ -1187,6 +1293,10 @@ export class MapPopup {
             <span class="stat-value">${Math.round(anomaly.calibrationCenter)}</span>
           </div>
           <div class="popup-stat">
+            <span class="stat-label">Deviation</span>
+            <span class="stat-value">${deviation >= 0 ? '+' : ''}${Math.round(deviation)} (${deviationPct >= 0 ? '+' : ''}${deviationPct.toFixed(1)}%)</span>
+          </div>
+          <div class="popup-stat">
             <span class="stat-label">Agreement</span>
             <span class="stat-value">${anomaly.supportCount} source(s)</span>
           </div>
@@ -1197,6 +1307,28 @@ export class MapPopup {
           <div class="popup-stat">
             <span class="stat-label">Priority</span>
             <span class="stat-value">${(anomaly.monitorPriority * 100).toFixed(0)}%</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Observed at</span>
+            <span class="stat-value">${escapeHtml(observedAtLabel)}</span>
+          </div>
+        </div>
+        <div class="popup-section">
+          <span class="section-label">Interpretation</span>
+          <ul class="popup-list forensics-popup-list">
+            ${interpretationItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+          </ul>
+        </div>
+        <div class="popup-section">
+          <span class="section-label">Analyst playbook</span>
+          <ul class="popup-list forensics-popup-list">
+            ${actionItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+          </ul>
+        </div>
+        <div class="popup-section">
+          <span class="section-label">Source context</span>
+          <div class="popup-tags forensics-popup-links">
+            ${provenanceHtml || '<span class="popup-tag">No source links</span>'}
           </div>
         </div>
       </div>

@@ -140,6 +140,7 @@ const TECH_PANELS: Record<string, PanelConfig> = {
   'live-news': { name: 'Tech Headlines', enabled: true, priority: 1 },
   'live-webcams': { name: 'Live Webcams', enabled: true, priority: 2 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
+  forensics: { name: 'Forensics Signals', enabled: true, priority: 1 },
   ai: { name: 'AI/ML News', enabled: true, priority: 1 },
   tech: { name: 'Technology', enabled: true, priority: 1 },
   startups: { name: 'Startups & VC', enabled: true, priority: 1 },
@@ -186,7 +187,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   economic: true,
   waterways: false,
   outages: true,
-  forensics: false,
+  forensics: true,
   cyberThreats: false,
   datacenters: true,
   protests: false,
@@ -387,14 +388,18 @@ export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'tech' ? TECH_MOBILE_M
 export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> = {
   military: ['opensky', 'wingbits'],
   ais: ['ais'],
-  natural: ['usgs'],
+  natural: ['usgs', 'eonet'],
+  cables: ['cable_ops', 'cable_health'],
+  flights: ['faa_delays'],
   weather: ['weather'],
   outages: ['outages'],
+  forensics: ['forensics'],
   cyberThreats: ['cyber_threats'],
   protests: ['acled', 'gdelt_doc'],
   ucdpEvents: ['ucdp_events'],
   displacement: ['unhcr'],
   climate: ['climate'],
+  techEvents: ['tech_events'],
 };
 
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)

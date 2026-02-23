@@ -1,4 +1,4 @@
-import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, CyberThreat, ForensicsAnomalyOverlay, AisDisruptionEvent } from '@/types';
+import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, CyberThreat, ForensicsAnomalyOverlay, AisDisruptionEvent, CableAdvisory, RepairShip, CableHealthResponse, NaturalEvent, PizzIntStatus, GdeltTensionPair } from '@/types';
 import {
   FEEDS,
   INTEL_SOURCES,
@@ -16,6 +16,8 @@ import {
 import { BETA_MODE } from '@/config/beta';
 import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchCableHealth, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, fetchUSNIFleetReport, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals, listForensicsRuns, listFusedSignals, listCalibratedAnomalies, getForensicsTopologySummary, getForensicsTrace, getForensicsPolicy, runForensicsShadow } from '@/services';
 import { fetchCountryMarkets } from '@/services/prediction';
+import type { FredSeries, OilAnalytics } from '@/services/economic';
+import type { AirportDelayAlert } from '@/services/aviation';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
@@ -75,6 +77,9 @@ import {
   MacroSignalsPanel,
   ETFFlowsPanel,
   StablecoinPanel,
+  type MacroSignalData,
+  type ETFFlowsResult,
+  type StablecoinResult,
   UcdpEventsPanel,
   DisplacementPanel,
   ClimateAnomalyPanel,
@@ -105,6 +110,18 @@ import { trackEvent, trackPanelView, trackVariantSwitch, trackThemeChanged, trac
 import { invokeTauri } from '@/services/tauri-bridge';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
 import { initI18n, t, changeLanguage } from '@/services/i18n';
+import {
+  FAST_FRESHNESS_PROFILE,
+  SLOW_FRESHNESS_PROFILE,
+  CONFLICT_FRESHNESS_PROFILE,
+  EVENT_FRESHNESS_PROFILE,
+  bucketSignalTimestamp,
+  computeFreshnessPenalty,
+  computeSignalConfidence,
+  logScale1p,
+  parseTimestampMs,
+  clampNumber as clampSignalNumber,
+} from '@/services/forensics-signal-features';
 
 import type { MarketData, ClusteredEvent } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
@@ -138,6 +155,25 @@ export interface CountryBriefSignals {
   displacementOutflow: number;
   climateStress: number;
   conflictEvents: number;
+  forensics: {
+    flagged: number;
+    nearLive: number;
+    minPValue: number | null;
+    latestObservedAt: number;
+    maxSeverity: ForensicsAnomalyOverlay['severity'] | null;
+    topAnomalies: Array<{
+      id: string;
+      label: string;
+      signalType: string;
+      region: string;
+      pValue: number;
+      supportCount: number;
+      severity: ForensicsAnomalyOverlay['severity'];
+      observedAt: number;
+      lat: number;
+      lon: number;
+    }>;
+  };
   isTier1: boolean;
 }
 
@@ -165,6 +201,37 @@ export class App {
   private latestPredictions: PredictionMarket[] = [];
   private latestMarkets: MarketData[] = [];
   private latestClusters: ClusteredEvent[] = [];
+  private latestMacroSignals: MacroSignalData | null = null;
+  private latestEtfFlows: ETFFlowsResult | null = null;
+  private latestStablecoins: StablecoinResult | null = null;
+  private latestFredSeries: FredSeries[] = [];
+  private latestOilAnalytics: OilAnalytics | null = null;
+  private latestWeatherAlerts: import('@/services/weather').WeatherAlert[] = [];
+  private latestFlightDelays: AirportDelayAlert[] = [];
+  private latestCableActivity: { advisories: CableAdvisory[]; repairShips: RepairShip[] } = { advisories: [], repairShips: [] };
+  private latestCableHealth: CableHealthResponse | null = null;
+  private latestNaturalEvents: NaturalEvent[] = [];
+  private latestPizzIntStatus: PizzIntStatus | null = null;
+  private latestGdeltTensions: GdeltTensionPair[] = [];
+  private latestTechEvents: Array<{ id: string; title: string; location: string; lat: number; lng: number; country: string; startDate: string; endDate: string; url: string | null; daysUntil: number }> = [];
+  private latestMacroFetchedAt = 0;
+  private latestEtfFetchedAt = 0;
+  private latestStablecoinFetchedAt = 0;
+  private latestFredFetchedAt = 0;
+  private latestOilFetchedAt = 0;
+  private latestWeatherFetchedAt = 0;
+  private latestFlightFetchedAt = 0;
+  private latestCableActivityFetchedAt = 0;
+  private latestCableHealthFetchedAt = 0;
+  private latestNaturalFetchedAt = 0;
+  private latestPizzIntFetchedAt = 0;
+  private latestGdeltFetchedAt = 0;
+  private latestTechEventsFetchedAt = 0;
+  private latestConflictFetchedAt = 0;
+  private latestUcdpFetchedAt = 0;
+  private latestHapiFetchedAt = 0;
+  private latestDisplacementFetchedAt = 0;
+  private latestClimateFetchedAt = 0;
   private forensicsShadowInFlight: Set<'intelligence' | 'market'> = new Set();
   private forensicsShadowLastRunAt: Record<'intelligence' | 'market', number> = {
     intelligence: 0,
@@ -174,6 +241,7 @@ export class App {
     intelligence: '',
     market: '',
   };
+  private lastForensicsSignalDigestRunId = '';
   private readonly FORENSICS_SHADOW_MIN_INTERVAL_MS = 4 * 60 * 1000;
   private readonly applyTimeRangeFilterToNewsPanelsDebounced = debounce(() => {
     this.applyTimeRangeFilterToNewsPanels();
@@ -325,7 +393,7 @@ export class App {
     if (this.initialUrlState.layers) {
       // For tech variant, filter out geopolitical layers from URL
       if (currentVariant === 'tech') {
-        const geoLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals', 'forensics'];
+        const geoLayers: (keyof MapLayers)[] = ['conflicts', 'bases', 'hotspots', 'nuclear', 'irradiators', 'sanctions', 'military', 'protests', 'pipelines', 'waterways', 'ais', 'flights', 'spaceports', 'minerals'];
         const urlLayers = this.initialUrlState.layers;
         geoLayers.forEach(layer => {
           urlLayers[layer] = false;
@@ -337,7 +405,7 @@ export class App {
       this.mapLayers.cyberThreats = false;
     }
     if (typeof this.mapLayers.forensics !== 'boolean') {
-      this.mapLayers.forensics = SITE_VARIANT === 'full' || SITE_VARIANT === 'finance';
+      this.mapLayers.forensics = SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'tech';
     }
     this.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
   }
@@ -724,12 +792,17 @@ export class App {
         fetchPizzIntStatus(),
         fetchGdeltTensions()
       ]);
+      this.latestPizzIntStatus = status;
+      this.latestGdeltTensions = tensions;
+      this.latestPizzIntFetchedAt = parseTimestampMs(status.lastUpdate) ?? Date.now();
+      this.latestGdeltFetchedAt = Date.now();
 
       // Hide indicator if no valid data (API returned default/empty)
       if (status.locationsMonitored === 0) {
         this.pizzintIndicator?.hide();
         this.statusPanel?.updateApi('PizzINT', { status: 'error' });
         dataFreshness.recordError('pizzint', 'No monitored locations returned');
+        dataFreshness.recordError('gdelt_tension', 'No tension records returned');
         return;
       }
 
@@ -738,11 +811,16 @@ export class App {
       this.pizzintIndicator?.updateTensions(tensions);
       this.statusPanel?.updateApi('PizzINT', { status: 'ok' });
       dataFreshness.recordUpdate('pizzint', Math.max(status.locationsMonitored, tensions.length));
+      dataFreshness.recordUpdate('gdelt_tension', tensions.length);
+      if (this.shouldShadowFetchTier2Source('pizzint')) {
+        this.triggerTier2ForensicsRecalibration();
+      }
     } catch (error) {
       console.error('[App] PizzINT load failed:', error);
       this.pizzintIndicator?.hide();
       this.statusPanel?.updateApi('PizzINT', { status: 'error' });
       dataFreshness.recordError('pizzint', String(error));
+      dataFreshness.recordError('gdelt_tension', String(error));
     }
   }
 
@@ -849,9 +927,15 @@ export class App {
           signalTypes: [...cluster.signalTypes],
           regionalDescriptions: regional.map(r => r.description),
         } : null;
+        const forensics = {
+          flagged: signals.forensics.flagged,
+          nearLive: signals.forensics.nearLive,
+          minPValue: signals.forensics.minPValue,
+          topLabels: signals.forensics.topAnomalies.map((anomaly) => anomaly.label || anomaly.signalType),
+        };
         const posturePanel = this.panels['strategic-posture'] as import('@/components/StrategicPosturePanel').StrategicPosturePanel | undefined;
         const postures = posturePanel?.getPostures() || [];
-        const data = collectStoryData(code, name, this.latestClusters, postures, this.latestPredictions, signals, convergence);
+        const data = collectStoryData(code, name, this.latestClusters, postures, this.latestPredictions, signals, convergence, forensics);
         const canvas = await renderStoryToCanvas(data);
         const dataUrl = canvas.toDataURL('image/png');
         const a = document.createElement('a');
@@ -861,6 +945,9 @@ export class App {
       } catch (err) {
         console.error('[CountryBrief] Image export failed:', err);
       }
+    });
+    this.countryBriefPage.setForensicsAnomalyClickHandler((anomalyId) => {
+      this.focusForensicsOverlayById(anomalyId);
     });
 
     this.map.onCountryClicked(async (countryClick) => {
@@ -1039,6 +1126,12 @@ export class App {
           if (signals.militaryVessels > 0) lines.push(t('countryBrief.fallback.vesselsTracked', { count: String(signals.militaryVessels) }));
           if (signals.outages > 0) lines.push(t('countryBrief.fallback.internetOutages', { count: String(signals.outages) }));
           if (signals.earthquakes > 0) lines.push(t('countryBrief.fallback.recentEarthquakes', { count: String(signals.earthquakes) }));
+          if (signals.forensics.flagged > 0) {
+            const minP = typeof signals.forensics.minPValue === 'number' && Number.isFinite(signals.forensics.minPValue)
+              ? signals.forensics.minPValue.toFixed(3)
+              : 'n/a';
+            lines.push(`Forensics diagnostics: ${signals.forensics.flagged} flagged anomalies (${signals.forensics.nearLive} near-live, min p=${minP}).`);
+          }
           if (context.stockIndex) lines.push(t('countryBrief.fallback.stockIndex', { value: context.stockIndex }));
           if (briefHeadlines.length > 0) {
             lines.push('', t('countryBrief.fallback.recentHeadlines'));
@@ -1129,6 +1222,28 @@ export class App {
           severity: c.fatalities > 0 ? 'critical' : 'high',
         });
       }
+    }
+
+    const forensicsTerms = [
+      ...App.getCountrySearchTerms(country, code),
+      countryLower,
+      code.toLowerCase(),
+    ].map((term) => term.toLowerCase());
+    for (const anomaly of this.latestForensicsOverlay) {
+      if (!this.isForensicsAnomalyInCountry(anomaly, code, countryLower, hasGeoShape, forensicsTerms)) continue;
+      if (!anomaly.observedAt) continue;
+      events.push({
+        timestamp: anomaly.observedAt,
+        lane: 'forensics',
+        label: `${anomaly.monitorLabel || anomaly.signalType} (${anomaly.region || 'global'})`,
+        severity: anomaly.severity === 'high'
+          ? 'high'
+          : anomaly.severity === 'medium'
+            ? 'medium'
+            : anomaly.severity === 'low'
+              ? 'low'
+              : 'medium',
+      });
     }
 
     this.countryTimeline = new CountryTimeline(mount);
@@ -1238,6 +1353,161 @@ export class App {
     return lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e;
   }
 
+  private static buildForensicsOverlayKey(
+    anomaly: Pick<ForensicsAnomalyOverlay, 'sourceId' | 'signalType' | 'region'>,
+  ): string {
+    return `${anomaly.sourceId}::${anomaly.signalType}::${anomaly.region || 'global'}`;
+  }
+
+  private focusForensicsOverlayByKey(anomalyKey: string): void {
+    if (!anomalyKey) return;
+    const anomaly = this.latestForensicsOverlay.find((item) =>
+      App.buildForensicsOverlayKey(item) === anomalyKey,
+    );
+    if (!anomaly) return;
+    this.focusForensicsOverlay(anomaly);
+  }
+
+  private focusForensicsOverlayById(anomalyId: string): void {
+    if (!anomalyId) return;
+    const anomaly = this.latestForensicsOverlay.find((item) => item.id === anomalyId);
+    if (!anomaly) return;
+    this.focusForensicsOverlay(anomaly);
+  }
+
+  private focusForensicsOverlay(anomaly: ForensicsAnomalyOverlay): void {
+    this.map?.setView('global');
+    this.map?.enableLayer('forensics');
+    this.mapLayers.forensics = true;
+    saveToStorage(STORAGE_KEYS.mapLayers, this.mapLayers);
+    this.map?.setCenter(anomaly.lat, anomaly.lon, 4.5);
+    this.map?.flashLocation(anomaly.lat, anomaly.lon, 1800);
+    setTimeout(() => {
+      this.map?.triggerForensicsAnomalyClick(anomaly.id);
+    }, 320);
+  }
+
+  private maybeShowForensicsSignalDigest(
+    runId: string,
+    domain: string,
+    anomalies: ForensicsCalibratedAnomaly[],
+  ): void {
+    if (!runId || runId === this.lastForensicsSignalDigestRunId) return;
+    if (!this.shouldShowIntelligenceNotifications()) return;
+    if (!this.signalModal || anomalies.length === 0) return;
+
+    const overlayByKey = new Map<string, ForensicsAnomalyOverlay>();
+    for (const overlay of this.latestForensicsOverlay) {
+      overlayByKey.set(App.buildForensicsOverlayKey(overlay), overlay);
+    }
+
+    const overlayMatches = anomalies
+      .map((anomaly) => overlayByKey.get(App.buildForensicsOverlayKey({
+        sourceId: anomaly.sourceId,
+        signalType: anomaly.signalType,
+        region: anomaly.region || 'global',
+      })))
+      .filter((anomaly): anomaly is ForensicsAnomalyOverlay => Boolean(anomaly))
+      .sort((a, b) =>
+        (Number(b.isNearLive) - Number(a.isNearLive))
+        || (b.monitorPriority - a.monitorPriority)
+        || (a.pValue - b.pValue)
+      );
+
+    const notable = overlayMatches
+      .filter((anomaly) =>
+        anomaly.isNearLive
+        || anomaly.severity === 'high'
+        || anomaly.pValue <= 0.02
+        || anomaly.monitorPriority >= 0.74,
+      )
+      .slice(0, 5);
+
+    if (notable.length === 0) return;
+
+    this.lastForensicsSignalDigestRunId = runId;
+    this.signalModal.showForensicsAnomalies(notable, {
+      runId,
+      domain,
+      completedAt: notable[0]?.observedAt || Date.now(),
+    });
+  }
+
+  private isForensicsAnomalyInCountry(
+    anomaly: ForensicsAnomalyOverlay,
+    code: string,
+    countryLower: string,
+    hasGeoShape: boolean,
+    searchTerms: string[],
+  ): boolean {
+    if (hasGeoShape && this.isInCountry(anomaly.lat, anomaly.lon, code)) return true;
+    const region = (anomaly.region || '').toLowerCase();
+    if (!region) return false;
+    if (region === code.toLowerCase() || region === countryLower) return true;
+
+    const searchable = `${region} ${anomaly.sourceId} ${anomaly.monitorLabel} ${anomaly.signalType}`.toLowerCase();
+    return searchTerms.some((term) => term.length >= 2 && searchable.includes(term));
+  }
+
+  private getCountryForensicsSummary(code: string, country: string): CountryBriefSignals['forensics'] {
+    const countryLower = country.toLowerCase();
+    const hasGeoShape = hasCountryGeometry(code) || !!App.COUNTRY_BOUNDS[code];
+    const searchTerms = [
+      ...App.getCountrySearchTerms(country, code),
+      countryLower,
+      code.toLowerCase(),
+    ].map((term) => term.toLowerCase());
+
+    const matched = this.latestForensicsOverlay
+      .filter((anomaly) => this.isForensicsAnomalyInCountry(anomaly, code, countryLower, hasGeoShape, searchTerms))
+      .sort((a, b) =>
+        (Number(b.isNearLive) - Number(a.isNearLive))
+        || (b.monitorPriority - a.monitorPriority)
+        || (a.pValue - b.pValue)
+      );
+
+    const flagged = matched.length;
+    const nearLive = matched.filter((anomaly) => anomaly.isNearLive).length;
+    const minPValue = flagged > 0
+      ? matched.reduce((min, anomaly) => Math.min(min, anomaly.pValue), 1)
+      : null;
+    const latestObservedAt = flagged > 0
+      ? matched.reduce((latest, anomaly) => Math.max(latest, anomaly.observedAt || 0), 0)
+      : 0;
+
+    const severityRank: Record<ForensicsAnomalyOverlay['severity'], number> = {
+      unspecified: 0,
+      low: 1,
+      medium: 2,
+      high: 3,
+    };
+    const maxSeverity = flagged > 0
+      ? matched.reduce<ForensicsAnomalyOverlay['severity']>((max, anomaly) =>
+        severityRank[anomaly.severity] > severityRank[max] ? anomaly.severity : max,
+      'unspecified')
+      : null;
+
+    return {
+      flagged,
+      nearLive,
+      minPValue,
+      latestObservedAt,
+      maxSeverity,
+      topAnomalies: matched.slice(0, 5).map((anomaly) => ({
+        id: anomaly.id,
+        label: anomaly.monitorLabel || anomaly.signalType,
+        signalType: anomaly.signalType,
+        region: anomaly.region || 'global',
+        pValue: anomaly.pValue,
+        supportCount: anomaly.supportCount,
+        severity: anomaly.severity,
+        observedAt: anomaly.observedAt || Date.now(),
+        lat: anomaly.lat,
+        lon: anomaly.lon,
+      })),
+    };
+  }
+
   private getCountrySignals(code: string, country: string): CountryBriefSignals {
     const countryLower = country.toLowerCase();
     const hasGeoShape = hasCountryGeometry(code) || !!App.COUNTRY_BOUNDS[code];
@@ -1277,6 +1547,7 @@ export class App {
 
     const ciiData = getCountryData(code);
     const isTier1 = !!TIER1_COUNTRIES[code];
+    const forensics = this.getCountryForensicsSummary(code, country);
 
     return {
       protests,
@@ -1287,6 +1558,7 @@ export class App {
       displacementOutflow: ciiData?.displacementOutflow ?? 0,
       climateStress: ciiData?.climateStress ?? 0,
       conflictEvents: ciiData?.conflicts?.length ?? 0,
+      forensics,
       isTier1,
     };
   }
@@ -1306,7 +1578,13 @@ export class App {
       signalTypes: [...cluster.signalTypes],
       regionalDescriptions: regional.map(r => r.description),
     } : null;
-    const data = collectStoryData(code, name, this.latestClusters, postures, this.latestPredictions, signals, convergence);
+    const forensics = {
+      flagged: signals.forensics.flagged,
+      nearLive: signals.forensics.nearLive,
+      minPValue: signals.forensics.minPValue,
+      topLabels: signals.forensics.topAnomalies.map((anomaly) => anomaly.label || anomaly.signalType),
+    };
+    const data = collectStoryData(code, name, this.latestClusters, postures, this.latestPredictions, signals, convergence, forensics);
     openStoryModal(data);
   }
 
@@ -1540,6 +1818,11 @@ export class App {
         this.scrollToPanel('polymarket');
         break;
       }
+      case 'forensics': {
+        const anomaly = result.data as ForensicsAnomalyOverlay;
+        this.focusForensicsOverlayById(anomaly.id);
+        break;
+      }
       case 'base': {
         const base = result.data as typeof MILITARY_BASES[0];
         this.map?.setView('global');
@@ -1760,6 +2043,13 @@ export class App {
         data: m,
       })));
     }
+
+    this.searchModal.registerSource('forensics', this.latestForensicsOverlay.slice(0, 120).map((anomaly) => ({
+      id: anomaly.id,
+      title: `${anomaly.monitorLabel || 'Forensics anomaly'} · ${anomaly.region || 'global'}`,
+      subtitle: `${anomaly.signalType} · p=${anomaly.pValue.toFixed(3)} · ${(anomaly.monitorPriority * 100).toFixed(0)}% priority`,
+      data: anomaly,
+    })));
   }
 
   private buildCountrySearchItems(): { id: string; title: string; subtitle: string; data: { code: string; name: string } }[] {
@@ -2369,8 +2659,11 @@ export class App {
       this.panels['gcc-investments'] = investmentsPanel;
     }
 
-    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
+    if (DEFAULT_PANELS.forensics?.enabled) {
       const forensicsPanel = new ForensicsPanel(DEFAULT_PANELS.forensics?.name || 'Forensics Signals');
+      forensicsPanel.setOnAnomalySelected((anomalyKey) => {
+        this.focusForensicsOverlayByKey(anomalyKey);
+      });
       this.panels['forensics'] = forensicsPanel;
     }
 
@@ -2397,12 +2690,36 @@ export class App {
     this.panels['tech-readiness'] = techReadinessPanel;
 
     // Crypto & Market Intelligence Panels
-    this.panels['macro-signals'] = new MacroSignalsPanel();
-    this.panels['etf-flows'] = new ETFFlowsPanel();
-    this.panels['stablecoins'] = new StablecoinPanel();
+    const macroSignalsPanel = new MacroSignalsPanel();
+    macroSignalsPanel.setOnDataUpdated((data) => {
+      this.latestMacroSignals = data;
+      this.latestMacroFetchedAt = Date.now();
+      void this.runOperationalForensicsShadow('market');
+    });
+    this.panels['macro-signals'] = macroSignalsPanel;
+
+    const etfFlowsPanel = new ETFFlowsPanel();
+    etfFlowsPanel.setOnDataUpdated((data) => {
+      this.latestEtfFlows = data;
+      this.latestEtfFetchedAt = Date.now();
+      void this.runOperationalForensicsShadow('market');
+    });
+    this.panels['etf-flows'] = etfFlowsPanel;
+
+    const stablecoinPanel = new StablecoinPanel();
+    stablecoinPanel.setOnDataUpdated((data) => {
+      this.latestStablecoins = data;
+      this.latestStablecoinFetchedAt = Date.now();
+      void this.runOperationalForensicsShadow('market');
+    });
+    this.panels['stablecoins'] = stablecoinPanel;
 
     // AI Insights Panel (desktop only - hides itself on mobile)
     const insightsPanel = new InsightsPanel();
+    insightsPanel.setForensicsSelectHandler((anomalyId) => {
+      this.focusForensicsOverlayById(anomalyId);
+    });
+    insightsPanel.setForensicsAnomalies(this.latestForensicsOverlay);
     this.panels['insights'] = insightsPanel;
 
     // Add panels to grid in saved order
@@ -3130,6 +3447,25 @@ export class App {
       : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
   }
 
+  private getForensicsShadowScopeForVariant(): 'intelligence' | 'market' {
+    return SITE_VARIANT === 'full' ? 'intelligence' : 'market';
+  }
+
+  private triggerTier2ForensicsRecalibration(): void {
+    void this.runOperationalForensicsShadow(this.getForensicsShadowScopeForVariant());
+  }
+
+  private shouldShadowFetchTier2Source(
+    source: 'weather' | 'flights' | 'cables' | 'natural' | 'pizzint' | 'techEvents',
+  ): boolean {
+    if (source === 'techEvents') return SITE_VARIANT === 'tech';
+    if (source === 'pizzint') return SITE_VARIANT === 'full';
+    if (source === 'weather' || source === 'flights' || source === 'cables' || source === 'natural') {
+      return SITE_VARIANT === 'full' || SITE_VARIANT === 'tech' || SITE_VARIANT === 'finance';
+    }
+    return false;
+  }
+
   private async loadAllData(): Promise<void> {
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.inFlight.has(name)) return;
@@ -3167,14 +3503,33 @@ export class App {
     // NOTE: outages, protests, military are handled by loadIntelligenceSignals() above
     // They update the map when layers are enabled, so no duplicate tasks needed here
     if (SITE_VARIANT === 'full') tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
-    if (this.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
-    if (this.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
+    if (this.mapLayers.natural) {
+      tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
+    } else if (this.shouldShadowFetchTier2Source('natural')) {
+      tasks.push({ name: 'natural-shadow', task: runGuarded('natural-shadow', () => this.loadNatural()) });
+    }
+    if (this.mapLayers.weather) {
+      tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
+    } else if (this.shouldShadowFetchTier2Source('weather')) {
+      tasks.push({ name: 'weather-shadow', task: runGuarded('weather-shadow', () => this.loadWeatherAlerts()) });
+    }
     if (this.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
-    if (this.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
-    if (this.mapLayers.cables) tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
-    if (this.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
+    if (this.mapLayers.cables) {
+      tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
+      tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
+    } else if (this.shouldShadowFetchTier2Source('cables')) {
+      tasks.push({ name: 'cables-shadow', task: runGuarded('cables-shadow', () => this.loadCableActivity()) });
+      tasks.push({ name: 'cableHealth-shadow', task: runGuarded('cableHealth-shadow', () => this.loadCableHealth()) });
+    }
+    if (this.mapLayers.flights) {
+      tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
+    } else if (this.shouldShadowFetchTier2Source('flights')) {
+      tasks.push({ name: 'flights-shadow', task: runGuarded('flights-shadow', () => this.loadFlightDelays()) });
+    }
     if (CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
-    if (this.mapLayers.techEvents || SITE_VARIANT === 'tech') tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
+    if (this.mapLayers.techEvents || this.shouldShadowFetchTier2Source('techEvents')) {
+      tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
+    }
 
     // Tech Readiness panel (tech variant only)
     if (SITE_VARIANT === 'tech') {
@@ -3674,16 +4029,24 @@ export class App {
 
     // Handle natural events (EONET - storms, fires, volcanoes, etc.)
     if (eonetResult.status === 'fulfilled') {
+      this.latestNaturalEvents = eonetResult.value;
+      this.latestNaturalFetchedAt = Date.now();
       this.map?.setNaturalEvents(eonetResult.value);
       this.statusPanel?.updateFeed('EONET', {
         status: 'ok',
         itemCount: eonetResult.value.length,
       });
       this.statusPanel?.updateApi('NASA EONET', { status: 'ok' });
+      dataFreshness.recordUpdate('eonet', eonetResult.value.length);
+      if (this.shouldShadowFetchTier2Source('natural')) {
+        this.triggerTier2ForensicsRecalibration();
+      }
     } else {
+      this.latestNaturalEvents = [];
       this.map?.setNaturalEvents([]);
       this.statusPanel?.updateFeed('EONET', { status: 'error', errorMessage: String(eonetResult.reason) });
       this.statusPanel?.updateApi('NASA EONET', { status: 'error' });
+      dataFreshness.recordError('eonet', String(eonetResult.reason));
     }
 
     // Set layer ready based on combined data
@@ -3724,10 +4087,16 @@ export class App {
         url: e.url,
         daysUntil: Math.ceil((new Date(e.startDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
       }));
+      this.latestTechEvents = mapEvents;
+      this.latestTechEventsFetchedAt = Date.now();
 
       this.map?.setTechEvents(mapEvents);
       this.map?.setLayerReady('techEvents', mapEvents.length > 0);
       this.statusPanel?.updateFeed('Tech Events', { status: 'ok', itemCount: mapEvents.length });
+      dataFreshness.recordUpdate('tech_events', mapEvents.length);
+      if (this.shouldShadowFetchTier2Source('techEvents')) {
+        this.triggerTier2ForensicsRecalibration();
+      }
 
       // Register tech events as searchable source
       if (SITE_VARIANT === 'tech' && this.searchModal) {
@@ -3740,20 +4109,28 @@ export class App {
       }
     } catch (error) {
       console.error('[App] Failed to load tech events:', error);
+      this.latestTechEvents = [];
       this.map?.setTechEvents([]);
       this.map?.setLayerReady('techEvents', false);
       this.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
+      dataFreshness.recordError('tech_events', String(error));
     }
   }
 
   private async loadWeatherAlerts(): Promise<void> {
     try {
       const alerts = await fetchWeatherAlerts();
+      this.latestWeatherAlerts = alerts;
+      this.latestWeatherFetchedAt = Date.now();
       this.map?.setWeatherAlerts(alerts);
       this.map?.setLayerReady('weather', alerts.length > 0);
       this.statusPanel?.updateFeed('Weather', { status: 'ok', itemCount: alerts.length });
       dataFreshness.recordUpdate('weather', alerts.length);
+      if (this.shouldShadowFetchTier2Source('weather')) {
+        this.triggerTier2ForensicsRecalibration();
+      }
     } catch (error) {
+      this.latestWeatherAlerts = [];
       this.map?.setLayerReady('weather', false);
       this.statusPanel?.updateFeed('Weather', { status: 'error' });
       dataFreshness.recordError('weather', String(error));
@@ -3770,9 +4147,18 @@ export class App {
   } = {};
   private cyberThreatsCache: CyberThreat[] | null = null;
   private latestAisDisruptions: AisDisruptionEvent[] = [];
+  private latestForensicsOverlay: ForensicsAnomalyOverlay[] = [];
 
   private clampNumber(value: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, value));
+    return clampSignalNumber(value, min, max);
+  }
+
+  private resolveObservedAt(rawValue: unknown, fallbackMs: number): number {
+    return parseTimestampMs(rawValue) ?? fallbackMs;
+  }
+
+  private confidenceWithFreshness(base: number, magnitudeBonus: number, freshnessPenalty: number): number {
+    return Math.round(computeSignalConfidence(base, magnitudeBonus, freshnessPenalty) * 1000) / 1000;
   }
 
   private classifyAisTrajectorySignal(
@@ -3817,9 +4203,9 @@ export class App {
     const signals: ForensicsSignalInput[] = [];
     for (const event of this.latestAisDisruptions.slice(0, 80)) {
       const signalType = this.classifyAisTrajectorySignal(event);
-      const observedAt = typeof event.observedAt === 'number' && Number.isFinite(event.observedAt) && event.observedAt > 0
-        ? event.observedAt
-        : now;
+      const observedAt = this.resolveObservedAt(event.observedAt, now);
+      const freshness = computeFreshnessPenalty(observedAt, CONFLICT_FRESHNESS_PROFILE, now);
+      if (freshness.isStale) continue;
       const changeMagnitude = Math.abs(event.changePct || 0);
       const windowHours = Math.max(1, event.windowHours || 1);
       const darkShips = Math.max(0, event.darkShips || 0);
@@ -3843,13 +4229,14 @@ export class App {
       const lat = Number.isFinite(event.lat) ? event.lat : 0;
       const lon = Number.isFinite(event.lon) ? event.lon : 0;
       const locationToken = `${lat.toFixed(4)},${lon.toFixed(4)}`;
-      const confidence = this.clampNumber(
-        0.56
-        + (baseSeverity * 0.12)
-        + Math.min(0.18, changeMagnitude / 200)
-        + (signalType === 'ais_silence' && darkShips > 0 ? 0.06 : 0),
-        0.52,
-        0.98,
+      const magnitudeBonus = Math.min(
+        0.24,
+        Math.max(changeMagnitude / 180, darkShips / 16, vesselCount / 120) * 0.08,
+      );
+      const confidence = this.confidenceWithFreshness(
+        0.58 + (baseSeverity * 0.07),
+        magnitudeBonus + (signalType === 'ais_silence' && darkShips > 0 ? 0.03 : 0),
+        freshness.penalty,
       );
 
       signals.push({
@@ -3864,6 +4251,133 @@ export class App {
     }
 
     return signals;
+  }
+
+  private buildCountryRiskForensicsSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (SITE_VARIANT !== 'full') return [];
+
+    const signals: ForensicsSignalInput[] = [];
+
+    for (const [code, countryName] of Object.entries(TIER1_COUNTRIES)) {
+      const countryData = getCountryData(code);
+      if (!countryData) continue;
+
+      const conflicts = countryData.conflicts;
+      if (conflicts.length >= 2) {
+        const events = conflicts.length;
+        const fatalities = conflicts.reduce((sum, event) => sum + Math.max(0, event.fatalities || 0), 0);
+        const latestEventAt = conflicts.reduce((latest, event) => {
+          const ts = parseTimestampMs(event.time);
+          return ts ? Math.max(latest, ts) : latest;
+        }, 0);
+        const observedAt = latestEventAt || this.latestConflictFetchedAt;
+        if (observedAt > 0) {
+          const freshness = computeFreshnessPenalty(observedAt, CONFLICT_FRESHNESS_PROFILE, now);
+          if (!freshness.isStale) {
+            const value = this.clampNumber(
+              (logScale1p(events, 12)) + (Math.sqrt(Math.max(0, fatalities)) * 2.5),
+              0,
+              100,
+            );
+            const magnitudeBonus = Math.min(0.26, Math.max(events / 2, Math.sqrt(Math.max(1, fatalities)) / 3) * 0.05);
+            signals.push({
+              sourceId: `country-risk:${code}:conflict`,
+              region: countryName,
+              domain: 'conflict',
+              signalType: 'conflict_event_burst',
+              value: Math.round(value * 100) / 100,
+              confidence: this.confidenceWithFreshness(0.62, magnitudeBonus, freshness.penalty),
+              observedAt,
+            });
+          }
+        }
+      }
+
+      if (countryData.ucdpStatus && this.latestUcdpFetchedAt > 0) {
+        const valueByIntensity: Record<'war' | 'minor' | 'none', number> = {
+          war: 95,
+          minor: 60,
+          none: 15,
+        };
+        const intensity = countryData.ucdpStatus.intensity;
+        const value = valueByIntensity[intensity] ?? 15;
+        const freshness = computeFreshnessPenalty(this.latestUcdpFetchedAt, SLOW_FRESHNESS_PROFILE, now);
+        if (!freshness.isStale) {
+          signals.push({
+            sourceId: `country-risk:${code}:ucdp`,
+            region: countryName,
+            domain: 'conflict',
+            signalType: 'ucdp_intensity',
+            value,
+            confidence: this.confidenceWithFreshness(0.6, Math.min(0.24, value / 460), freshness.penalty),
+            observedAt: this.latestUcdpFetchedAt,
+          });
+        }
+      }
+
+      if (countryData.hapiSummary && countryData.hapiSummary.eventsPoliticalViolence >= 3 && this.latestHapiFetchedAt > 0) {
+        const politicalEvents = countryData.hapiSummary.eventsPoliticalViolence;
+        const fatalities = Math.max(0, countryData.hapiSummary.fatalitiesTotalPoliticalViolence || 0);
+        const freshness = computeFreshnessPenalty(this.latestHapiFetchedAt, SLOW_FRESHNESS_PROFILE, now);
+        if (!freshness.isStale) {
+          const value = this.clampNumber(
+            (logScale1p(politicalEvents, 16)) + (logScale1p(fatalities, 5)),
+            0,
+            100,
+          );
+          const magnitudeBonus = Math.min(0.26, Math.max(politicalEvents / 3, logScale1p(fatalities, 1)) * 0.05);
+          signals.push({
+            sourceId: `country-risk:${code}:hapi`,
+            region: countryName,
+            domain: 'conflict',
+            signalType: 'hapi_political_violence',
+            value: Math.round(value * 100) / 100,
+            confidence: this.confidenceWithFreshness(0.6, magnitudeBonus, freshness.penalty),
+            observedAt: this.latestHapiFetchedAt,
+          });
+        }
+      }
+
+      if (countryData.displacementOutflow >= 10_000 && this.latestDisplacementFetchedAt > 0) {
+        const outflow = Math.max(0, countryData.displacementOutflow);
+        const freshness = computeFreshnessPenalty(this.latestDisplacementFetchedAt, SLOW_FRESHNESS_PROFILE, now);
+        if (!freshness.isStale) {
+          const value = this.clampNumber(Math.log10(outflow + 1) * 24, 0, 100);
+          const magnitudeBonus = Math.min(0.25, (outflow / 10_000) * 0.035);
+          signals.push({
+            sourceId: `country-risk:${code}:displacement`,
+            region: countryName,
+            domain: 'displacement',
+            signalType: 'displacement_outflow',
+            value: Math.round(value * 100) / 100,
+            confidence: this.confidenceWithFreshness(0.6, magnitudeBonus, freshness.penalty),
+            observedAt: this.latestDisplacementFetchedAt,
+          });
+        }
+      }
+
+      if (countryData.climateStress >= 4 && this.latestClimateFetchedAt > 0) {
+        const stress = Math.max(0, countryData.climateStress);
+        const freshness = computeFreshnessPenalty(this.latestClimateFetchedAt, SLOW_FRESHNESS_PROFILE, now);
+        if (!freshness.isStale) {
+          const value = this.clampNumber(stress * 5, 0, 100);
+          const magnitudeBonus = Math.min(0.22, (stress / 4) * 0.05);
+          signals.push({
+            sourceId: `country-risk:${code}:climate`,
+            region: countryName,
+            domain: 'climate',
+            signalType: 'climate_stress',
+            value: Math.round(value * 100) / 100,
+            confidence: this.confidenceWithFreshness(0.58, magnitudeBonus, freshness.penalty),
+            observedAt: this.latestClimateFetchedAt,
+          });
+        }
+      }
+    }
+
+    return signals
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 60);
   }
 
   private buildIntelligenceForensicsSignals(): ForensicsSignalInput[] {
@@ -3960,9 +4474,14 @@ export class App {
           observedAt: entry.latestObservedAt,
         };
       });
-    const trajectorySignals = this.buildAisTrajectoryForensicsSignals(now);
+    const trajectorySignals = this.buildAisTrajectoryForensicsSignals(now)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 40);
+    const countryRiskSignals = this.buildCountryRiskForensicsSignals(now)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 60);
     const merged = new Map<string, ForensicsSignalInput>();
-    for (const signal of [...baseSignals, ...trajectorySignals]) {
+    for (const signal of [...baseSignals, ...countryRiskSignals, ...trajectorySignals]) {
       const key = `${signal.sourceId}:${signal.signalType}`;
       const existing = merged.get(key);
       if (!existing || signal.value > existing.value) {
@@ -3971,12 +4490,289 @@ export class App {
     }
     return Array.from(merged.values())
       .sort((a, b) => b.value - a.value)
-      .slice(0, 120);
+      .slice(0, 180);
+  }
+
+  private buildMacroForensicsSignals(now = Date.now()): ForensicsSignalInput[] {
+    const macro = this.latestMacroSignals;
+    if (!macro) return [];
+    const observedAt = parseTimestampMs(macro.timestamp) ?? this.latestMacroFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    const pushMacroSignal = (
+      signalType: string,
+      sourceSuffix: string,
+      magnitude: number,
+      threshold: number,
+      value: number,
+    ) => {
+      if (!Number.isFinite(magnitude) || magnitude < threshold) return;
+      const magnitudeBonus = Math.min(0.26, ((magnitude / threshold) - 1 + 1) * 0.06);
+      signals.push({
+        sourceId: `macro:${sourceSuffix}`,
+        region: 'global',
+        domain: 'market',
+        signalType,
+        value: Math.round(this.clampNumber(value, 0, 100) * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.61, magnitudeBonus, freshness.penalty),
+        observedAt,
+      });
+    };
+
+    const liquidityMagnitude = Math.abs(macro.signals.liquidity.value ?? 0);
+    pushMacroSignal(
+      'macro_liquidity_extreme',
+      'liquidity',
+      liquidityMagnitude,
+      8,
+      liquidityMagnitude * 6,
+    );
+
+    const flowDivergence = Math.abs((macro.signals.flowStructure.btcReturn5 ?? 0) - (macro.signals.flowStructure.qqqReturn5 ?? 0));
+    pushMacroSignal(
+      'macro_flow_structure_divergence',
+      'flow-structure',
+      flowDivergence,
+      4,
+      flowDivergence * 10,
+    );
+
+    const regimeRotation = Math.abs((macro.signals.macroRegime.qqqRoc20 ?? 0) - (macro.signals.macroRegime.xlpRoc20 ?? 0));
+    pushMacroSignal(
+      'macro_regime_rotation',
+      'regime',
+      regimeRotation,
+      3,
+      regimeRotation * 11,
+    );
+
+    const technicalDeltas: number[] = [];
+    const btcPrice = macro.signals.technicalTrend.btcPrice ?? 0;
+    const sma200 = macro.signals.technicalTrend.sma200 ?? 0;
+    const vwap30d = macro.signals.technicalTrend.vwap30d ?? 0;
+    const mayerMultiple = macro.signals.technicalTrend.mayerMultiple ?? 0;
+    if (btcPrice > 0 && sma200 > 0) {
+      technicalDeltas.push(Math.abs((btcPrice - sma200) / sma200));
+    }
+    if (btcPrice > 0 && vwap30d > 0) {
+      technicalDeltas.push(Math.abs((btcPrice - vwap30d) / vwap30d));
+    }
+    if (mayerMultiple > 0) {
+      technicalDeltas.push(Math.abs(mayerMultiple - 1));
+    }
+    const technicalDislocation = technicalDeltas.length > 0 ? Math.max(...technicalDeltas) : 0;
+    pushMacroSignal(
+      'macro_technical_dislocation',
+      'technical',
+      technicalDislocation,
+      0.08,
+      technicalDislocation * 520,
+    );
+
+    const hashrateVolatility = Math.abs(macro.signals.hashRate.change30d ?? 0);
+    pushMacroSignal(
+      'macro_hashrate_volatility',
+      'hashrate',
+      hashrateVolatility,
+      4,
+      hashrateVolatility * 8,
+    );
+
+    const fearGreedExtremity = Math.abs((macro.signals.fearGreed.value ?? 50) - 50);
+    pushMacroSignal(
+      'macro_fear_greed_extremity',
+      'fear-greed',
+      fearGreedExtremity,
+      12,
+      fearGreedExtremity * 2.2,
+    );
+
+    return signals
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 25);
+  }
+
+  private buildEtfForensicsSignals(now = Date.now()): ForensicsSignalInput[] {
+    const etfData = this.latestEtfFlows;
+    if (!etfData) return [];
+    const observedAt = parseTimestampMs(etfData.timestamp) ?? this.latestEtfFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    let included = 0;
+    for (const etf of etfData.etfs.slice(0, 80)) {
+      const flowAbs = Math.abs(etf.estFlow || 0);
+      const volumeRatio = Math.max(0, etf.volumeRatio || 0);
+      if (flowAbs < 15_000_000 && volumeRatio < 1.35) continue;
+      included += 1;
+      const value = this.clampNumber(
+        logScale1p(flowAbs, 4.5) + Math.max(0, (volumeRatio - 1) * 30) + (Math.abs(etf.priceChange || 0) * 2.5),
+        0,
+        100,
+      );
+      const magnitudeBonus = Math.min(0.28, Math.max(flowAbs / 15_000_000, volumeRatio / 1.35) * 0.05);
+      signals.push({
+        sourceId: `etf:${etf.ticker}`,
+        region: 'global',
+        domain: 'market',
+        signalType: 'etf_flow_pressure',
+        value: Math.round(value * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.6, magnitudeBonus, freshness.penalty),
+        observedAt,
+      });
+    }
+
+    const summaryFlow = Math.abs(etfData.summary?.totalEstFlow ?? 0);
+    if (summaryFlow >= 15_000_000 || included > 0) {
+      const value = this.clampNumber(logScale1p(summaryFlow, 5.2) + (included * 2.5), 0, 100);
+      const magnitudeBonus = Math.min(0.24, Math.max(summaryFlow / 15_000_000, included / 4) * 0.05);
+      signals.push({
+        sourceId: 'etf:net-flow',
+        region: 'global',
+        domain: 'market',
+        signalType: 'etf_net_flow_pressure',
+        value: Math.round(value * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.62, magnitudeBonus, freshness.penalty),
+        observedAt,
+      });
+    }
+
+    return signals
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 25);
+  }
+
+  private buildStablecoinForensicsSignals(now = Date.now()): ForensicsSignalInput[] {
+    const stableData = this.latestStablecoins;
+    if (!stableData) return [];
+    const observedAt = parseTimestampMs(stableData.timestamp) ?? this.latestStablecoinFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    let depeggedCount = 0;
+    let maxDeviation = 0;
+    for (const coin of stableData.stablecoins.slice(0, 80)) {
+      const deviation = Math.abs(coin.deviation || 0);
+      if (deviation < 0.2) continue;
+      depeggedCount += 1;
+      maxDeviation = Math.max(maxDeviation, deviation);
+      const value = this.clampNumber(
+        (deviation * 140) + (Math.abs(coin.change24h || 0) * 4) + logScale1p(Math.abs(coin.volume24h || 0), 1.2),
+        0,
+        100,
+      );
+      const magnitudeBonus = Math.min(0.28, Math.max(deviation / 0.2, Math.abs(coin.change24h || 0) / 2) * 0.05);
+      signals.push({
+        sourceId: `stablecoin:${coin.symbol}`,
+        region: 'global',
+        domain: 'market',
+        signalType: 'stablecoin_depeg_pressure',
+        value: Math.round(value * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.62, magnitudeBonus, freshness.penalty),
+        observedAt,
+      });
+    }
+
+    if (depeggedCount > 0) {
+      const summaryVolume = Math.abs(stableData.summary?.totalVolume24h ?? 0);
+      const value = this.clampNumber(
+        (depeggedCount * 18) + (maxDeviation * 110) + logScale1p(summaryVolume, 0.75),
+        0,
+        100,
+      );
+      const magnitudeBonus = Math.min(0.24, Math.max(depeggedCount / 2, maxDeviation / 0.2) * 0.05);
+      signals.push({
+        sourceId: 'stablecoin:systemic',
+        region: 'global',
+        domain: 'market',
+        signalType: 'stablecoin_systemic_stress',
+        value: Math.round(value * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.64, magnitudeBonus, freshness.penalty),
+        observedAt,
+      });
+    }
+
+    return signals
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 25);
+  }
+
+  private buildEconomicForensicsSignals(now = Date.now()): ForensicsSignalInput[] {
+    const signals: ForensicsSignalInput[] = [];
+
+    if (this.latestFredSeries.length > 0 && this.latestFredFetchedAt > 0) {
+      const fredFreshness = computeFreshnessPenalty(this.latestFredFetchedAt, FAST_FRESHNESS_PROFILE, now);
+      if (!fredFreshness.isStale) {
+        for (const series of this.latestFredSeries) {
+          const changePercent = Math.abs(series.changePercent ?? 0);
+          if (!Number.isFinite(changePercent) || changePercent < 0.4) continue;
+          const value = this.clampNumber(
+            (changePercent * 14) + logScale1p(Math.abs(series.change ?? 0), 6),
+            0,
+            100,
+          );
+          const magnitudeBonus = Math.min(0.26, (changePercent / 0.4) * 0.04);
+          signals.push({
+            sourceId: `fred:${series.id}`,
+            region: 'global',
+            domain: 'economic',
+            signalType: `fred_${series.id.toLowerCase()}_delta_pct`,
+            value: Math.round(value * 100) / 100,
+            confidence: this.confidenceWithFreshness(0.58, magnitudeBonus, fredFreshness.penalty),
+            observedAt: this.latestFredFetchedAt,
+          });
+        }
+      }
+    }
+
+    if (this.latestOilAnalytics) {
+      const metrics = [
+        this.latestOilAnalytics.wtiPrice,
+        this.latestOilAnalytics.brentPrice,
+        this.latestOilAnalytics.usProduction,
+        this.latestOilAnalytics.usInventory,
+      ].filter((metric): metric is NonNullable<typeof metric> => Boolean(metric));
+
+      for (const metric of metrics) {
+        const changePct = Math.abs(metric.changePct || 0);
+        if (changePct < 0.8) continue;
+        const observedAt = parseTimestampMs(metric.lastUpdated)
+          || this.latestOilFetchedAt
+          || parseTimestampMs(this.latestOilAnalytics.fetchedAt)
+          || 0;
+        if (observedAt <= 0) continue;
+        const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+        if (freshness.isStale) continue;
+        const value = this.clampNumber((changePct * 12) + logScale1p(Math.abs(metric.current || 0), 1.8), 0, 100);
+        const magnitudeBonus = Math.min(0.26, (changePct / 0.8) * 0.04);
+        signals.push({
+          sourceId: `oil:${metric.id.toLowerCase()}`,
+          region: 'global',
+          domain: 'economic',
+          signalType: `oil_${metric.id.toLowerCase()}_delta_pct`,
+          value: Math.round(value * 100) / 100,
+          confidence: this.confidenceWithFreshness(0.6, magnitudeBonus, freshness.penalty),
+          observedAt,
+        });
+      }
+    }
+
+    return signals
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 20);
   }
 
   private buildMarketForensicsSignals(): ForensicsSignalInput[] {
     const now = Date.now();
-    const signals: ForensicsSignalInput[] = [];
+    const marketSignals: ForensicsSignalInput[] = [];
+    const predictionSignals: ForensicsSignalInput[] = [];
     const absChanges: number[] = [];
     const convictions: number[] = [];
     let latestMarketObservedAt = 0;
@@ -3988,19 +4784,22 @@ export class App {
       const absChange = Math.abs(change);
       if (absChange < 0.25) continue;
       absChanges.push(absChange);
-      const marketObservedAt = market.observedAt;
-      const observedAt = typeof marketObservedAt === 'number' && Number.isFinite(marketObservedAt) && marketObservedAt > 0
-        ? marketObservedAt
-        : now;
+      const observedAt = this.resolveObservedAt(market.observedAt, now);
+      const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+      if (freshness.isStale) continue;
       latestMarketObservedAt = Math.max(latestMarketObservedAt, observedAt);
-      const confidence = this.clampNumber(0.62 + Math.min(0.28, absChange / 10), 0.62, 0.95);
-      signals.push({
+      const confidence = this.confidenceWithFreshness(
+        0.62,
+        Math.min(0.28, (absChange / 10) * 0.08),
+        freshness.penalty,
+      );
+      marketSignals.push({
         sourceId: `market:${market.symbol}`,
         region: 'global',
         domain: 'market',
         signalType: 'market_change_pct',
         value: Math.round(absChange * 100) / 100,
-        confidence: Math.round(confidence * 1000) / 1000,
+        confidence,
         observedAt,
       });
     }
@@ -4010,57 +4809,77 @@ export class App {
       const conviction = Math.abs(prediction.yesPrice - 50) / 50 * 100;
       if (conviction < 12) continue;
       convictions.push(conviction);
-      const predictionObservedAt = prediction.observedAt;
-      const observedAt = typeof predictionObservedAt === 'number' && Number.isFinite(predictionObservedAt) && predictionObservedAt > 0
-        ? predictionObservedAt
-        : now;
+      const observedAt = this.resolveObservedAt(prediction.observedAt, now);
+      const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+      if (freshness.isStale) continue;
       latestPredictionObservedAt = Math.max(latestPredictionObservedAt, observedAt);
       const titleSlug = prediction.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 48) || 'untitled';
-      const confidence = this.clampNumber(0.6 + Math.min(0.3, conviction / 100), 0.6, 0.9);
-      signals.push({
+      const confidence = this.confidenceWithFreshness(
+        0.6,
+        Math.min(0.3, (conviction / 100) * 0.1),
+        freshness.penalty,
+      );
+      predictionSignals.push({
         sourceId: `prediction:${titleSlug}`,
         region: 'global',
         domain: 'prediction',
         signalType: 'prediction_conviction',
         value: Math.round(conviction * 100) / 100,
-        confidence: Math.round(confidence * 1000) / 1000,
+        confidence,
         observedAt,
       });
     }
 
     if (absChanges.length > 0) {
       const avgVolatility = absChanges.reduce((sum, value) => sum + value, 0) / absChanges.length;
-      signals.push({
-        sourceId: 'global:market_volatility',
-        region: 'global',
-        domain: 'market',
-        signalType: 'market_volatility',
-        value: Math.round(avgVolatility * 100) / 100,
-        confidence: 0.85,
-        observedAt: latestMarketObservedAt > 0 ? latestMarketObservedAt : now,
-      });
+      const observedAt = latestMarketObservedAt > 0 ? latestMarketObservedAt : now;
+      const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+      if (!freshness.isStale) {
+        marketSignals.push({
+          sourceId: 'global:market_volatility',
+          region: 'global',
+          domain: 'market',
+          signalType: 'market_volatility',
+          value: Math.round(avgVolatility * 100) / 100,
+          confidence: this.confidenceWithFreshness(0.64, Math.min(0.18, avgVolatility * 0.01), freshness.penalty),
+          observedAt,
+        });
+      }
     }
 
     if (convictions.length > 0) {
       const avgConviction = convictions.reduce((sum, value) => sum + value, 0) / convictions.length;
-      signals.push({
-        sourceId: 'global:prediction_conviction',
-        region: 'global',
-        domain: 'prediction',
-        signalType: 'prediction_conviction',
-        value: Math.round(avgConviction * 100) / 100,
-        confidence: 0.8,
-        observedAt: latestPredictionObservedAt > 0 ? latestPredictionObservedAt : now,
-      });
+      const observedAt = latestPredictionObservedAt > 0 ? latestPredictionObservedAt : now;
+      const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+      if (!freshness.isStale) {
+        predictionSignals.push({
+          sourceId: 'global:prediction_conviction',
+          region: 'global',
+          domain: 'prediction',
+          signalType: 'prediction_conviction',
+          value: Math.round(avgConviction * 100) / 100,
+          confidence: this.confidenceWithFreshness(0.62, Math.min(0.17, avgConviction / 180), freshness.penalty),
+          observedAt,
+        });
+      }
     }
 
-    return signals
+    const cappedSignals = [
+      ...marketSignals.sort((a, b) => b.value - a.value).slice(0, 70),
+      ...predictionSignals.sort((a, b) => b.value - a.value).slice(0, 30),
+      ...this.buildMacroForensicsSignals(now).slice(0, 25),
+      ...this.buildEtfForensicsSignals(now).slice(0, 25),
+      ...this.buildStablecoinForensicsSignals(now).slice(0, 25),
+      ...this.buildEconomicForensicsSignals(now).slice(0, 20),
+    ];
+
+    return cappedSignals
       .sort((a, b) => b.value - a.value)
-      .slice(0, 120);
+      .slice(0, 180);
   }
 
   private forensicsSeverityToTemporal(
@@ -4732,6 +5551,9 @@ export class App {
       const agreementKey = `${(anomaly.region || 'global').toLowerCase()}::${anomaly.signalType}`;
       const supportCount = agreementByRegionAndType.get(agreementKey) || 1;
       const { ageMinutes, isNearLive } = this.resolveForensicsAnomalyFreshness(anomaly, runCompletedAt);
+      const observedAt = Number.isFinite(anomaly.observedAt) && anomaly.observedAt > 0
+        ? anomaly.observedAt
+        : runCompletedAt;
       overlay.push({
         id: `${runId}:${anomaly.sourceId}:${anomaly.signalType}:${index}`,
         runId,
@@ -4739,6 +5561,7 @@ export class App {
         region: anomaly.region || 'global',
         domain: anomaly.domain,
         signalType: anomaly.signalType,
+        observedAt,
         monitorCategory: monitor.category,
         monitorLabel: monitor.label,
         monitorPriority: this.computeForensicsMonitorPriority(anomaly, supportCount, isNearLive),
@@ -4772,14 +5595,19 @@ export class App {
     runCompletedAt = Date.now(),
   ): void {
     const overlay = this.buildForensicsMapAnomalies(runId, anomalies, runCompletedAt);
+    this.latestForensicsOverlay = overlay;
     this.map?.setForensicsAnomalies(overlay);
     this.map?.setLayerReady('forensics', overlay.length > 0);
+    const insightsPanel = this.panels['insights'] as InsightsPanel | undefined;
+    insightsPanel?.setForensicsAnomalies(overlay);
+    const strategicRiskPanel = this.panels['strategic-risk'] as StrategicRiskPanel | undefined;
+    strategicRiskPanel?.setForensicsAnomalies(overlay);
   }
 
   private async runOperationalForensicsShadow(scope: 'intelligence' | 'market'): Promise<void> {
     if (!this.panels['forensics']) return;
     if (scope === 'intelligence' && SITE_VARIANT !== 'full') return;
-    if (scope === 'market' && SITE_VARIANT !== 'finance') return;
+    if (scope === 'market' && SITE_VARIANT !== 'finance' && SITE_VARIANT !== 'tech') return;
     if (this.forensicsShadowInFlight.has(scope)) return;
 
     const signals = scope === 'intelligence'
@@ -4790,7 +5618,10 @@ export class App {
     const now = Date.now();
     const stateKey = signals
       .slice(0, 60)
-      .map((signal) => `${signal.sourceId}:${signal.signalType}:${signal.value.toFixed(2)}`)
+      .map((signal) => {
+        const observedBucket = bucketSignalTimestamp(signal.observedAt, 5 * 60 * 1000);
+        return `${signal.sourceId}:${signal.signalType}:${signal.value.toFixed(2)}:${observedBucket}`;
+      })
       .join('|');
 
     const lastRunAt = this.forensicsShadowLastRunAt[scope];
@@ -4847,13 +5678,20 @@ export class App {
     const trendRunLimit = 6;
 
     try {
-      const preferredDomain = SITE_VARIANT === 'finance' ? 'market' : SITE_VARIANT === 'full' ? 'intelligence' : '';
+      const preferredDomain = SITE_VARIANT === 'full'
+        ? 'intelligence'
+        : (SITE_VARIANT === 'finance' || SITE_VARIANT === 'tech')
+          ? 'market'
+          : '';
       let runsResult = await listForensicsRuns(preferredDomain, '', historyLimit, 0);
       if (preferredDomain && (runsResult.error || runsResult.runs.length === 0)) {
         runsResult = await listForensicsRuns('', '', historyLimit, 0);
       }
       if (runsResult.error) {
         this.applyForensicsMapOverlay('', []);
+        this.statusPanel?.updateFeed('Forensics', { status: 'error', itemCount: 0, errorMessage: runsResult.error });
+        this.statusPanel?.updateApi('Forensics API', { status: 'error' });
+        dataFreshness.recordError('forensics', runsResult.error);
         panel.update({
           fusedSignals: [],
           anomalies: [],
@@ -4870,6 +5708,7 @@ export class App {
           anomalyTrends: [],
           error: runsResult.error,
         });
+        this.updateSearchIndex();
         return;
       }
 
@@ -4880,6 +5719,13 @@ export class App {
       const runId = latest?.run?.runId;
       if (!runId) {
         this.applyForensicsMapOverlay('', []);
+        this.statusPanel?.updateFeed('Forensics', {
+          status: 'warning',
+          itemCount: 0,
+          errorMessage: 'No completed forensics runs yet',
+        });
+        this.statusPanel?.updateApi('Forensics API', { status: 'ok' });
+        dataFreshness.recordUpdate('forensics', 0);
         panel.update({
           fusedSignals: [],
           anomalies: [],
@@ -4895,6 +5741,7 @@ export class App {
           runHistory: [],
           anomalyTrends: [],
         });
+        this.updateSearchIndex();
         return;
       }
 
@@ -5057,8 +5904,25 @@ export class App {
         anomalyTrends,
         error: errorParts.join(' | ') || undefined,
       });
+      this.maybeShowForensicsSignalDigest(
+        latest.run?.runId || '',
+        latest.run?.domain || '',
+        selectedAnomalies,
+      );
+      this.statusPanel?.updateFeed('Forensics', {
+        status: selectedAnomalies.length > 0 ? 'ok' : 'warning',
+        itemCount: selectedAnomalies.length,
+        errorMessage: selectedAnomalies.length > 0 ? undefined : 'No flagged anomalies in latest run',
+      });
+      this.statusPanel?.updateApi('Forensics API', { status: 'ok' });
+      dataFreshness.recordUpdate('forensics', selectedAnomalies.length);
+      this.updateSearchIndex();
     } catch (error) {
       this.applyForensicsMapOverlay('', []);
+      const message = error instanceof Error ? error.message : String(error);
+      this.statusPanel?.updateFeed('Forensics', { status: 'error', itemCount: 0, errorMessage: message });
+      this.statusPanel?.updateApi('Forensics API', { status: 'error' });
+      dataFreshness.recordError('forensics', message);
       panel.update({
         fusedSignals: [],
         anomalies: [],
@@ -5073,8 +5937,9 @@ export class App {
         policy: [],
         runHistory: [],
         anomalyTrends: [],
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       });
+      this.updateSearchIndex();
     }
   }
 
@@ -5143,6 +6008,7 @@ export class App {
     tasks.push((async () => {
       try {
         const conflictData = await fetchConflictEvents();
+        this.latestConflictFetchedAt = Date.now();
         ingestConflictsForCII(conflictData.events);
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
       } catch (error) {
@@ -5155,6 +6021,7 @@ export class App {
     tasks.push((async () => {
       try {
         const classifications = await fetchUcdpClassifications();
+        this.latestUcdpFetchedAt = Date.now();
         ingestUcdpForCII(classifications);
         if (classifications.size > 0) dataFreshness.recordUpdate('ucdp', classifications.size);
       } catch (error) {
@@ -5167,6 +6034,7 @@ export class App {
     tasks.push((async () => {
       try {
         const summaries = await fetchHapiSummary();
+        this.latestHapiFetchedAt = Date.now();
         ingestHapiForCII(summaries);
         if (summaries.size > 0) dataFreshness.recordUpdate('hapi', summaries.size);
       } catch (error) {
@@ -5275,6 +6143,7 @@ export class App {
           return;
         }
         const data = unhcrResult.data;
+        this.latestDisplacementFetchedAt = Date.now();
         (this.panels['displacement'] as DisplacementPanel)?.setData(data);
         ingestDisplacementForCII(data.countries);
         if (this.mapLayers.displacement && data.topFlows) {
@@ -5296,6 +6165,7 @@ export class App {
           return;
         }
         const anomalies = climateResult.anomalies;
+        this.latestClimateFetchedAt = Date.now();
         (this.panels['climate'] as ClimateAnomalyPanel)?.setAnomalies(anomalies);
         ingestClimateForCII(anomalies);
         if (this.mapLayers.climate) {
@@ -5471,24 +6341,40 @@ export class App {
   private async loadCableActivity(): Promise<void> {
     try {
       const activity = await fetchCableActivity();
+      this.latestCableActivity = activity;
+      this.latestCableActivityFetchedAt = Date.now();
       this.map?.setCableActivity(activity.advisories, activity.repairShips);
       const itemCount = activity.advisories.length + activity.repairShips.length;
       this.statusPanel?.updateFeed('CableOps', { status: 'ok', itemCount });
+      dataFreshness.recordUpdate('cable_ops', itemCount);
+      if (this.shouldShadowFetchTier2Source('cables')) {
+        this.triggerTier2ForensicsRecalibration();
+      }
     } catch {
+      this.latestCableActivity = { advisories: [], repairShips: [] };
       this.statusPanel?.updateFeed('CableOps', { status: 'error' });
+      dataFreshness.recordError('cable_ops', 'Cable activity fetch failed');
     }
   }
 
   private async loadCableHealth(): Promise<void> {
     try {
       const healthData = await fetchCableHealth();
+      this.latestCableHealth = healthData;
+      this.latestCableHealthFetchedAt = parseTimestampMs(healthData.generatedAt) ?? Date.now();
       this.map?.setCableHealth(healthData.cables);
       const cableIds = Object.keys(healthData.cables);
       const faultCount = cableIds.filter((id) => healthData.cables[id]?.status === 'fault').length;
       const degradedCount = cableIds.filter((id) => healthData.cables[id]?.status === 'degraded').length;
       this.statusPanel?.updateFeed('CableHealth', { status: 'ok', itemCount: faultCount + degradedCount });
+      dataFreshness.recordUpdate('cable_health', faultCount + degradedCount);
+      if (this.shouldShadowFetchTier2Source('cables')) {
+        this.triggerTier2ForensicsRecalibration();
+      }
     } catch {
+      this.latestCableHealth = null;
       this.statusPanel?.updateFeed('CableHealth', { status: 'error' });
+      dataFreshness.recordError('cable_health', 'Cable health fetch failed');
     }
   }
 
@@ -5708,8 +6594,11 @@ export class App {
 
       economicPanel?.setErrorState(false);
       economicPanel?.update(data);
+      this.latestFredSeries = data;
+      this.latestFredFetchedAt = Date.now();
       this.statusPanel?.updateApi('FRED', { status: 'ok' });
       dataFreshness.recordUpdate('economic', data.length);
+      void this.runOperationalForensicsShadow('market');
     } catch {
       this.statusPanel?.updateApi('FRED', { status: 'error' });
       economicPanel?.setErrorState(true, 'FRED data temporarily unavailable — will retry');
@@ -5722,11 +6611,14 @@ export class App {
     try {
       const data = await fetchOilAnalytics();
       economicPanel?.updateOil(data);
+      this.latestOilAnalytics = data;
+      this.latestOilFetchedAt = parseTimestampMs(data.fetchedAt) ?? Date.now();
       const hasData = !!(data.wtiPrice || data.brentPrice || data.usProduction || data.usInventory);
       this.statusPanel?.updateApi('EIA', { status: hasData ? 'ok' : 'error' });
       if (hasData) {
         const metricCount = [data.wtiPrice, data.brentPrice, data.usProduction, data.usInventory].filter(Boolean).length;
         dataFreshness.recordUpdate('oil', metricCount || 1);
+        void this.runOperationalForensicsShadow('market');
       } else {
         dataFreshness.recordError('oil', 'Oil analytics returned no values');
       }
@@ -5908,9 +6800,14 @@ export class App {
     this.scheduleRefresh('predictions', () => this.loadPredictions(), REFRESH_INTERVALS.predictions);
     this.scheduleRefresh('pizzint', () => this.loadPizzInt(), 10 * 60 * 1000);
 
-    // Only refresh layer data if layer is enabled
+    // Layer refreshes
     this.scheduleRefresh('natural', () => this.loadNatural(), 5 * 60 * 1000, () => this.mapLayers.natural);
     this.scheduleRefresh('weather', () => this.loadWeatherAlerts(), 10 * 60 * 1000, () => this.mapLayers.weather);
+    // Tier-2 shadow fetches (for forensics) when layers are disabled
+    this.scheduleRefresh('natural-shadow', () => this.loadNatural(), 7 * 60 * 1000, () =>
+      !this.mapLayers.natural && this.shouldShadowFetchTier2Source('natural'));
+    this.scheduleRefresh('weather-shadow', () => this.loadWeatherAlerts(), 12 * 60 * 1000, () =>
+      !this.mapLayers.weather && this.shouldShadowFetchTier2Source('weather'));
     this.scheduleRefresh('fred', () => this.loadFredData(), 30 * 60 * 1000);
     this.scheduleRefresh('oil', () => this.loadOilAnalytics(), 30 * 60 * 1000);
     this.scheduleRefresh('spending', () => this.loadGovernmentSpending(), 60 * 60 * 1000);
@@ -5934,7 +6831,15 @@ export class App {
     this.scheduleRefresh('ais', () => this.loadAisSignals(), REFRESH_INTERVALS.ais, () => this.mapLayers.ais);
     this.scheduleRefresh('cables', () => this.loadCableActivity(), 30 * 60 * 1000, () => this.mapLayers.cables);
     this.scheduleRefresh('cableHealth', () => this.loadCableHealth(), 5 * 60 * 1000, () => this.mapLayers.cables);
+    this.scheduleRefresh('cables-shadow', () => this.loadCableActivity(), 35 * 60 * 1000, () =>
+      !this.mapLayers.cables && this.shouldShadowFetchTier2Source('cables'));
+    this.scheduleRefresh('cableHealth-shadow', () => this.loadCableHealth(), 12 * 60 * 1000, () =>
+      !this.mapLayers.cables && this.shouldShadowFetchTier2Source('cables'));
     this.scheduleRefresh('flights', () => this.loadFlightDelays(), 10 * 60 * 1000, () => this.mapLayers.flights);
+    this.scheduleRefresh('flights-shadow', () => this.loadFlightDelays(), 15 * 60 * 1000, () =>
+      !this.mapLayers.flights && this.shouldShadowFetchTier2Source('flights'));
+    this.scheduleRefresh('techEvents', () => this.loadTechEvents(), 30 * 60 * 1000, () =>
+      this.shouldShadowFetchTier2Source('techEvents'));
     this.scheduleRefresh('cyberThreats', () => {
       this.cyberThreatsCache = null;
       return this.loadCyberThreats();

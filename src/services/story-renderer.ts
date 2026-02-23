@@ -187,6 +187,8 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
     y += 24;
   }
 
+  const FOOTER_Y = H - 110;
+
   // ── ACTIVE SIGNALS ──
   const hasSignals = data.signals.protests + data.signals.militaryFlights + data.signals.militaryVessels + data.signals.outages > 0;
   if (hasSignals) {
@@ -214,6 +216,42 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
       ctx.fillText(`${sig.icon} ${sig.label}`, sx, y + 28);
     }
     y += 28;
+  }
+
+  // ── FORENSICS ──
+  if (data.forensics.flagged > 0 && y < FOOTER_Y - 180) {
+    y += 40;
+    drawSeparator(ctx, y, PAD);
+    y += 46;
+    drawSectionHeader(ctx, 'FORENSIC ANOMALIES', PAD, y);
+
+    y += 46;
+    const minPValueLabel = typeof data.forensics.minPValue === 'number' && Number.isFinite(data.forensics.minPValue)
+      ? data.forensics.minPValue.toFixed(3)
+      : 'n/a';
+    const forensicStats = [
+      { label: 'Flagged', value: String(data.forensics.flagged), color: '#ef4444' },
+      { label: 'Near-live', value: String(data.forensics.nearLive), color: '#22c55e' },
+      { label: 'Min p-value', value: minPValueLabel, color: '#60a5fa' },
+    ];
+    const colW = (RIGHT - PAD) / forensicStats.length;
+    forensicStats.forEach((stat, idx) => {
+      const sx = PAD + (idx * colW);
+      ctx.fillStyle = stat.color;
+      ctx.font = '800 34px Inter, system-ui, sans-serif';
+      ctx.fillText(stat.value, sx, y);
+      ctx.fillStyle = '#999';
+      ctx.font = '400 18px Inter, system-ui, sans-serif';
+      ctx.fillText(stat.label.toUpperCase(), sx, y + 24);
+    });
+
+    const topForensics = data.forensics.topLabels.slice(0, 2);
+    topForensics.forEach((label) => {
+      y += 34;
+      ctx.fillStyle = '#aaa';
+      ctx.font = '400 20px Inter, system-ui, sans-serif';
+      ctx.fillText(`• ${truncateText(ctx, label, RIGHT - PAD - 10)}`, PAD, y);
+    });
   }
 
   // ── CONVERGENCE ──
@@ -248,8 +286,6 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
       ctx.fillText(truncateText(ctx, desc, RIGHT - PAD), PAD, y);
     }
   }
-
-  const FOOTER_Y = H - 110;
 
   // ── TOP HEADLINES ──
   if (data.news.length > 0 && y < FOOTER_Y - 200) {

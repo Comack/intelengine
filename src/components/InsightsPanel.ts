@@ -11,7 +11,7 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { SITE_VARIANT } from '@/config';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
-import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
+import type { ClusteredEvent, FocalPoint, ForensicsAnomalyOverlay, MilitaryFlight } from '@/types';
 
 export class InsightsPanel extends Panel {
   private isHidden = false;
@@ -21,6 +21,8 @@ export class InsightsPanel extends Panel {
   private lastConvergenceZones: RegionalConvergence[] = [];
   private lastFocalPoints: FocalPoint[] = [];
   private lastMilitaryFlights: MilitaryFlight[] = [];
+  private lastForensicsAnomalies: ForensicsAnomalyOverlay[] = [];
+  private onForensicsSelect?: (anomalyId: string) => void;
   private static readonly BRIEF_COOLDOWN_MS = 120000; // 2 min cooldown (API has limits)
   private static readonly BRIEF_CACHE_KEY = 'summary:world-brief';
 
@@ -40,6 +42,29 @@ export class InsightsPanel extends Panel {
 
   public setMilitaryFlights(flights: MilitaryFlight[]): void {
     this.lastMilitaryFlights = flights;
+  }
+
+  public setForensicsAnomalies(anomalies: ForensicsAnomalyOverlay[]): void {
+    this.lastForensicsAnomalies = [...anomalies]
+      .filter((anomaly) => anomaly.isAnomaly)
+      .sort((a, b) =>
+        (Number(b.isNearLive) - Number(a.isNearLive))
+        || (b.monitorPriority - a.monitorPriority)
+        || (a.pValue - b.pValue)
+      )
+      .slice(0, 24);
+    this.updateForensicsSectionInDom();
+  }
+
+  public setForensicsSelectHandler(handler: (anomalyId: string) => void): void {
+    this.onForensicsSelect = handler;
+  }
+
+  private updateForensicsSectionInDom(): void {
+    const slot = this.content.querySelector('.insights-forensics-slot');
+    if (!slot) return;
+    slot.innerHTML = this.renderForensicsWatchlist();
+    this.attachForensicsHandlers();
   }
 
   private getTheaterPostureContext(): string {
@@ -384,6 +409,7 @@ export class InsightsPanel extends Panel {
     const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief) : '';
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
+    const forensicsHtml = this.renderForensicsWatchlist();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
     const breakingHtml = this.renderBreakingStories(clusters, sentiments);
     const statsHtml = this.renderStats(clusters);
@@ -393,6 +419,7 @@ export class InsightsPanel extends Panel {
       ${briefHtml}
       ${focalPointsHtml}
       ${convergenceHtml}
+      <div class="insights-forensics-slot">${forensicsHtml}</div>
       ${sentimentOverview}
       ${statsHtml}
       <div class="insights-section">
@@ -401,6 +428,7 @@ export class InsightsPanel extends Panel {
       </div>
       ${missedHtml}
     `);
+    this.attachForensicsHandlers();
   }
 
   private renderWorldBrief(brief: string): string {
@@ -512,6 +540,58 @@ export class InsightsPanel extends Panel {
           <span class="insight-stat-label">Alerts</span>
         </div>
         ` : ''}
+      </div>
+    `;
+  }
+
+  private formatForensicsAge(minutes: number): string {
+    if (!Number.isFinite(minutes) || minutes < 0) return 'n/a';
+    if (minutes < 60) return `${Math.round(minutes)}m`;
+    const hours = minutes / 60;
+    if (hours < 24) return `${hours.toFixed(1)}h`;
+    return `${(hours / 24).toFixed(1)}d`;
+  }
+
+  private renderForensicsWatchlist(): string {
+    if (this.lastForensicsAnomalies.length === 0) {
+      return '';
+    }
+
+    const display = this.lastForensicsAnomalies.slice(0, 4);
+    const nearLive = display.filter((anomaly) => anomaly.isNearLive).length;
+    const highSeverity = display.filter((anomaly) => anomaly.severity === 'high').length;
+    const minP = display.reduce((min, anomaly) => Math.min(min, anomaly.pValue), 1);
+
+    return `
+      <div class="insights-section insights-forensics">
+        <div class="insights-section-title">🧪 FORENSICS WATCHLIST</div>
+        <div class="insights-forensics-summary">
+          <span class="insights-forensics-chip">${display.length} flagged</span>
+          <span class="insights-forensics-chip">${nearLive} near-live</span>
+          <span class="insights-forensics-chip">${highSeverity} high severity</span>
+          <span class="insights-forensics-chip">min p=${minP.toFixed(3)}</span>
+        </div>
+        <div class="insights-forensics-list">
+          ${display.map((anomaly) => {
+            const severityClass = anomaly.severity === 'high'
+              ? 'high'
+              : anomaly.severity === 'medium'
+                ? 'medium'
+                : 'low';
+            const age = this.formatForensicsAge(Math.max(0, anomaly.ageMinutes));
+            return `
+              <button type="button" class="insights-forensics-item ${severityClass}" data-forensics-id="${escapeHtml(anomaly.id)}">
+                <div class="insights-forensics-header">
+                  <span class="insights-forensics-title">${escapeHtml(anomaly.monitorLabel || anomaly.signalType)}</span>
+                  <span class="insights-forensics-severity ${severityClass}">${escapeHtml(anomaly.severity === 'unspecified' ? 'unspecified' : anomaly.severity)}</span>
+                </div>
+                <div class="insights-forensics-meta">
+                  ${escapeHtml(anomaly.region || 'global')} · p=${anomaly.pValue.toFixed(3)} · z=${anomaly.legacyZScore.toFixed(2)} · ${anomaly.supportCount} src · ${escapeHtml(age)}
+                </div>
+              </button>
+            `;
+          }).join('')}
+        </div>
       </div>
     `;
   }
@@ -629,5 +709,17 @@ export class InsightsPanel extends Panel {
         ${focalPointsHtml}
       </div>
     `;
+  }
+
+  private attachForensicsHandlers(): void {
+    if (!this.onForensicsSelect) return;
+    const rows = this.content.querySelectorAll('.insights-forensics-item[data-forensics-id]');
+    rows.forEach((row) => {
+      row.addEventListener('click', () => {
+        const id = (row as HTMLElement).dataset.forensicsId || '';
+        if (!id) return;
+        this.onForensicsSelect?.(id);
+      });
+    });
   }
 }

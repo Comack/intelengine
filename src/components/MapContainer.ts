@@ -536,6 +536,14 @@ export class MapContainer {
     }
   }
 
+  public triggerForensicsAnomalyClick(id: string): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.triggerForensicsAnomalyClick(id);
+    } else {
+      this.svgMap?.triggerForensicsAnomalyClick(id);
+    }
+  }
+
   public flashLocation(lat: number, lon: number, durationMs?: number): void {
     if (this.useDeckGL) {
       this.deckGLMap?.flashLocation(lat, lon, durationMs);

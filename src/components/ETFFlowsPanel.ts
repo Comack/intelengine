@@ -4,7 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListEtfFlowsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-type ETFFlowsResult = ListEtfFlowsResponse;
+export type ETFFlowsResult = ListEtfFlowsResponse;
 
 function formatVolume(v: number): string {
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
@@ -29,6 +29,7 @@ export class ETFFlowsPanel extends Panel {
   private data: ETFFlowsResult | null = null;
   private loading = true;
   private error: string | null = null;
+  private onDataUpdated: ((data: ETFFlowsResult) => void) | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -44,11 +45,17 @@ export class ETFFlowsPanel extends Panel {
     }
   }
 
+  public setOnDataUpdated(cb: ((data: ETFFlowsResult) => void) | null): void {
+    this.onDataUpdated = cb;
+    if (cb && this.data) cb(this.data);
+  }
+
   private async fetchData(): Promise<void> {
     try {
       const client = new MarketServiceClient('', { fetch: fetch.bind(globalThis) });
       this.data = await client.listEtfFlows({});
       this.error = null;
+      this.onDataUpdated?.(this.data);
     } catch (err) {
       if (this.isAbortError(err)) return;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';

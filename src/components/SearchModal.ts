@@ -1,8 +1,9 @@
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
+import type { ForensicsAnomalyOverlay } from '@/types';
 
-export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub';
+export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'forensics' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub';
 
 export interface SearchResult {
   type: SearchResultType;
@@ -148,7 +149,7 @@ export class SearchModal {
 
     // Prioritize: news first, then other dynamic data, then static infrastructure
     const priority: SearchResultType[] = [
-      'news', 'prediction', 'market', 'earthquake', 'outage',  // Dynamic/timely
+      'news', 'prediction', 'market', 'forensics', 'earthquake', 'outage',  // Dynamic/timely
       'conflict', 'hotspot', 'country',  // Current events + countries
       'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',  // Infrastructure
       'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'  // Tech
@@ -241,6 +242,7 @@ export class SearchModal {
       hotspot: '📍',
       market: '📈',
       prediction: '🎯',
+      forensics: '🧪',
       conflict: '⚔️',
       base: '🏛️',
       pipeline: '🛢',
@@ -263,13 +265,14 @@ export class SearchModal {
     };
 
     this.resultsList.innerHTML = this.results.map((result, i) => `
-      <div class="search-result-item ${i === this.selectedIndex ? 'selected' : ''}" data-index="${i}">
+      <div class="search-result-item ${result.type === 'forensics' ? this.getForensicsResultClass(result.data) : ''} ${i === this.selectedIndex ? 'selected' : ''}" data-index="${i}">
         <span class="search-result-icon">${icons[result.type]}</span>
         <div class="search-result-content">
           <div class="search-result-title">${this.highlightMatch(result.title)}</div>
           ${result.subtitle ? `<div class="search-result-subtitle">${escapeHtml(result.subtitle)}</div>` : ''}
+          ${result.type === 'forensics' ? this.renderForensicsMetrics(result.data) : ''}
         </div>
-        <span class="search-result-type">${escapeHtml(t(`modals.search.types.${result.type}`) || result.type)}</span>
+        <span class="search-result-type ${result.type === 'forensics' ? this.getForensicsTypeClass(result.data) : ''}">${escapeHtml(this.getTypeLabel(result.type))}</span>
       </div>
     `).join('');
 
@@ -289,6 +292,46 @@ export class SearchModal {
     const escapedQuery = escapeHtml(query);
     const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
     return escapedText.replace(regex, '<mark>$1</mark>');
+  }
+
+  private getTypeLabel(type: SearchResultType): string {
+    const key = `modals.search.types.${type}`;
+    const translated = t(key);
+    return translated && translated !== key ? translated : type;
+  }
+
+  private getForensicsResultClass(data: unknown): string {
+    const anomaly = data as Partial<ForensicsAnomalyOverlay> | null;
+    if (!anomaly) return 'search-forensics-low';
+    if (anomaly.severity === 'high') return 'search-forensics-high';
+    if (anomaly.severity === 'medium') return 'search-forensics-medium';
+    return 'search-forensics-low';
+  }
+
+  private getForensicsTypeClass(data: unknown): string {
+    const anomaly = data as Partial<ForensicsAnomalyOverlay> | null;
+    if (!anomaly) return 'forensics-low';
+    if (anomaly.severity === 'high') return 'forensics-high';
+    if (anomaly.severity === 'medium') return 'forensics-medium';
+    return 'forensics-low';
+  }
+
+  private renderForensicsMetrics(data: unknown): string {
+    const anomaly = data as Partial<ForensicsAnomalyOverlay> | null;
+    if (!anomaly) return '';
+    const pValue = Number.isFinite(anomaly.pValue) ? Number(anomaly.pValue).toFixed(3) : 'n/a';
+    const support = Number.isFinite(anomaly.supportCount) ? Number(anomaly.supportCount) : 0;
+    const priority = Number.isFinite(anomaly.monitorPriority) ? Math.round(Number(anomaly.monitorPriority) * 100) : 0;
+    const ageMinutes = Number.isFinite(anomaly.ageMinutes) ? Math.max(0, Math.round(Number(anomaly.ageMinutes))) : 0;
+    const freshness = anomaly.isNearLive ? `near-live ${ageMinutes}m` : `${ageMinutes}m`;
+    return `
+      <div class="search-result-metrics">
+        <span class="search-result-metric">p=${escapeHtml(pValue)}</span>
+        <span class="search-result-metric">${escapeHtml(String(support))} src</span>
+        <span class="search-result-metric">${escapeHtml(String(priority))}%</span>
+        <span class="search-result-metric">${escapeHtml(freshness)}</span>
+      </div>
+    `;
   }
 
   private handleKeydown(e: KeyboardEvent): void {

@@ -74,8 +74,10 @@ export class CountryBriefPage {
   private onCloseCallback?: () => void;
   private onShareStory?: (code: string, name: string) => void;
   private onExportImage?: (code: string, name: string) => void;
+  private onForensicsAnomalyClick?: (anomalyId: string) => void;
   private boundExportMenuClose: (() => void) | null = null;
   private boundCitationClick: ((e: Event) => void) | null = null;
+  private boundForensicsClick: ((e: Event) => void) | null = null;
   private abortController: AbortController = new AbortController();
 
   constructor() {
@@ -183,8 +185,74 @@ export class CountryBriefPage {
     }
     if (signals.climateStress > 0) chips.push(`<span class="signal-chip climate">🌡️ ${t('modals.countryBrief.signals.climate')}</span>`);
     if (signals.conflictEvents > 0) chips.push(`<span class="signal-chip conflict">⚔️ ${signals.conflictEvents} ${t('modals.countryBrief.signals.conflictEvents')}</span>`);
+    if (signals.forensics.flagged > 0) {
+      chips.push(`<span class="signal-chip conflict">🧪 ${signals.forensics.flagged} forensics anomalies</span>`);
+    }
     chips.push(`<span class="signal-chip stock-loading">📈 ${t('modals.countryBrief.loadingIndex')}</span>`);
     return chips.join('');
+  }
+
+  private formatForensicsAge(minutes: number): string {
+    if (!Number.isFinite(minutes) || minutes < 0) return 'n/a';
+    if (minutes < 60) return `${Math.round(minutes)}m ago`;
+    const hours = minutes / 60;
+    if (hours < 24) return `${hours.toFixed(1)}h ago`;
+    return `${(hours / 24).toFixed(1)}d ago`;
+  }
+
+  private renderForensicsSection(signals: CountryBriefSignals): string {
+    const summary = signals.forensics;
+    if (!summary || summary.flagged <= 0) {
+      return `
+        <section class="cb-section cb-forensics-section">
+          <h3 class="cb-section-title">Forensic Diagnostics</h3>
+          <div class="cb-empty">No flagged forensics anomalies in current run.</div>
+        </section>
+      `;
+    }
+
+    const minPValue = typeof summary.minPValue === 'number' && Number.isFinite(summary.minPValue)
+      ? summary.minPValue.toFixed(3)
+      : 'n/a';
+    const latestObserved = summary.latestObservedAt > 0
+      ? new Date(summary.latestObservedAt).toLocaleTimeString()
+      : 'n/a';
+    const severityClass = summary.maxSeverity === 'high'
+      ? 'critical'
+      : summary.maxSeverity === 'medium'
+      ? 'elevated'
+      : 'normal';
+    const severityLabel = summary.maxSeverity === 'unspecified' || !summary.maxSeverity
+      ? 'unspecified'
+      : summary.maxSeverity;
+
+    const anomalyRows = summary.topAnomalies.length > 0
+      ? summary.topAnomalies.map((anomaly) => `
+        <button type="button" class="cb-forensics-item" data-cb-forensics-id="${escapeHtml(anomaly.id)}">
+          <div class="cb-forensics-item-main">${escapeHtml(anomaly.label || anomaly.signalType)}</div>
+          <div class="cb-forensics-item-meta">
+            <span>${escapeHtml(anomaly.region || 'global')}</span>
+            <span>p=${anomaly.pValue.toFixed(3)}</span>
+            <span>${anomaly.supportCount} source(s)</span>
+            <span>${this.formatForensicsAge(Math.max(0, Math.round((Date.now() - anomaly.observedAt) / 60000)))}</span>
+          </div>
+        </button>
+      `).join('')
+      : '<div class="cb-empty">No country-local anomalies available.</div>';
+
+    return `
+      <section class="cb-section cb-forensics-section">
+        <h3 class="cb-section-title">Forensic Diagnostics</h3>
+        <div class="cb-forensics-summary">
+          <span class="cb-badge cb-forensics-badge ${severityClass}">${escapeHtml(severityLabel.toUpperCase())}</span>
+          <span>${summary.flagged} flagged</span>
+          <span>${summary.nearLive} near-live</span>
+          <span>min p=${minPValue}</span>
+          <span>updated ${escapeHtml(latestObserved)}</span>
+        </div>
+        <div class="cb-forensics-list">${anomalyRows}</div>
+      </section>
+    `;
   }
 
   public setShareStoryHandler(handler: (code: string, name: string) => void): void {
@@ -193,6 +261,10 @@ export class CountryBriefPage {
 
   public setExportImageHandler(handler: (code: string, name: string) => void): void {
     this.onExportImage = handler;
+  }
+
+  public setForensicsAnomalyClickHandler(handler: (anomalyId: string) => void): void {
+    this.onForensicsAnomalyClick = handler;
   }
 
   public showLoading(): void {
@@ -318,6 +390,8 @@ export class CountryBriefPage {
                 </div>
               </section>
 
+              ${this.renderForensicsSection(signals)}
+
               <section class="cb-section cb-timeline-section">
                 <h3 class="cb-section-title">${t('modals.countryBrief.timeline')}</h3>
                 <div class="cb-timeline-mount"></div>
@@ -372,6 +446,7 @@ export class CountryBriefPage {
     // Remove previous overlay-level listeners to prevent accumulation
     if (this.boundExportMenuClose) this.overlay.removeEventListener('click', this.boundExportMenuClose);
     if (this.boundCitationClick) this.overlay.removeEventListener('click', this.boundCitationClick);
+    if (this.boundForensicsClick) this.overlay.removeEventListener('click', this.boundForensicsClick);
 
     this.boundExportMenuClose = () => exportMenu?.classList.add('hidden');
     this.overlay.addEventListener('click', this.boundExportMenuClose);
@@ -390,6 +465,16 @@ export class CountryBriefPage {
       }
     };
     this.overlay.addEventListener('click', this.boundCitationClick);
+
+    this.boundForensicsClick = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const row = target.closest('[data-cb-forensics-id]') as HTMLElement | null;
+      if (!row) return;
+      const anomalyId = row.dataset.cbForensicsId || '';
+      if (!anomalyId) return;
+      this.onForensicsAnomalyClick?.(anomalyId);
+    };
+    this.overlay.addEventListener('click', this.boundForensicsClick);
 
     this.overlay.classList.add('active');
   }
@@ -605,6 +690,18 @@ export class CountryBriefPage {
         displacementOutflow: this.currentSignals.displacementOutflow,
         climateStress: this.currentSignals.climateStress,
         conflictEvents: this.currentSignals.conflictEvents,
+      };
+      data.forensics = {
+        flagged: this.currentSignals.forensics.flagged,
+        nearLive: this.currentSignals.forensics.nearLive,
+        minPValue: this.currentSignals.forensics.minPValue,
+        latestObservedAt: this.currentSignals.forensics.latestObservedAt,
+        topAnomalies: this.currentSignals.forensics.topAnomalies.map((anomaly) => ({
+          label: anomaly.label || anomaly.signalType,
+          pValue: anomaly.pValue,
+          supportCount: anomaly.supportCount,
+          severity: anomaly.severity,
+        })),
       };
     }
     if (this.currentBrief) data.brief = this.currentBrief;

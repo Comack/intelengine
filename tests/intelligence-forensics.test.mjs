@@ -196,8 +196,9 @@ describe('Forensics UI integration', () => {
   const componentIndexSrc = readSrc('src/components/index.ts');
   const panelSrc = readSrc('src/components/ForensicsPanel.ts');
 
-  it('adds forensics panel defaults for full and finance variants', () => {
+  it('adds forensics panel defaults for full, tech, and finance variants', () => {
     assert.match(panelConfigSrc, /forensics:\s*\{\s*name:\s*'Forensics Signals'/);
+    assert.match(panelConfigSrc, /const TECH_PANELS:[\s\S]*?forensics:\s*\{\s*name:\s*'Forensics Signals'/);
   });
 
   it('exports and defines the forensics panel component', () => {
@@ -222,6 +223,7 @@ describe('Forensics UI integration', () => {
 
   it('wires forensics panel loading and scheduled refresh in App', () => {
     assert.match(appSrc, /const forensicsPanel = new ForensicsPanel/);
+    assert.match(appSrc, /forensicsPanel\.setOnAnomalySelected/);
     assert.match(appSrc, /this\.panels\['forensics'\] = forensicsPanel/);
     assert.match(appSrc, /private async loadForensicsPanel\(\): Promise<void>/);
     assert.match(appSrc, /const historyLimit = 10/);
@@ -282,11 +284,15 @@ describe('Forensics map overlay integration', () => {
     assert.match(popupSrc, /Trajectory class/);
     assert.match(popupSrc, /Interpretation/);
     assert.match(mapContainerSrc, /setForensicsAnomalies/);
+    assert.match(mapContainerSrc, /triggerForensicsAnomalyClick/);
+    assert.match(deckSrc, /public triggerForensicsAnomalyClick\(id: string\)/);
   });
 
-  it('enables map-layer defaults for forensics in full and finance variants', () => {
+  it('enables map-layer defaults for forensics in full, tech, and finance variants', () => {
     assert.match(panelConfigSrc, /const FULL_MAP_LAYERS:[\s\S]*?forensics:\s*true/);
+    assert.match(panelConfigSrc, /const TECH_MAP_LAYERS:[\s\S]*?forensics:\s*true/);
     assert.match(panelConfigSrc, /const FINANCE_MAP_LAYERS:[\s\S]*?forensics:\s*true/);
+    assert.match(panelConfigSrc, /const TECH_MOBILE_MAP_LAYERS:[\s\S]*?forensics:\s*false/);
   });
 });
 
@@ -310,6 +316,7 @@ describe('Operational signal integration', () => {
   it('runs operational shadow forensics from intelligence and market data sources', () => {
     assert.match(appSrc, /runOperationalForensicsShadow\('intelligence'\)/);
     assert.match(appSrc, /runOperationalForensicsShadow\('market'\)/);
+    assert.match(appSrc, /scope === 'market' && SITE_VARIANT !== 'finance' && SITE_VARIANT !== 'tech'/);
     assert.match(appSrc, /buildIntelligenceForensicsSignals/);
     assert.match(appSrc, /buildMarketForensicsSignals/);
     assert.match(appSrc, /runForensicsShadow\(domain, signals, alpha\)/);
@@ -328,6 +335,105 @@ describe('Operational signal integration', () => {
     assert.match(appSrc, /sourceId\.match\(\/@/);
     assert.match(aggregatorSrc, /e\.observedAt/);
     assert.match(aggregatorSrc, /new Date\(observedAt\)/);
+  });
+});
+
+describe('Forensics signal enrichment from in-app sources', () => {
+  const appSrc = readSrc('src/App.ts');
+  const macroPanelSrc = readSrc('src/components/MacroSignalsPanel.ts');
+  const etfPanelSrc = readSrc('src/components/ETFFlowsPanel.ts');
+  const stablePanelSrc = readSrc('src/components/StablecoinPanel.ts');
+
+  it('adds panel callback APIs for macro, ETF, and stablecoin snapshots', () => {
+    assert.match(macroPanelSrc, /setOnDataUpdated\(cb/);
+    assert.match(macroPanelSrc, /this\.onDataUpdated\?\.\(this\.data\)/);
+    assert.match(etfPanelSrc, /setOnDataUpdated\(cb/);
+    assert.match(etfPanelSrc, /this\.onDataUpdated\?\.\(this\.data\)/);
+    assert.match(stablePanelSrc, /setOnDataUpdated\(cb/);
+    assert.match(stablePanelSrc, /this\.onDataUpdated\?\.\(this\.data\)/);
+    assert.match(appSrc, /this\.latestMacroSignals = data/);
+    assert.match(appSrc, /this\.latestEtfFlows = data/);
+    assert.match(appSrc, /this\.latestStablecoins = data/);
+    assert.match(appSrc, /runOperationalForensicsShadow\('market'\)/);
+  });
+
+  it('builds tiered enrichment families for intelligence and market scopes', () => {
+    assert.match(appSrc, /buildCountryRiskForensicsSignals/);
+    assert.match(appSrc, /buildMacroForensicsSignals/);
+    assert.match(appSrc, /buildEtfForensicsSignals/);
+    assert.match(appSrc, /buildStablecoinForensicsSignals/);
+    assert.match(appSrc, /buildEconomicForensicsSignals/);
+    assert.match(appSrc, /conflict_event_burst/);
+    assert.match(appSrc, /ucdp_intensity/);
+    assert.match(appSrc, /hapi_political_violence/);
+    assert.match(appSrc, /displacement_outflow/);
+    assert.match(appSrc, /climate_stress/);
+    assert.match(appSrc, /macro_liquidity_extreme/);
+    assert.match(appSrc, /macro_flow_structure_divergence/);
+    assert.match(appSrc, /macro_regime_rotation/);
+    assert.match(appSrc, /macro_technical_dislocation/);
+    assert.match(appSrc, /macro_hashrate_volatility/);
+    assert.match(appSrc, /macro_fear_greed_extremity/);
+    assert.match(appSrc, /etf_flow_pressure/);
+    assert.match(appSrc, /etf_net_flow_pressure/);
+    assert.match(appSrc, /stablecoin_depeg_pressure/);
+    assert.match(appSrc, /stablecoin_systemic_stress/);
+    assert.match(appSrc, /fred_.*_delta_pct/);
+    assert.match(appSrc, /oil_.*_delta_pct/);
+  });
+
+  it('preserves variant guards and adds observed-time bucketing to shadow state keys', () => {
+    assert.match(appSrc, /scope === 'intelligence' && SITE_VARIANT !== 'full'/);
+    assert.match(appSrc, /scope === 'market' && SITE_VARIANT !== 'finance' && SITE_VARIANT !== 'tech'/);
+    assert.match(appSrc, /bucketSignalTimestamp\(signal\.observedAt, 5 \* 60 \* 1000\)/);
+  });
+});
+
+describe('Forensics cross-view integrations', () => {
+  const appSrc = readSrc('src/App.ts');
+  const insightsSrc = readSrc('src/components/InsightsPanel.ts');
+  const riskPanelSrc = readSrc('src/components/StrategicRiskPanel.ts');
+  const searchModalSrc = readSrc('src/components/SearchModal.ts');
+  const signalModalSrc = readSrc('src/components/SignalModal.ts');
+  const timelineSrc = readSrc('src/components/CountryTimeline.ts');
+  const briefSrc = readSrc('src/components/CountryBriefPage.ts');
+
+  it('wires forensics search type and search source indexing', () => {
+    assert.match(searchModalSrc, /'forensics'/);
+    assert.match(appSrc, /registerSource\('forensics'/);
+    assert.match(appSrc, /case 'forensics':/);
+  });
+
+  it('adds country brief forensics diagnostics and map drilldown hooks', () => {
+    assert.match(briefSrc, /setForensicsAnomalyClickHandler/);
+    assert.match(briefSrc, /cb-forensics-section/);
+    assert.match(appSrc, /setForensicsAnomalyClickHandler/);
+    assert.match(appSrc, /focusForensicsOverlayById/);
+    assert.match(appSrc, /getCountryForensicsSummary/);
+  });
+
+  it('adds forensics lane to country timeline rendering', () => {
+    assert.match(timelineSrc, /'forensics'/);
+    assert.match(appSrc, /lane: 'forensics'/);
+  });
+
+  it('adds forensics digest visualization to signal modal notifications', () => {
+    assert.match(signalModalSrc, /showForensicsAnomalies/);
+    assert.match(signalModalSrc, /FORENSICS DIGEST/);
+    assert.match(signalModalSrc, /signal-forensics-severity/);
+    assert.match(appSrc, /maybeShowForensicsSignalDigest/);
+    assert.match(appSrc, /showForensicsAnomalies/);
+  });
+
+  it('propagates forensics overlays into insights and strategic risk panels', () => {
+    assert.match(insightsSrc, /setForensicsAnomalies/);
+    assert.match(insightsSrc, /renderForensicsWatchlist/);
+    assert.match(insightsSrc, /setForensicsSelectHandler/);
+    assert.match(riskPanelSrc, /setForensicsAnomalies/);
+    assert.match(riskPanelSrc, /risk-item-forensics/);
+    assert.match(appSrc, /insightsPanel\.setForensicsSelectHandler/);
+    assert.match(appSrc, /insightsPanel\?\.setForensicsAnomalies\(overlay\)/);
+    assert.match(appSrc, /strategicRiskPanel\?\.setForensicsAnomalies\(overlay\)/);
   });
 });
 

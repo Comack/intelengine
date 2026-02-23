@@ -21,6 +21,13 @@ export type DataSourceId =
   | 'outages'    // Internet outages
   | 'cyber_threats' // Cyber threat IOC layer
   | 'weather'    // Weather alerts
+  | 'forensics'  // Operational forensics runs/anomaly overlays
+  | 'faa_delays' // Airport delay feed
+  | 'cable_ops'  // Cable advisories + repair ships
+  | 'cable_health' // Cable health diagnostics
+  | 'eonet'      // NASA EONET natural events
+  | 'gdelt_tension' // GDELT tension stream
+  | 'tech_events' // Tech conference/event stream
   | 'economic'   // Economic indicators (FRED)
   | 'oil'        // EIA oil analytics
   | 'spending'        // USASpending.gov
@@ -82,6 +89,13 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   outages: { name: 'Internet Outages', requiredForRisk: false, panelId: 'outages' },
   cyber_threats: { name: 'Cyber Threat IOCs', requiredForRisk: false, panelId: 'map' },
   weather: { name: 'Weather Alerts', requiredForRisk: false, panelId: 'weather' },
+  forensics: { name: 'Forensics Signals', requiredForRisk: false, panelId: 'forensics' },
+  faa_delays: { name: 'Airport Delay Alerts', requiredForRisk: false, panelId: 'map' },
+  cable_ops: { name: 'Cable Operations', requiredForRisk: false, panelId: 'map' },
+  cable_health: { name: 'Cable Health', requiredForRisk: false, panelId: 'map' },
+  eonet: { name: 'Natural Events (EONET)', requiredForRisk: false, panelId: 'map' },
+  gdelt_tension: { name: 'GDELT Tension Stream', requiredForRisk: false, panelId: 'intel' },
+  tech_events: { name: 'Tech Events', requiredForRisk: false, panelId: 'events' },
   economic: { name: 'Economic Data (FRED)', requiredForRisk: false, panelId: 'economic' },
   oil: { name: 'Oil Analytics (EIA)', requiredForRisk: false, panelId: 'economic' },
   spending: { name: 'Gov Spending', requiredForRisk: false, panelId: 'economic' },
@@ -334,8 +348,15 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   predictions: 'Prediction feed unavailable—scenario signals may be stale',
   pizzint: 'PizzINT monitor unavailable—location/tension tracking degraded',
   outages: 'Internet disruptions may be unreported—outage monitoring offline',
+  forensics: 'Operational forensics runs unavailable—calibrated anomaly diagnostics may be stale',
   cyber_threats: 'Cyber IOC map points unavailable—malicious infrastructure visibility reduced',
   weather: 'Severe weather warnings may be missed—weather alerts unavailable',
+  faa_delays: 'Airport delay feed unavailable—aviation disruption monitoring degraded',
+  cable_ops: 'Cable operations advisories unavailable—subsea infrastructure visibility reduced',
+  cable_health: 'Cable health diagnostics unavailable—fault/degradation scoring may be stale',
+  eonet: 'Natural event feed unavailable—hazard escalation monitoring degraded',
+  gdelt_tension: 'Country tension stream unavailable—cross-border escalation tracking degraded',
+  tech_events: 'Tech events feed unavailable—conference density/immediacy signals degraded',
   economic: 'Economic indicators stale—Fed/Treasury data not updating',
   oil: 'Oil market analytics unavailable—EIA data not updating',
   spending: 'Government spending data unavailable',

@@ -1,5 +1,6 @@
 import type { CorrelationSignal } from '@/services/correlation';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
+import type { ForensicsAnomalyOverlay } from '@/types';
 import { suppressTrendingTerm } from '@/services/trending-keywords';
 import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
@@ -219,6 +220,84 @@ export class SignalModal {
     `;
 
     this.element.classList.add('active');
+  }
+
+  public showForensicsAnomalies(
+    anomalies: ForensicsAnomalyOverlay[],
+    context?: {
+      runId?: string;
+      domain?: string;
+      completedAt?: number;
+    },
+  ): void {
+    if (document.fullscreenElement) return;
+    if (!anomalies.length) return;
+
+    const content = this.element.querySelector('.signal-modal-content')!;
+    const sorted = [...anomalies].sort((a, b) =>
+      (Number(b.isNearLive) - Number(a.isNearLive))
+      || (b.monitorPriority - a.monitorPriority)
+      || (a.pValue - b.pValue)
+    );
+    const top = sorted.slice(0, 5);
+
+    const nearLiveCount = top.filter((item) => item.isNearLive).length;
+    const minPValue = top.reduce((min, item) => Math.min(min, item.pValue), 1);
+    const completedAtValue = context?.completedAt;
+    const completedAt = typeof completedAtValue === 'number' && Number.isFinite(completedAtValue) && completedAtValue > 0
+      ? new Date(completedAtValue)
+      : null;
+    const runLabel = context?.runId ? context.runId.slice(0, 8) : 'latest';
+    const domainLabel = context?.domain || 'forensics';
+
+    const cardsHtml = top.map((anomaly) => {
+      const severity = anomaly.severity === 'high'
+        ? 'high'
+        : anomaly.severity === 'medium'
+          ? 'medium'
+          : 'low';
+      const severityLabel = anomaly.severity === 'unspecified'
+        ? 'UNSPECIFIED'
+        : anomaly.severity.toUpperCase();
+      const ageMinutes = Number.isFinite(anomaly.ageMinutes) ? Math.max(0, Math.round(anomaly.ageMinutes)) : 0;
+      const freshnessLabel = anomaly.isNearLive ? `near-live ${ageMinutes}m` : `${ageMinutes}m old`;
+      const observedTime = anomaly.observedAt > 0
+        ? new Date(anomaly.observedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        : 'n/a';
+
+      return `
+        <div class="signal-item forensics-anomaly-card forensics-${severity}">
+          <div class="signal-type">🧪 ${escapeHtml(anomaly.monitorCategory || 'other')} anomaly · ${escapeHtml(anomaly.signalType)}</div>
+          <div class="signal-title">${escapeHtml(anomaly.monitorLabel || anomaly.signalType)} <span class="signal-forensics-severity ${severity}">${escapeHtml(severityLabel)}</span></div>
+          <div class="signal-description">${escapeHtml(anomaly.region || 'global')} · p=${anomaly.pValue.toFixed(3)} · z=${anomaly.legacyZScore.toFixed(2)} · support=${anomaly.supportCount}</div>
+          <div class="signal-meta">
+            <span class="signal-confidence">priority ${(anomaly.monitorPriority * 100).toFixed(0)}%</span>
+            <span>${escapeHtml(freshnessLabel)}</span>
+            <span>obs ${escapeHtml(observedTime)}</span>
+          </div>
+          <div class="signal-location">
+            <button class="location-link" data-lat="${anomaly.lat}" data-lon="${anomaly.lon}">
+              📍 ${t('modals.signal.viewOnMap')}: ${escapeHtml(anomaly.region || `${anomaly.lat.toFixed(2)}°, ${anomaly.lon.toFixed(2)}°`)}
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    content.innerHTML = `
+      <div class="signal-item forensics-digest-summary">
+        <div class="signal-type">🧪 FORENSICS DIGEST</div>
+        <div class="signal-title">${top.length} notable anomaly${top.length === 1 ? '' : 'ies'} · ${escapeHtml(domainLabel)}</div>
+        <div class="signal-description">${nearLiveCount} near-live · min p=${minPValue.toFixed(3)} · run ${escapeHtml(runLabel)}</div>
+        <div class="signal-meta">
+          <span class="signal-confidence">${completedAt ? completedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : 'latest run'}</span>
+        </div>
+      </div>
+      ${cardsHtml}
+    `;
+
+    this.element.classList.add('active');
+    this.playSound();
   }
 
   public playSound(): void {

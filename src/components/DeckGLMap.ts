@@ -2879,6 +2879,7 @@ export class DeckGLMap {
         { key: 'datacenters', label: t('components.deckgl.layers.aiDataCenters'), icon: '&#128421;' },
         { key: 'cables', label: t('components.deckgl.layers.underseaCables'), icon: '&#128268;' },
         { key: 'outages', label: t('components.deckgl.layers.internetOutages'), icon: '&#128225;' },
+        { key: 'forensics', label: 'Forensics Anomalies', icon: '&#129514;' },
         { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
         { key: 'techEvents', label: t('components.deckgl.layers.techEvents'), icon: '&#128197;' },
         { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
@@ -3025,6 +3026,7 @@ export class DeckGLMap {
           helpItem(label('underseaCables'), 'infraCables'),
           helpItem(label('aiDataCenters'), 'infraDatacenters'),
           helpItem(label('internetOutages'), 'infraOutages'),
+          '<div class="layer-help-item"><span>FORENSICS ANOMALIES</span> Shadow-run calibrated anomalies for market, maritime, cyber, and infrastructure telemetry.</div>',
         ])}
         ${helpSection('naturalEconomic', [
           helpItem(label('naturalEvents'), 'naturalEventsTech'),
@@ -3786,6 +3788,14 @@ export class DeckGLMap {
       const { x, y } = screenPos || this.getContainerCenter();
       this.popup.show({ type: 'irradiator', data: irradiator, x, y });
     }
+  }
+
+  public triggerForensicsAnomalyClick(id: string): void {
+    const anomaly = this.forensicsAnomalies.find((item) => item.id === id);
+    if (!anomaly) return;
+    const screenPos = this.projectToScreen(anomaly.lat, anomaly.lon);
+    const { x, y } = screenPos || this.getContainerCenter();
+    this.popup.show({ type: 'forensicsAnomaly', data: anomaly, x, y });
   }
 
   public flashLocation(lat: number, lon: number, durationMs = 2000): void {

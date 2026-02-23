@@ -20,6 +20,7 @@ import {
 } from '@/services/data-freshness';
 import { getLearningProgress } from '@/services/country-instability';
 import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
+import type { ForensicsAnomalyOverlay } from '@/types';
 
 export class StrategicRiskPanel extends Panel {
   private overview: StrategicRiskOverview | null = null;
@@ -30,6 +31,7 @@ export class StrategicRiskPanel extends Panel {
   private unsubscribeFreshness: (() => void) | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
   private usedCachedScores = false;
+  private forensicsAnomalies: ForensicsAnomalyOverlay[] = [];
 
   constructor() {
     super({
@@ -279,6 +281,8 @@ export class StrategicRiskPanel extends Panel {
     if (!this.overview) return '';
 
     const alertCounts = getAlertCount();
+    const forensicsCount = this.forensicsAnomalies.length;
+    const forensicsNearLive = this.forensicsAnomalies.filter((anomaly) => anomaly.isNearLive).length;
 
     return `
       <div class="risk-metrics">
@@ -298,6 +302,12 @@ export class StrategicRiskPanel extends Panel {
           <span class="risk-metric-value">${alertCounts.critical + alertCounts.high}</span>
           <span class="risk-metric-label">${t('components.strategicRisk.highAlerts')}</span>
         </div>
+        ${forensicsCount > 0 ? `
+        <div class="risk-metric forensics">
+          <span class="risk-metric-value">${forensicsCount}</span>
+          <span class="risk-metric-label">Forensics (${forensicsNearLive} near-live)</span>
+        </div>
+        ` : ''}
       </div>
     `;
   }
@@ -309,15 +319,37 @@ export class StrategicRiskPanel extends Panel {
 
     // Get convergence zone for first risk if available
     const topZone = this.overview.topConvergenceZones[0];
+    const topForensics = this.forensicsAnomalies[0];
+    const topForensicsText = topForensics
+      ? `Forensics: ${topForensics.monitorLabel || topForensics.signalType} in ${topForensics.region || 'global'} (p=${topForensics.pValue.toFixed(3)}, ${topForensics.isNearLive ? 'near-live' : 'watch'})`
+      : '';
+    const riskItems = topForensicsText
+      ? [topForensicsText, ...this.overview.topRisks]
+      : [...this.overview.topRisks];
+    let convergenceUsed = false;
 
     return `
       <div class="risk-section">
         <div class="risk-section-title">${t('components.strategicRisk.topRisks')}</div>
         <div class="risk-list">
-          ${this.overview.topRisks.map((risk, i) => {
-      // First risk is convergence - make it clickable if we have location
-      const isConvergence = i === 0 && risk.startsWith('Convergence:') && topZone;
+          ${riskItems.map((risk, i) => {
+      const isForensics = Boolean(topForensicsText) && i === 0 && topForensics;
+      if (isForensics) {
+        const lat = topForensics?.lat ?? 0;
+        const lon = topForensics?.lon ?? 0;
+        return `
+                <div class="risk-item risk-item-clickable risk-item-forensics" data-lat="${lat}" data-lon="${lon}">
+                  <span class="risk-rank">${i + 1}.</span>
+                  <span class="risk-text">${escapeHtml(risk)}</span>
+                  <span class="risk-location-icon">↗</span>
+                </div>
+              `;
+      }
+
+      // First convergence risk in list remains clickable when location exists
+      const isConvergence = !convergenceUsed && risk.startsWith('Convergence:') && topZone;
       if (isConvergence) {
+        convergenceUsed = true;
         return `
                 <div class="risk-item risk-item-clickable" data-lat="${topZone.lat}" data-lon="${topZone.lon}">
                   <span class="risk-rank">${i + 1}.</span>
@@ -492,5 +524,17 @@ export class StrategicRiskPanel extends Panel {
 
   public setLocationClickHandler(handler: (lat: number, lon: number) => void): void {
     this.onLocationClick = handler;
+  }
+
+  public setForensicsAnomalies(anomalies: ForensicsAnomalyOverlay[]): void {
+    this.forensicsAnomalies = [...anomalies]
+      .filter((anomaly) => anomaly.isAnomaly)
+      .sort((a, b) =>
+        (Number(b.isNearLive) - Number(a.isNearLive))
+        || (b.monitorPriority - a.monitorPriority)
+        || (a.pValue - b.pValue)
+      )
+      .slice(0, 12);
+    this.render();
   }
 }

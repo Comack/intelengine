@@ -23,23 +23,23 @@ const TECH_FEEDS = new Set([
   'Unicorns', 'Accelerators', 'Security', 'Policy', 'Layoffs',
   'Finance', 'Hardware', 'Cloud', 'Dev', 'Tech Events', 'Crypto',
   'Markets', 'Events', 'Producthunt', 'Funding', 'Polymarket',
-  'Cyber Threats'
+  'Cyber Threats', 'Forensics'
 ]);
 const TECH_APIS = new Set([
   'RSS Proxy', 'Finnhub', 'CoinGecko', 'Tech Events API', 'Service Status', 'Polymarket',
-  'Cyber Threats API'
+  'Cyber Threats API', 'Forensics API'
 ]);
 
 const WORLD_FEEDS = new Set([
   'Politics', 'Middleeast', 'Tech', 'Ai', 'Finance',
   'Gov', 'Intel', 'Layoffs', 'Thinktanks', 'Energy',
   'Polymarket', 'Weather', 'NetBlocks', 'Shipping', 'Military',
-  'Cyber Threats'
+  'Cyber Threats', 'Forensics'
 ]);
 const WORLD_APIS = new Set([
   'RSS2JSON', 'Finnhub', 'CoinGecko', 'Polymarket', 'USGS', 'FRED',
   'AISStream', 'GDELT Doc', 'EIA', 'USASpending', 'PizzINT', 'FIRMS',
-  'Cyber Threats API'
+  'Cyber Threats API', 'Forensics API'
 ]);
 
 import { t } from '../services/i18n';

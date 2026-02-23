@@ -3118,6 +3118,10 @@ export class MapComponent {
     });
   }
 
+  public triggerForensicsAnomalyClick(_id: string): void {
+    // SVG/mobile fallback intentionally does not render forensics markers.
+  }
+
   public enableLayer(layer: keyof MapLayers): void {
     if (!this.state.layers[layer]) {
       this.state.layers[layer] = true;
