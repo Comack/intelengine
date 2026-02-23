@@ -42,6 +42,7 @@ describe('Intelligence forensics contracts', () => {
     assert.match(forensicsProto, /p_value_timing/);
     assert.match(forensicsProto, /timing_nonconformity/);
     assert.match(forensicsProto, /interval_ms/);
+    assert.match(forensicsProto, /observed_at/);
     assert.match(forensicsProto, /message\s+ForensicsRunSummary/);
     assert.match(forensicsProto, /message\s+ForensicsPolicyEntry/);
   });
@@ -93,6 +94,7 @@ describe('Forensics orchestrator safety and fallback', () => {
     assert.match(orchestratorSrc, /pValueTiming/);
     assert.match(orchestratorSrc, /timingNonconformity/);
     assert.match(orchestratorSrc, /intervalMs/);
+    assert.match(orchestratorSrc, /observedAt:\s*Math\.max\(0,\s*Math\.round\(signal\.observedAt/);
     assert.match(orchestratorSrc, /Bonferroni/);
   });
 
@@ -203,7 +205,14 @@ describe('Forensics UI integration', () => {
     assert.match(panelSrc, /export class ForensicsPanel extends Panel/);
     assert.match(panelSrc, /forensics-grid/);
     assert.match(panelSrc, /forensics-trend-grid/);
+    assert.match(panelSrc, /forensics-monitor-grid/);
+    assert.match(panelSrc, /forensics-trajectory-grid/);
+    assert.match(panelSrc, /forensics-drift-grid/);
+    assert.match(panelSrc, /Monitor Streams/);
+    assert.match(panelSrc, /AIS Trajectory Streams/);
     assert.match(panelSrc, /Topology Trends/);
+    assert.match(panelSrc, /Topology Window Drilldowns/);
+    assert.match(panelSrc, /Topology Drift Diagnostics/);
     assert.match(panelSrc, /Topology Baselines/);
     assert.match(panelSrc, /data-forensics-anomaly-key/);
     assert.match(panelSrc, /Provenance links/);
@@ -223,7 +232,15 @@ describe('Forensics UI integration', () => {
     assert.match(appSrc, /topologySummaryResult\.alerts/);
     assert.match(appSrc, /topologySummaryResult\.trends/);
     assert.match(appSrc, /topologySummaryResult\.baselines/);
+    assert.match(appSrc, /buildTopologyWindowDrilldowns/);
+    assert.match(appSrc, /buildTopologyDriftDiagnostics/);
+    assert.match(appSrc, /buildForensicsMonitorStreams/);
+    assert.match(appSrc, /buildAisTrajectoryStreams/);
+    assert.match(appSrc, /monitorStreams:/);
+    assert.match(appSrc, /aisTrajectoryStreams:/);
     assert.match(appSrc, /topologyTrends:/);
+    assert.match(appSrc, /topologyWindowDrilldowns:/);
+    assert.match(appSrc, /topologyDrifts:/);
     assert.match(appSrc, /topologyAlerts:/);
     assert.match(appSrc, /topologyBaselines:/);
     assert.match(appSrc, /tasks\.push\(\{ name: 'forensics'/);
@@ -242,6 +259,8 @@ describe('Forensics map overlay integration', () => {
     assert.match(appSrc, /buildForensicsMapAnomalies/);
     assert.match(appSrc, /applyForensicsMapOverlay/);
     assert.match(appSrc, /classifyForensicsMonitor/);
+    assert.match(appSrc, /resolveForensicsAnomalyFreshness/);
+    assert.match(appSrc, /anomaly\.observedAt/);
     assert.match(appSrc, /resolveMarketSourceCoordinate/);
     assert.match(appSrc, /monitorCategory:\s*monitor\.category/);
     assert.match(appSrc, /isNearLive/);
@@ -260,6 +279,8 @@ describe('Forensics map overlay integration', () => {
     assert.match(popupSrc, /renderForensicsAnomalyPopup/);
     assert.match(popupSrc, /Monitor focus/);
     assert.match(popupSrc, /Freshness/);
+    assert.match(popupSrc, /Trajectory class/);
+    assert.match(popupSrc, /Interpretation/);
     assert.match(mapContainerSrc, /setForensicsAnomalies/);
   });
 
@@ -293,10 +314,48 @@ describe('Operational signal integration', () => {
     assert.match(appSrc, /buildMarketForensicsSignals/);
     assert.match(appSrc, /runForensicsShadow\(domain, signals, alpha\)/);
     assert.match(appSrc, /signalAggregator\.ingestTemporalAnomalies\(derivedAnomalies\)/);
+    assert.match(appSrc, /buildAisTrajectoryStreams/);
   });
 
   it('feeds cyber and AIS data into operational forensics path', () => {
     assert.match(appSrc, /signalAggregator\.ingestCyberThreats\(threats\)/);
     assert.match(appSrc, /signalAggregator\.ingestAisDisruptions\(disruptions\)/);
+    assert.match(appSrc, /classifyAisTrajectorySignal/);
+    assert.match(appSrc, /buildAisTrajectoryForensicsSignals/);
+    assert.match(appSrc, /ais_route_deviation/);
+    assert.match(appSrc, /ais_loitering/);
+    assert.match(appSrc, /ais_silence/);
+    assert.match(appSrc, /sourceId\.match\(\/@/);
+    assert.match(aggregatorSrc, /e\.observedAt/);
+    assert.match(aggregatorSrc, /new Date\(observedAt\)/);
+  });
+});
+
+describe('Market/prediction event-time fidelity', () => {
+  const appSrc = readSrc('src/App.ts');
+  const marketSrc = readSrc('src/services/market/index.ts');
+  const predictionSrc = readSrc('src/services/prediction/index.ts');
+  const typesSrc = readSrc('src/types/index.ts');
+
+  it('propagates observed timestamps from source services into forensics signal inputs', () => {
+    assert.match(typesSrc, /interface MarketData[\s\S]*observedAt\?: number/);
+    assert.match(marketSrc, /batchObservedAt = Date\.now\(\)/);
+    assert.match(marketSrc, /observedAt,/);
+    assert.match(predictionSrc, /interface PredictionMarket[\s\S]*observedAt\?: number/);
+    assert.match(predictionSrc, /resolveObservedAt\(/);
+    assert.match(appSrc, /market\.observedAt/);
+    assert.match(appSrc, /prediction\.observedAt/);
+    assert.match(appSrc, /latestMarketObservedAt/);
+    assert.match(appSrc, /latestPredictionObservedAt/);
+  });
+});
+
+describe('AIS disruption timestamp propagation', () => {
+  const maritimeSrc = readSrc('src/services/maritime/index.ts');
+
+  it('stamps disruption events with snapshot time for downstream freshness', () => {
+    assert.match(maritimeSrc, /snapshotAt/);
+    assert.match(maritimeSrc, /timestamp:\s*response\.snapshot\.snapshotAt/);
+    assert.match(maritimeSrc, /observedAt:/);
   });
 });

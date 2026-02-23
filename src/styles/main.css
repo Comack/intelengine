@@ -8993,6 +8993,275 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
+.forensics-monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.forensics-trajectory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.forensics-drift-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.forensics-monitor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.forensics-trajectory-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.forensics-trajectory-card.trajectory-ais_route_deviation {
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.forensics-trajectory-card.trajectory-ais_loitering {
+  border-color: rgba(14, 165, 233, 0.45);
+}
+
+.forensics-trajectory-card.trajectory-ais_silence {
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.forensics-monitor-card.monitor-market {
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.forensics-monitor-card.monitor-maritime {
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+.forensics-monitor-card.monitor-cyber {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.forensics-monitor-card.monitor-security {
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.forensics-monitor-card.monitor-infrastructure {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.forensics-monitor-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.forensics-trajectory-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.forensics-monitor-title {
+  font-size: 10px;
+  letter-spacing: 0.25px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.forensics-trajectory-title {
+  font-size: 10px;
+  letter-spacing: 0.25px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.forensics-monitor-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.forensics-trajectory-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.forensics-monitor-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.forensics-trajectory-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.forensics-monitor-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forensics-trajectory-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forensics-monitor-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forensics-trajectory-corridors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.forensics-trajectory-chip {
+  font-size: 10px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: var(--overlay-subtle);
+}
+
+.forensics-trajectory-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forensics-monitor-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--overlay-subtle);
+}
+
+.forensics-trajectory-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--overlay-subtle);
+}
+
+.forensics-monitor-item-main {
+  font-size: 10px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forensics-trajectory-item-main {
+  font-size: 10px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forensics-monitor-item-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.forensics-trajectory-item-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.forensics-drift-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.forensics-drift-card.drift-stable {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.forensics-drift-card.drift-watch {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.forensics-drift-card.drift-critical {
+  border-color: rgba(239, 68, 68, 0.42);
+}
+
+.forensics-drift-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.forensics-drift-badge {
+  font-size: 10px;
+  letter-spacing: 0.25px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.forensics-drift-card.drift-watch .forensics-drift-badge {
+  color: var(--semantic-high);
+}
+
+.forensics-drift-card.drift-critical .forensics-drift-badge {
+  color: var(--semantic-critical);
+}
+
+.forensics-drift-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.forensics-drift-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .forensics-trend-card {
   display: flex;
   flex-direction: column;
@@ -9299,7 +9568,14 @@ a.prediction-link:hover {
 
 @media (max-width: 900px) {
   .forensics-trend-grid,
+  .forensics-monitor-grid,
+  .forensics-trajectory-grid,
+  .forensics-drift-grid,
   .forensics-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .forensics-drift-meta {
     grid-template-columns: 1fr;
   }
 

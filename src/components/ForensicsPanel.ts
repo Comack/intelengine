@@ -49,12 +49,80 @@ export interface ForensicsTopologyTrendSeries {
   points: ForensicsTopologyTrendPoint[];
 }
 
+export interface ForensicsTopologyWindowDrilldown {
+  metric: string;
+  label: string;
+  region: string;
+  shortWindowRuns: number;
+  longWindowRuns: number;
+  shortMean: number;
+  longMean: number;
+  delta: number;
+  slope: number;
+  latestValue: number;
+}
+
+export interface ForensicsTopologyDriftDiagnostic {
+  signalType: string;
+  region: string;
+  count: number;
+  lastValue: number;
+  mean: number;
+  stdDev: number;
+  zScore: number;
+  driftState: 'stable' | 'watch' | 'critical';
+  lastUpdated: number;
+}
+
+export interface ForensicsMonitorStreamItem {
+  sourceId: string;
+  signalType: string;
+  region: string;
+  label: string;
+  pValue: number;
+  priority: number;
+}
+
+export interface ForensicsMonitorStream {
+  category: 'market' | 'maritime' | 'cyber' | 'security' | 'infrastructure' | 'other';
+  label: string;
+  totalFlagged: number;
+  nearLiveCount: number;
+  minPValue: number;
+  maxPriority: number;
+  topItems: ForensicsMonitorStreamItem[];
+}
+
+export interface ForensicsAisTrajectoryItem {
+  sourceId: string;
+  region: string;
+  corridor: string;
+  pValue: number;
+  priority: number;
+  ageMinutes: number;
+}
+
+export interface ForensicsAisTrajectoryStream {
+  signalType: 'ais_route_deviation' | 'ais_loitering' | 'ais_silence';
+  label: string;
+  totalFlagged: number;
+  nearLiveCount: number;
+  minPValue: number;
+  maxPriority: number;
+  topCorridors: string[];
+  topItems: ForensicsAisTrajectoryItem[];
+}
+
 export interface ForensicsPanelSnapshot {
   summary?: ForensicsRunSummary;
   fusedSignals: ForensicsFusedSignal[];
   anomalies: ForensicsCalibratedAnomaly[];
+  monitorStreams: ForensicsMonitorStream[];
+  aisTrajectoryStreams: ForensicsAisTrajectoryStream[];
   topologyAlerts: ForensicsCalibratedAnomaly[];
   topologyTrends: ForensicsTopologyTrendSeries[];
+  topologyWindowDrilldowns: ForensicsTopologyWindowDrilldown[];
+  topologyDrifts: ForensicsTopologyDriftDiagnostic[];
   topologyBaselines: ForensicsTopologyBaselineSummary[];
   trace: ForensicsPhaseTrace[];
   policy: ForensicsPolicyEntry[];
@@ -116,6 +184,12 @@ function phaseStatusClass(value: string): string {
   if (value === 'FORENSICS_PHASE_STATUS_SKIPPED') return 'skipped';
   if (value === 'FORENSICS_PHASE_STATUS_PENDING') return 'pending';
   return 'unknown';
+}
+
+function topologyDriftClass(value: ForensicsTopologyDriftDiagnostic['driftState']): string {
+  if (value === 'critical') return 'critical';
+  if (value === 'watch') return 'watch';
+  return 'stable';
 }
 
 function anomalyKey(sourceId: string, signalType: string, region: string): string {
@@ -302,8 +376,12 @@ export class ForensicsPanel extends Panel {
       summary,
       fusedSignals,
       anomalies,
+      monitorStreams,
+      aisTrajectoryStreams,
       topologyAlerts,
       topologyTrends,
+      topologyWindowDrilldowns,
+      topologyDrifts,
       topologyBaselines,
       trace,
       policy,
@@ -378,6 +456,77 @@ export class ForensicsPanel extends Panel {
         `
       : '';
 
+    const monitorStreamsHtml = monitorStreams.length > 0
+      ? `
+          <section class="forensics-section">
+            <h4>Monitor Streams</h4>
+            <div class="forensics-monitor-grid">
+              ${monitorStreams.map((stream) => `
+                <article class="forensics-monitor-card monitor-${escapeHtml(stream.category)}">
+                  <div class="forensics-monitor-head">
+                    <span class="forensics-monitor-title">${escapeHtml(stream.label)}</span>
+                    <span class="forensics-monitor-count">${stream.totalFlagged}</span>
+                  </div>
+                  <div class="forensics-monitor-meta">
+                    <span>near-live ${stream.nearLiveCount}</span>
+                    <span>min p ${formatPValue(stream.minPValue)}</span>
+                    <span>priority ${(stream.maxPriority * 100).toFixed(0)}%</span>
+                  </div>
+                  <div class="forensics-monitor-items">
+                    ${stream.topItems.length > 0
+                      ? stream.topItems.map((item) => `
+                          <div class="forensics-monitor-item">
+                            <span class="forensics-monitor-item-main">${escapeHtml(item.label)} · ${escapeHtml(item.region || 'global')}</span>
+                            <span class="forensics-monitor-item-meta">p=${formatPValue(item.pValue)} · ${(item.priority * 100).toFixed(0)}%</span>
+                          </div>
+                        `).join('')
+                      : '<div class="forensics-empty">No stream items.</div>'}
+                  </div>
+                </article>
+              `).join('')}
+            </div>
+          </section>
+        `
+      : '';
+
+    const aisTrajectoryHtml = aisTrajectoryStreams.length > 0
+      ? `
+          <section class="forensics-section">
+            <h4>AIS Trajectory Streams</h4>
+            <div class="forensics-trajectory-grid">
+              ${aisTrajectoryStreams.map((stream) => `
+                <article class="forensics-trajectory-card trajectory-${escapeHtml(stream.signalType)}">
+                  <div class="forensics-trajectory-head">
+                    <span class="forensics-trajectory-title">${escapeHtml(stream.label)}</span>
+                    <span class="forensics-trajectory-count">${stream.totalFlagged}</span>
+                  </div>
+                  <div class="forensics-trajectory-meta">
+                    <span>near-live ${stream.nearLiveCount}</span>
+                    <span>min p ${formatPValue(stream.minPValue)}</span>
+                    <span>priority ${(stream.maxPriority * 100).toFixed(0)}%</span>
+                  </div>
+                  <div class="forensics-trajectory-corridors">
+                    ${stream.topCorridors.length > 0
+                      ? stream.topCorridors.map((corridor) => `<span class="forensics-trajectory-chip">${escapeHtml(corridor)}</span>`).join('')
+                      : '<span class="forensics-empty">No corridors flagged.</span>'}
+                  </div>
+                  <div class="forensics-trajectory-items">
+                    ${stream.topItems.length > 0
+                      ? stream.topItems.map((item) => `
+                          <div class="forensics-trajectory-item">
+                            <span class="forensics-trajectory-item-main">${escapeHtml(item.corridor)} · ${escapeHtml(item.region || 'global')}</span>
+                            <span class="forensics-trajectory-item-meta">p=${formatPValue(item.pValue)} · ${(item.priority * 100).toFixed(0)}% · ${Math.max(0, item.ageMinutes)}m</span>
+                          </div>
+                        `).join('')
+                      : '<div class="forensics-empty">No trajectory items.</div>'}
+                  </div>
+                </article>
+              `).join('')}
+            </div>
+          </section>
+        `
+      : '';
+
     const topologyBaselineHtml = topologyBaselines.length > 0
       ? `
           <section class="forensics-section">
@@ -399,6 +548,57 @@ export class ForensicsPanel extends Panel {
                   </div>
                 </div>
               `).join('')}
+          </section>
+        `
+      : '';
+
+    const topologyWindowHtml = topologyWindowDrilldowns.length > 0
+      ? `
+          <section class="forensics-section">
+            <h4>Topology Window Drilldowns</h4>
+            <div class="forensics-trend-grid">
+              ${topologyWindowDrilldowns.slice(0, 6).map((drilldown) => `
+                <div class="forensics-trend-card">
+                  <div class="forensics-trend-head">
+                    <span class="forensics-trend-label">${escapeHtml(drilldown.label)}</span>
+                    <span class="forensics-trend-value">${formatCompact(drilldown.latestValue, 2)}</span>
+                  </div>
+                  <div class="forensics-trend-meta">${escapeHtml(drilldown.region || 'global')} · ${drilldown.shortWindowRuns}/${drilldown.longWindowRuns} runs</div>
+                  <div class="forensics-trend-meta">short=${formatCompact(drilldown.shortMean, 2)} · long=${formatCompact(drilldown.longMean, 2)}</div>
+                  <div class="forensics-trend-meta">delta=${formatSigned(drilldown.delta, 2)} · slope=${formatSigned(drilldown.slope, 2)}</div>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+        `
+      : '';
+
+    const topologyDriftHtml = topologyDrifts.length > 0
+      ? `
+          <section class="forensics-section">
+            <h4>Topology Drift Diagnostics</h4>
+            <div class="forensics-drift-grid">
+              ${topologyDrifts
+                .slice(0, 8)
+                .map((drift) => `
+                  <article class="forensics-drift-card drift-${topologyDriftClass(drift.driftState)}">
+                    <div class="forensics-drift-head">
+                      <span class="forensics-source">${escapeHtml(drift.signalType)}</span>
+                      <span class="forensics-drift-badge">${escapeHtml(drift.driftState.toUpperCase())}</span>
+                    </div>
+                    <div class="forensics-drift-meta">
+                      <span>${escapeHtml(drift.region || 'global')}</span>
+                      <span>z=${formatSigned(drift.zScore, 2)}</span>
+                      <span>n=${drift.count}</span>
+                    </div>
+                    <div class="forensics-drift-meta">
+                      <span>last=${formatCompact(drift.lastValue, 2)}</span>
+                      <span>mean=${formatCompact(drift.mean, 2)} +/- ${formatCompact(drift.stdDev, 2)}</span>
+                      <span>${escapeHtml(formatTimestamp(drift.lastUpdated))}</span>
+                    </div>
+                  </article>
+                `).join('')}
+            </div>
           </section>
         `
       : '';
@@ -620,7 +820,11 @@ export class ForensicsPanel extends Panel {
         ${warningHtml}
         ${summaryHtml}
         ${trendCardsHtml}
+        ${monitorStreamsHtml}
+        ${aisTrajectoryHtml}
         ${topologyTrendHtml}
+        ${topologyWindowHtml}
+        ${topologyDriftHtml}
         ${topologyBaselineHtml}
         <div class="forensics-grid">
           <section class="forensics-section">

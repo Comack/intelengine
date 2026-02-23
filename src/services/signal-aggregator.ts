@@ -224,6 +224,9 @@ class SignalAggregator {
       const code = this.coordsToCountry(e.lat, e.lon);
       // Map 'elevated' to 'medium' for our type
       const severity: 'low' | 'medium' | 'high' = e.severity === 'elevated' ? 'medium' : e.severity;
+      const observedAt = typeof e.observedAt === 'number' && Number.isFinite(e.observedAt) && e.observedAt > 0
+        ? e.observedAt
+        : Date.now();
       this.signals.push({
         type: 'ais_disruption',
         country: code,
@@ -232,7 +235,7 @@ class SignalAggregator {
         lon: e.lon,
         severity,
         title: e.description,
-        timestamp: new Date(),
+        timestamp: new Date(observedAt),
       });
     }
     this.pruneOld();

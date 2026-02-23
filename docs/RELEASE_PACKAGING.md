@@ -1,14 +1,16 @@
 # Desktop Release Packaging Guide (Local, Reproducible)
 
-This guide provides reproducible local packaging steps for both desktop variants:
+This guide provides reproducible local packaging steps for all desktop variants:
 
 - **full** → `World Monitor`
 - **tech** → `Tech Monitor`
+- **finance** → `Finance Monitor`
 
 Variant identity is controlled by Tauri config:
 
 - full: `src-tauri/tauri.conf.json`
 - tech: `src-tauri/tauri.tech.conf.json`
+- finance: `src-tauri/tauri.finance.conf.json`
 
 ## Prerequisites
 
@@ -59,6 +61,7 @@ npm run desktop:package -- --help
 ```bash
 npm run desktop:package:macos:full
 npm run desktop:package:macos:tech
+npm run desktop:package:macos:finance
 # or generic runner
 npm run desktop:package -- --os macos --variant full
 ```
@@ -68,14 +71,65 @@ npm run desktop:package -- --os macos --variant full
 ```bash
 npm run desktop:package:windows:full
 npm run desktop:package:windows:tech
+npm run desktop:package:windows:finance
 # or generic runner
 npm run desktop:package -- --os windows --variant tech
 ```
+
+### Linux (`.AppImage`)
+
+```bash
+npm run desktop:package -- --os linux --variant full
+npm run desktop:package -- --os linux --variant tech
+npm run desktop:package -- --os linux --variant finance
+# skip sidecar Node runtime download if already provisioned
+npm run desktop:package -- --os linux --variant full --skip-node-runtime
+# force an offline AppImage runtime binary
+npm run desktop:package -- --os linux --variant full --appimage-runtime-file /path/to/runtime-x86_64
+```
+
+Linux AppImage packaging now applies additional hardening automatically in `scripts/desktop-package.mjs`:
+
+- Uses a project-local Tauri tools cache at `src-tauri/target/.cache` (unless `XDG_CACHE_HOME` is already set).
+- Seeds local linuxdeploy tools from `~/.cache/tauri` when available.
+- Falls back to local PATH `linuxdeploy` when needed and creates a local `linuxdeploy` shim to avoid host-plugin mismatches.
+- Forces AppImage-safe defaults: `NO_STRIP=1` and `APPIMAGE_EXTRACT_AND_RUN=1`.
+- Uses `LDAI_RUNTIME_FILE` when a runtime file is provided (`--appimage-runtime-file` / env var), found in cache, or auto-extracted from `linuxdeploy-x86_64.AppImage`.
+- Uses the patched GTK plugin script at `scripts/linuxdeploy-plugin-gtk.sh` to avoid vmware overlay library resolution issues on hosts that expose `/usr/lib/vmware/**`.
+
+Linux runtime startup now also applies a Wayland compatibility safeguard in the desktop binary:
+
+- On Wayland sessions, the app defaults `WEBKIT_DISABLE_DMABUF_RENDERER=1` unless already set.
+- Set `WM_LINUX_WEBKIT_SAFE_MODE=0` to disable this automatic safeguard.
+- If `WEBKIT_DISABLE_DMABUF_RENDERER` is explicitly set, that value is always respected.
+
+#### Linux runtime troubleshooting (black/blank window)
+
+If an AppImage launches to a black or blank window:
+
+1. Launch from a terminal to capture stderr:
+   ```bash
+   ./World\ Monitor_*.AppImage
+   ```
+2. Check desktop logs in:
+   - Full: `~/.local/share/app.worldmonitor.desktop/logs/desktop.log`
+   - Tech: `~/.local/share/app.worldmonitor.tech.desktop/logs/desktop.log`
+   - Finance: `~/.local/share/app.worldmonitor.finance.desktop/logs/desktop.log`
+3. Compare behavior with/without DMABUF safeguard:
+   ```bash
+   WEBKIT_DISABLE_DMABUF_RENDERER=1 ./World\ Monitor_*.AppImage
+   WEBKIT_DISABLE_DMABUF_RENDERER=0 ./World\ Monitor_*.AppImage
+   ```
+4. Disable automatic safeguard only for diagnosis:
+   ```bash
+   WM_LINUX_WEBKIT_SAFE_MODE=0 ./World\ Monitor_*.AppImage
+   ```
 
 Bundler targets are pinned in both Tauri configs and enforced by packaging scripts:
 
 - macOS: `app,dmg`
 - Windows: `nsis,msi`
+- Linux: `appimage`
 
 ## Rust dependency modes (online vs restricted network)
 
@@ -184,11 +238,13 @@ npm run desktop:package:windows:full:sign
 
 - Full variant: `World Monitor` / `world-monitor`
 - Tech variant: `Tech Monitor` / `tech-monitor`
+- Finance variant: `Finance Monitor` / `finance-monitor`
 
 Distinct names are configured in Tauri:
 
 - `src-tauri/tauri.conf.json` → `World Monitor` / `world-monitor`
 - `src-tauri/tauri.tech.conf.json` → `Tech Monitor` / `tech-monitor`
+- `src-tauri/tauri.finance.conf.json` → `Finance Monitor` / `finance-monitor`
 
 If you want variant-specific icons, set `bundle.icon` separately in each config and point each variant to dedicated icon assets.
 

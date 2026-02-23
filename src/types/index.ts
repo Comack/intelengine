@@ -97,6 +97,7 @@ export interface MarketData {
   price: number | null;
   change: number | null;
   sparkline?: number[];
+  observedAt?: number;
 }
 
 export interface CryptoData {
@@ -170,6 +171,7 @@ export interface AisDisruptionEvent {
   type: AisDisruptionType;
   lat: number;
   lon: number;
+  observedAt?: number;
   severity: 'low' | 'elevated' | 'high';
   changePct: number;
   windowHours: number;

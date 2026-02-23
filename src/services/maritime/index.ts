@@ -92,7 +92,7 @@ interface SnapshotCandidateReport extends AisPositionData {
 
 interface AisSnapshotResponse {
   sequence?: number;
-  timestamp?: string;
+  timestamp?: string | number;
   status?: {
     connected?: boolean;
     vessels?: number;
@@ -149,6 +149,7 @@ function shouldIncludeCandidates(): boolean {
 
 function parseSnapshot(data: unknown): {
   sequence: number;
+  snapshotAt: number;
   status: SnapshotStatus;
   disruptions: AisDisruptionEvent[];
   density: AisDensityZone[];
@@ -160,8 +161,15 @@ function parseSnapshot(data: unknown): {
   if (!Array.isArray(raw.disruptions) || !Array.isArray(raw.density)) return null;
 
   const status = raw.status || {};
+  const parsedSnapshotAt = typeof raw.timestamp === 'number'
+    ? (raw.timestamp > 1e11 ? Math.round(raw.timestamp) : Math.round(raw.timestamp * 1000))
+    : Date.parse(raw.timestamp || '');
+  const snapshotAt = Number.isFinite(parsedSnapshotAt) && parsedSnapshotAt > 0
+    ? parsedSnapshotAt
+    : Date.now();
   return {
     sequence: Number.isFinite(raw.sequence as number) ? Number(raw.sequence) : 0,
+    snapshotAt,
     status: {
       connected: Boolean(status.connected),
       vessels: Number.isFinite(status.vessels as number) ? Number(status.vessels) : 0,
@@ -211,6 +219,7 @@ async function fetchSnapshotPayload(includeCandidates: boolean): Promise<unknown
     if (response.snapshot) {
       return {
         sequence: 0, // Proto payload does not include relay sequence.
+        timestamp: response.snapshot.snapshotAt || Date.now(),
         status: { connected: true, vessels: 0, messages: 0 },
         disruptions: response.snapshot.disruptions.map(toDisruptionEvent),
         density: response.snapshot.densityZones.map(toDensityZone),
@@ -298,7 +307,12 @@ async function pollSnapshot(force = false): Promise<void> {
     const snapshot = parseSnapshot(payload);
     if (!snapshot) throw new Error('Invalid snapshot payload');
 
-    latestDisruptions = snapshot.disruptions;
+    latestDisruptions = snapshot.disruptions.map((event) => ({
+      ...event,
+      observedAt: Number.isFinite(event.observedAt) && event.observedAt && event.observedAt > 0
+        ? event.observedAt
+        : snapshot.snapshotAt,
+    }));
     latestDensity = snapshot.density;
     latestStatus = snapshot.status;
     lastPollAt = Date.now();

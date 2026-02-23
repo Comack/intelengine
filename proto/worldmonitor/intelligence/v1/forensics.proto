@@ -126,6 +126,8 @@ message ForensicsCalibratedAnomaly {
   double timing_nonconformity = 16;
   // Observed inter-arrival interval for this signal (milliseconds).
   int64 interval_ms = 17 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Observation timestamp, as Unix epoch milliseconds.
+  int64 observed_at = 18 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 
 // ForensicsPhaseStatus reports execution status for each orchestrator phase.

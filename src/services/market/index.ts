@@ -26,7 +26,11 @@ const emptyCryptoFallback: ListCryptoQuotesResponse = { quotes: [] };
 
 // ---- Proto -> legacy adapters ----
 
-function toMarketData(proto: ProtoMarketQuote, meta?: { name?: string; display?: string }): MarketData {
+function toMarketData(
+  proto: ProtoMarketQuote,
+  meta?: { name?: string; display?: string },
+  observedAt = Date.now(),
+): MarketData {
   return {
     symbol: proto.symbol,
     name: meta?.name || proto.name,
@@ -34,6 +38,7 @@ function toMarketData(proto: ProtoMarketQuote, meta?: { name?: string; display?:
     price: proto.price || null,
     change: proto.change ?? null,
     sparkline: proto.sparkline.length > 0 ? proto.sparkline : undefined,
+    observedAt,
   };
 }
 
@@ -75,9 +80,10 @@ export async function fetchMultipleStocks(
     return client.listMarketQuotes({ symbols: allSymbolStrings });
   }, emptyStockFallback);
 
+  const batchObservedAt = Date.now();
   const results = resp.quotes.map((q) => {
     const meta = symbolMetaMap.get(q.symbol);
-    return toMarketData(q, meta);
+    return toMarketData(q, meta, batchObservedAt);
   });
 
   // Fire onBatch with whatever we got

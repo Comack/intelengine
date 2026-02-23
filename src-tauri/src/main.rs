@@ -1,27 +1,29 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::collections::HashMap;
+use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::env;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use keyring::Entry;
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Manager, RunEvent, WindowEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 const LOCAL_API_PORT: &str = "46123";
 const KEYRING_SERVICE: &str = "world-monitor";
 const LOCAL_API_LOG_FILE: &str = "local-api.log";
 const DESKTOP_LOG_FILE: &str = "desktop.log";
+const LINUX_WEBKIT_SAFE_MODE_ENV: &str = "WM_LINUX_WEBKIT_SAFE_MODE";
+const WEBKIT_DMABUF_ENV: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
 const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
@@ -49,6 +51,18 @@ const SUPPORTED_SECRET_KEYS: [&str; 21] = [
     "WORLDMONITOR_API_KEY",
 ];
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LinuxWebkitEnvPolicy {
+    session: String,
+    xdg_session_type: Option<String>,
+    wayland_display: Option<String>,
+    x11_display: Option<String>,
+    safe_mode_enabled: bool,
+    existing_dmabuf_value: Option<String>,
+    applied_dmabuf_disable: bool,
+    decision_reason: String,
+}
+
 #[derive(Default)]
 struct LocalApiState {
     child: Mutex<Option<Child>>,
@@ -74,7 +88,9 @@ impl SecretsCache {
                         })
                         .map(|(k, v)| (k, v.trim().to_string()))
                         .collect();
-                    return SecretsCache { secrets: Mutex::new(secrets) };
+                    return SecretsCache {
+                        secrets: Mutex::new(secrets),
+                    };
                 }
             }
         }
@@ -108,7 +124,9 @@ impl SecretsCache {
             }
         }
 
-        SecretsCache { secrets: Mutex::new(secrets) }
+        SecretsCache {
+            secrets: Mutex::new(secrets),
+        }
     }
 }
 
@@ -119,11 +137,12 @@ struct DesktopRuntimeInfo {
 }
 
 fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
-    let json = serde_json::to_string(cache)
-        .map_err(|e| format!("Failed to serialize vault: {e}"))?;
+    let json =
+        serde_json::to_string(cache).map_err(|e| format!("Failed to serialize vault: {e}"))?;
     let entry = Entry::new(KEYRING_SERVICE, "secrets-vault")
         .map_err(|e| format!("Keyring init failed: {e}"))?;
-    entry.set_password(&json)
+    entry
+        .set_password(&json)
         .map_err(|e| format!("Failed to write vault: {e}"))?;
     Ok(())
 }
@@ -151,7 +170,9 @@ fn get_local_api_token(state: tauri::State<'_, LocalApiState>) -> Result<String,
         .token
         .lock()
         .map_err(|_| "Failed to lock local API token".to_string())?;
-    token.clone().ok_or_else(|| "Token not generated".to_string())
+    token
+        .clone()
+        .ok_or_else(|| "Token not generated".to_string())
 }
 
 #[tauri::command]
@@ -164,29 +185,49 @@ fn get_desktop_runtime_info() -> DesktopRuntimeInfo {
 
 #[tauri::command]
 fn list_supported_secret_keys() -> Vec<String> {
-    SUPPORTED_SECRET_KEYS.iter().map(|key| (*key).to_string()).collect()
+    SUPPORTED_SECRET_KEYS
+        .iter()
+        .map(|key| (*key).to_string())
+        .collect()
 }
 
 #[tauri::command]
-fn get_secret(key: String, cache: tauri::State<'_, SecretsCache>) -> Result<Option<String>, String> {
+fn get_secret(
+    key: String,
+    cache: tauri::State<'_, SecretsCache>,
+) -> Result<Option<String>, String> {
     if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
         return Err(format!("Unsupported secret key: {key}"));
     }
-    let secrets = cache.secrets.lock().map_err(|_| "Lock poisoned".to_string())?;
+    let secrets = cache
+        .secrets
+        .lock()
+        .map_err(|_| "Lock poisoned".to_string())?;
     Ok(secrets.get(&key).cloned())
 }
 
 #[tauri::command]
 fn get_all_secrets(cache: tauri::State<'_, SecretsCache>) -> HashMap<String, String> {
-    cache.secrets.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    cache
+        .secrets
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
 }
 
 #[tauri::command]
-fn set_secret(key: String, value: String, cache: tauri::State<'_, SecretsCache>) -> Result<(), String> {
+fn set_secret(
+    key: String,
+    value: String,
+    cache: tauri::State<'_, SecretsCache>,
+) -> Result<(), String> {
     if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
         return Err(format!("Unsupported secret key: {key}"));
     }
-    let mut secrets = cache.secrets.lock().map_err(|_| "Lock poisoned".to_string())?;
+    let mut secrets = cache
+        .secrets
+        .lock()
+        .map_err(|_| "Lock poisoned".to_string())?;
     let trimmed = value.trim().to_string();
     // Build proposed state, persist first, then commit to cache
     let mut proposed = secrets.clone();
@@ -205,7 +246,10 @@ fn delete_secret(key: String, cache: tauri::State<'_, SecretsCache>) -> Result<(
     if !SUPPORTED_SECRET_KEYS.contains(&key.as_str()) {
         return Err(format!("Unsupported secret key: {key}"));
     }
-    let mut secrets = cache.secrets.lock().map_err(|_| "Lock poisoned".to_string())?;
+    let mut secrets = cache
+        .secrets
+        .lock()
+        .map_err(|_| "Lock poisoned".to_string())?;
     let mut proposed = secrets.clone();
     proposed.remove(&key);
     save_vault(&proposed)?;
@@ -232,7 +276,8 @@ fn read_cache_entry(app: AppHandle, key: String) -> Result<Option<Value>, String
 
     let contents = std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read cache store {}: {e}", path.display()))?;
-    let parsed: Value = serde_json::from_str(&contents).unwrap_or_else(|_| Value::Object(Map::new()));
+    let parsed: Value =
+        serde_json::from_str(&contents).unwrap_or_else(|_| Value::Object(Map::new()));
     let Some(root) = parsed.as_object() else {
         return Ok(None);
     };
@@ -255,8 +300,8 @@ fn write_cache_entry(app: AppHandle, key: String, value: String) -> Result<(), S
         Map::new()
     };
 
-    let parsed_value: Value = serde_json::from_str(&value)
-        .map_err(|e| format!("Invalid cache payload JSON: {e}"))?;
+    let parsed_value: Value =
+        serde_json::from_str(&value).map_err(|e| format!("Invalid cache payload JSON: {e}"))?;
     root.insert(key, parsed_value);
 
     let serialized = serde_json::to_string_pretty(&Value::Object(root))
@@ -297,6 +342,154 @@ fn append_desktop_log(app: &AppHandle, level: &str, message: &str) {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let _ = writeln!(file, "[{timestamp}][{level}] {message}");
+}
+
+fn log_startup_stage(app: &AppHandle, stage: &str, details: &str) {
+    let suffix = if details.trim().is_empty() {
+        String::new()
+    } else {
+        format!(" {}", details.trim())
+    };
+    append_desktop_log(app, "INFO", &format!("startup stage={stage}{suffix}"));
+}
+
+fn read_trimmed_env_var(name: &str) -> Option<String> {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn env_value_is_false(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "0" | "false" | "off" | "no"
+    )
+}
+
+fn detect_linux_session(
+    xdg_session_type: Option<&str>,
+    wayland_display: Option<&str>,
+    x11_display: Option<&str>,
+) -> String {
+    let normalized = xdg_session_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase);
+
+    if matches!(normalized.as_deref(), Some("wayland")) || wayland_display.is_some() {
+        return "wayland".to_string();
+    }
+
+    if matches!(normalized.as_deref(), Some("x11")) || x11_display.is_some() {
+        return "x11".to_string();
+    }
+
+    if let Some(session) = normalized {
+        return session;
+    }
+
+    "unknown".to_string()
+}
+
+fn compute_linux_webkit_policy(
+    xdg_session_type: Option<String>,
+    wayland_display: Option<String>,
+    x11_display: Option<String>,
+    safe_mode_override: Option<String>,
+    existing_dmabuf_value: Option<String>,
+) -> LinuxWebkitEnvPolicy {
+    let session = detect_linux_session(
+        xdg_session_type.as_deref(),
+        wayland_display.as_deref(),
+        x11_display.as_deref(),
+    );
+    let safe_mode_enabled = safe_mode_override
+        .as_deref()
+        .map(|value| !env_value_is_false(value))
+        .unwrap_or(true);
+    let wayland_detected = session == "wayland";
+
+    let (applied_dmabuf_disable, decision_reason) = if !wayland_detected {
+        (
+            false,
+            format!("session={session}; no automatic WebKit DMABUF override"),
+        )
+    } else if !safe_mode_enabled {
+        (
+            false,
+            format!("{LINUX_WEBKIT_SAFE_MODE_ENV} disabled automatic Wayland WebKit safeguards"),
+        )
+    } else if let Some(existing) = existing_dmabuf_value.as_deref() {
+        (
+            false,
+            format!("{WEBKIT_DMABUF_ENV} already set to {existing}"),
+        )
+    } else {
+        (
+            true,
+            format!(
+                "Wayland detected with no {WEBKIT_DMABUF_ENV}; applying conservative WebKit renderer defaults"
+            ),
+        )
+    };
+
+    LinuxWebkitEnvPolicy {
+        session,
+        xdg_session_type,
+        wayland_display,
+        x11_display,
+        safe_mode_enabled,
+        existing_dmabuf_value,
+        applied_dmabuf_disable,
+        decision_reason,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn apply_linux_webkit_env_policy() -> Option<LinuxWebkitEnvPolicy> {
+    let xdg_session_type = read_trimmed_env_var("XDG_SESSION_TYPE");
+    let wayland_display = read_trimmed_env_var("WAYLAND_DISPLAY");
+    let x11_display = read_trimmed_env_var("DISPLAY");
+    let safe_mode_override = read_trimmed_env_var(LINUX_WEBKIT_SAFE_MODE_ENV);
+    let existing_dmabuf_value = read_trimmed_env_var(WEBKIT_DMABUF_ENV);
+
+    let policy = compute_linux_webkit_policy(
+        xdg_session_type,
+        wayland_display,
+        x11_display,
+        safe_mode_override,
+        existing_dmabuf_value,
+    );
+
+    if policy.applied_dmabuf_disable {
+        env::set_var(WEBKIT_DMABUF_ENV, "1");
+    }
+
+    Some(policy)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn apply_linux_webkit_env_policy() -> Option<LinuxWebkitEnvPolicy> {
+    None
+}
+
+fn format_linux_webkit_policy(policy: &LinuxWebkitEnvPolicy) -> String {
+    let xdg_session_type = policy.xdg_session_type.as_deref().unwrap_or("-");
+    let wayland_display = policy.wayland_display.as_deref().unwrap_or("-");
+    let x11_display = policy.x11_display.as_deref().unwrap_or("-");
+    let existing_dmabuf = policy.existing_dmabuf_value.as_deref().unwrap_or("-");
+    format!(
+        "linux_webkit_policy session={} xdg_session_type={} wayland_display={} display={} safe_mode_enabled={} existing_dmabuf={} applied_dmabuf_disable={} reason=\"{}\"",
+        policy.session,
+        xdg_session_type,
+        wayland_display,
+        x11_display,
+        policy.safe_mode_enabled,
+        existing_dmabuf,
+        policy.applied_dmabuf_disable,
+        policy.decision_reason
+    )
 }
 
 fn open_in_shell(arg: &str) -> Result<(), String> {
@@ -379,7 +572,9 @@ async fn open_settings_window_command(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn close_settings_window(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
-        window.close().map_err(|e| format!("Failed to close settings window: {e}"))?;
+        window
+            .close()
+            .map_err(|e| format!("Failed to close settings window: {e}"))?;
     }
     Ok(())
 }
@@ -408,7 +603,9 @@ async fn fetch_polymarket(path: String, params: String) -> Result<String, String
     if !resp.status().is_success() {
         return Err(format!("Polymarket HTTP {}", resp.status()));
     }
-    resp.text().await.map_err(|e| format!("Read body failed: {e}"))
+    resp.text()
+        .await
+        .map_err(|e| format!("Read body failed: {e}"))
 }
 
 fn open_settings_window(app: &AppHandle) -> Result<(), String> {
@@ -420,13 +617,14 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let _settings_window = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-        .title("World Monitor Settings")
-        .inner_size(980.0, 760.0)
-        .min_inner_size(820.0, 620.0)
-        .resizable(true)
-        .build()
-        .map_err(|e| format!("Failed to create settings window: {e}"))?;
+    let _settings_window =
+        WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+            .title("World Monitor Settings")
+            .inner_size(980.0, 760.0)
+            .min_inner_size(820.0, 620.0)
+            .resizable(true)
+            .build()
+            .map_err(|e| format!("Failed to create settings window: {e}"))?;
 
     // On Windows/Linux, menus are per-window. Remove the inherited app menu
     // from the settings window (macOS uses a shared app-wide menu bar instead).
@@ -446,8 +644,12 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
     let separator = PredefinedMenuItem::separator(handle)?;
     let quit_item = PredefinedMenuItem::quit(handle, Some("Quit"))?;
-    let file_menu =
-        Submenu::with_items(handle, "File", true, &[&settings_item, &separator, &quit_item])?;
+    let file_menu = Submenu::with_items(
+        handle,
+        "File",
+        true,
+        &[&settings_item, &separator, &quit_item],
+    )?;
 
     let about_metadata = AboutMetadata {
         name: Some("World Monitor".into()),
@@ -457,7 +659,8 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         website_label: Some("worldmonitor.app".into()),
         ..Default::default()
     };
-    let about_item = PredefinedMenuItem::about(handle, Some("About World Monitor"), Some(about_metadata))?;
+    let about_item =
+        PredefinedMenuItem::about(handle, Some("About World Monitor"), Some(about_metadata))?;
     let github_item = MenuItem::with_id(
         handle,
         MENU_HELP_GITHUB_ID,
@@ -488,7 +691,12 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         let copy = PredefinedMenuItem::copy(handle, None)?;
         let paste = PredefinedMenuItem::paste(handle, None)?;
         let select_all = PredefinedMenuItem::select_all(handle, None)?;
-        Submenu::with_items(handle, "Edit", true, &[&undo, &redo, &sep1, &cut, &copy, &paste, &select_all])?
+        Submenu::with_items(
+            handle,
+            "Edit",
+            true,
+            &[&undo, &redo, &sep1, &cut, &copy, &paste, &select_all],
+        )?
     };
 
     Menu::with_items(handle, &[&file_menu, &edit_menu, &help_menu])
@@ -562,6 +770,66 @@ mod sanitize_path_tests {
             sanitize_path_for_node(raw),
             r"C:\Users\alice\sidecar\local-api-server.mjs".to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod linux_webkit_policy_tests {
+    use super::{compute_linux_webkit_policy, LINUX_WEBKIT_SAFE_MODE_ENV, WEBKIT_DMABUF_ENV};
+
+    #[test]
+    fn wayland_default_applies_dmabuf_safeguard() {
+        let policy = compute_linux_webkit_policy(
+            Some("wayland".to_string()),
+            Some("wayland-0".to_string()),
+            Some(":0".to_string()),
+            None,
+            None,
+        );
+        assert!(policy.applied_dmabuf_disable);
+        assert!(policy.safe_mode_enabled);
+        assert_eq!(policy.session, "wayland".to_string());
+    }
+
+    #[test]
+    fn wayland_safe_mode_disabled_skips_safeguard() {
+        let policy = compute_linux_webkit_policy(
+            Some("wayland".to_string()),
+            Some("wayland-0".to_string()),
+            Some(":0".to_string()),
+            Some("0".to_string()),
+            None,
+        );
+        assert!(!policy.applied_dmabuf_disable);
+        assert!(!policy.safe_mode_enabled);
+        assert!(policy.decision_reason.contains(LINUX_WEBKIT_SAFE_MODE_ENV));
+    }
+
+    #[test]
+    fn wayland_preserves_existing_dmabuf_override() {
+        let policy = compute_linux_webkit_policy(
+            Some("wayland".to_string()),
+            Some("wayland-0".to_string()),
+            Some(":0".to_string()),
+            None,
+            Some("0".to_string()),
+        );
+        assert!(!policy.applied_dmabuf_disable);
+        assert_eq!(policy.existing_dmabuf_value.as_deref(), Some("0"));
+        assert!(policy.decision_reason.contains(WEBKIT_DMABUF_ENV));
+    }
+
+    #[test]
+    fn x11_session_does_not_apply_wayland_safeguard() {
+        let policy = compute_linux_webkit_policy(
+            Some("x11".to_string()),
+            None,
+            Some(":0".to_string()),
+            None,
+            None,
+        );
+        assert_eq!(policy.session, "x11".to_string());
+        assert!(!policy.applied_dmabuf_disable);
     }
 }
 
@@ -692,10 +960,17 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
             log_path.display()
         ),
     );
-    append_desktop_log(app, "INFO", &format!("resolved node binary={}", node_binary.display()));
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("resolved node binary={}", node_binary.display()),
+    );
 
     // Generate a unique token for local API auth (prevents other local processes from accessing sidecar)
-    let mut token_slot = state.token.lock().map_err(|_| "Failed to lock token slot")?;
+    let mut token_slot = state
+        .token
+        .lock()
+        .map_err(|_| "Failed to lock token slot")?;
     if token_slot.is_none() {
         *token_slot = Some(generate_local_token());
     }
@@ -703,14 +978,16 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     drop(token_slot);
 
     let mut cmd = Command::new(&node_binary);
+    // Windows only: hide the Node sidecar console window.
     #[cfg(windows)]
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW — hide the node.exe console
-    // Sanitize paths for Node.js on Windows: strip \\?\ UNC prefix and set
-    // explicit working directory to avoid bare drive-letter CWD issues that
-    // cause EISDIR errors in Node.js module resolution.
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     let script_for_node = sanitize_path_for_node(&script);
     let resource_for_node = sanitize_path_for_node(&resource_root);
-    append_desktop_log(app, "INFO", &format!("node args: script={script_for_node} resource_dir={resource_for_node}"));
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("node args: script={script_for_node} resource_dir={resource_for_node}"),
+    );
     cmd.arg(&script_for_node)
         .env("LOCAL_API_PORT", LOCAL_API_PORT)
         .env("LOCAL_API_RESOURCE_DIR", &resource_for_node)
@@ -731,7 +1008,11 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
             secret_count += 1;
         }
     }
-    append_desktop_log(app, "INFO", &format!("injected {secret_count} keychain secrets into sidecar env"));
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("injected {secret_count} keychain secrets into sidecar env"),
+    );
 
     // Inject build-time secrets (CI) with runtime env fallback (dev)
     if let Some(url) = option_env!("CONVEX_URL") {
@@ -743,7 +1024,11 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to launch local API: {e}"))?;
-    append_desktop_log(app, "INFO", &format!("local API sidecar started pid={}", child.id()));
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("local API sidecar started pid={}", child.id()),
+    );
     *slot = Some(child);
     Ok(())
 }
@@ -760,7 +1045,12 @@ fn stop_local_api(app: &AppHandle) {
 }
 
 fn main() {
-    tauri::Builder::default()
+    let linux_webkit_policy = apply_linux_webkit_env_policy();
+    if let Some(policy) = linux_webkit_policy.as_ref() {
+        eprintln!("[tauri] {}", format_linux_webkit_policy(policy));
+    }
+
+    let app = tauri::Builder::default()
         .menu(build_app_menu)
         .on_menu_event(handle_menu_event)
         .manage(LocalApiState::default())
@@ -782,57 +1072,81 @@ fn main() {
             open_url,
             fetch_polymarket
         ])
-        .setup(|app| {
-            if let Err(err) = start_local_api(&app.handle()) {
-                append_desktop_log(
-                    &app.handle(),
-                    "ERROR",
-                    &format!("local API sidecar failed to start: {err}"),
-                );
-                eprintln!("[tauri] local API sidecar failed to start: {err}");
+        .setup(move |app| {
+            let handle = app.handle();
+            log_startup_stage(&handle, "setup.begin", "desktop runtime initialization");
+
+            if let Some(policy) = linux_webkit_policy.as_ref() {
+                append_desktop_log(&handle, "INFO", &format_linux_webkit_policy(policy));
             }
 
+            log_startup_stage(&handle, "setup.start_local_api.begin", "");
+            match start_local_api(&handle) {
+                Ok(()) => {
+                    log_startup_stage(&handle, "setup.start_local_api.success", "");
+                }
+                Err(err) => {
+                    append_desktop_log(
+                        &handle,
+                        "ERROR",
+                        &format!("local API sidecar failed to start: {err}"),
+                    );
+                    eprintln!("[tauri] local API sidecar failed to start: {err}");
+                    log_startup_stage(&handle, "setup.start_local_api.failed", &err);
+                }
+            }
+            log_startup_stage(&handle, "setup.complete", "desktop runtime setup finished");
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running world-monitor tauri application")
-        .run(|app, event| {
-            match &event {
-                // macOS: hide window on close instead of quitting (standard behavior)
-                #[cfg(target_os = "macos")]
-                RunEvent::WindowEvent {
-                    label,
-                    event: WindowEvent::CloseRequested { api, .. },
-                    ..
-                } if label == "main" => {
-                    api.prevent_close();
-                    if let Some(w) = app.get_webview_window("main") {
-                        let _ = w.hide();
-                    }
-                }
-                // macOS: reshow window when dock icon is clicked
-                #[cfg(target_os = "macos")]
-                RunEvent::Reopen { .. } => {
-                    if let Some(w) = app.get_webview_window("main") {
-                        let _ = w.show();
-                        let _ = w.set_focus();
-                    }
-                }
-                // Raise settings window when main window gains focus so it doesn't hide behind
-                RunEvent::WindowEvent {
-                    label,
-                    event: WindowEvent::Focused(true),
-                    ..
-                } if label == "main" => {
-                    if let Some(sw) = app.get_webview_window("settings") {
-                        let _ = sw.show();
-                        let _ = sw.set_focus();
-                    }
-                }
-                RunEvent::ExitRequested { .. } | RunEvent::Exit => {
-                    stop_local_api(app);
-                }
-                _ => {}
+        .expect("error while running world-monitor tauri application");
+
+    append_desktop_log(
+        &app.handle(),
+        "INFO",
+        "startup stage=builder.build.complete tauri build completed",
+    );
+
+    app.run(|app, event| {
+        match &event {
+            RunEvent::Ready => {
+                log_startup_stage(app, "run.ready", "event loop started");
             }
-        });
+            // macOS: hide window on close instead of quitting (standard behavior)
+            #[cfg(target_os = "macos")]
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { api, .. },
+                ..
+            } if label == "main" => {
+                api.prevent_close();
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.hide();
+                }
+            }
+            // macOS: reshow window when dock icon is clicked
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            // Raise settings window when main window gains focus so it doesn't hide behind
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::Focused(true),
+                ..
+            } if label == "main" => {
+                if let Some(sw) = app.get_webview_window("settings") {
+                    let _ = sw.show();
+                    let _ = sw.set_focus();
+                }
+            }
+            RunEvent::ExitRequested { .. } | RunEvent::Exit => {
+                stop_local_api(app);
+            }
+            _ => {}
+        }
+    });
 }

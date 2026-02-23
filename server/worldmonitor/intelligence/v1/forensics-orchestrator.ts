@@ -490,6 +490,7 @@ export async function runConformalAnomalies(
       pValueTiming: Math.round(pValueTiming * 1_000_000) / 1_000_000,
       timingNonconformity: Math.round(timingNcm * 1_000_000) / 1_000_000,
       intervalMs: Math.max(0, Math.round(intervalMs)),
+      observedAt: Math.max(0, Math.round(signal.observedAt || 0)),
     });
 
     await appendCalibrationValue(metricKey, signal.value);

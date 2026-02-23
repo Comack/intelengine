@@ -132,6 +132,79 @@ requestAnimationFrame(() => {
 // Clear stale settings-open flag (survives ungraceful shutdown)
 localStorage.removeItem('wm-settings-open');
 
+function getDesktopLogPathHint(): string {
+  const variant = import.meta.env.VITE_VARIANT;
+  const appId = variant === 'tech'
+    ? 'app.worldmonitor.tech.desktop'
+    : variant === 'finance'
+      ? 'app.worldmonitor.finance.desktop'
+      : 'app.worldmonitor.desktop';
+  return `~/.local/share/${appId}/logs/desktop.log`;
+}
+
+function renderStartupFailure(error: unknown): void {
+  const root = document.getElementById('app');
+  if (!root) return;
+
+  const details = error instanceof Error
+    ? `${error.name}: ${error.message}`
+    : String(error ?? 'Unknown startup error');
+
+  const shell = document.createElement('div');
+  shell.style.height = '100vh';
+  shell.style.width = '100vw';
+  shell.style.display = 'flex';
+  shell.style.alignItems = 'center';
+  shell.style.justifyContent = 'center';
+  shell.style.padding = '24px';
+  shell.style.background = 'var(--bg, #0a0a0a)';
+  shell.style.color = 'var(--text, #e8e8e8)';
+  shell.style.fontFamily = "var(--font-body, 'SF Mono', monospace)";
+
+  const panel = document.createElement('div');
+  panel.style.maxWidth = '840px';
+  panel.style.width = '100%';
+  panel.style.border = '1px solid var(--border, #2a2a2a)';
+  panel.style.background = 'var(--surface, #141414)';
+  panel.style.padding = '20px';
+  panel.style.display = 'grid';
+  panel.style.gap = '12px';
+
+  const title = document.createElement('h1');
+  title.textContent = 'Startup failed';
+  title.style.margin = '0';
+  title.style.fontSize = '16px';
+  title.style.fontWeight = '600';
+
+  const summary = document.createElement('p');
+  summary.textContent = 'The desktop UI did not finish booting.';
+  summary.style.margin = '0';
+  summary.style.color = 'var(--text-secondary, #ccc)';
+
+  const detailsLabel = document.createElement('p');
+  detailsLabel.textContent = 'Error details:';
+  detailsLabel.style.margin = '0';
+  detailsLabel.style.color = 'var(--text-secondary, #ccc)';
+
+  const detailsBlock = document.createElement('pre');
+  detailsBlock.textContent = details;
+  detailsBlock.style.margin = '0';
+  detailsBlock.style.padding = '12px';
+  detailsBlock.style.background = 'var(--bg-secondary, #111)';
+  detailsBlock.style.border = '1px solid var(--border, #2a2a2a)';
+  detailsBlock.style.whiteSpace = 'pre-wrap';
+  detailsBlock.style.wordBreak = 'break-word';
+
+  const hint = document.createElement('p');
+  hint.textContent = `Check desktop startup logs at ${getDesktopLogPathHint()} and relaunch from a terminal for stderr output.`;
+  hint.style.margin = '0';
+  hint.style.color = 'var(--text-dim, #888)';
+
+  panel.append(title, summary, detailsLabel, detailsBlock, hint);
+  shell.appendChild(panel);
+  root.replaceChildren(shell);
+}
+
 const app = new App('app');
 app
   .init()
@@ -139,7 +212,10 @@ app
     // Clear the one-shot guard after a successful boot so future stale-chunk incidents can recover.
     clearChunkReloadGuard(chunkReloadStorageKey);
   })
-  .catch(console.error);
+  .catch((error) => {
+    console.error('[bootstrap] App initialization failed:', error);
+    renderStartupFailure(error);
+  });
 
 // Debug helpers for geo-convergence testing (remove in production)
 (window as unknown as Record<string, unknown>).geoDebug = {

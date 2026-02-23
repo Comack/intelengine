@@ -1110,6 +1110,28 @@ export class MapPopup {
     const monitorCategoryLabel = anomaly.monitorCategory
       ? anomaly.monitorCategory.charAt(0).toUpperCase() + anomaly.monitorCategory.slice(1)
       : 'Other';
+    const trajectoryLabels: Record<string, string> = {
+      ais_route_deviation: 'Route deviation',
+      ais_loitering: 'Loitering',
+      ais_silence: 'AIS silence',
+    };
+    const isAisTrajectory = Boolean(trajectoryLabels[anomaly.signalType]);
+    const sourceCoordinateMatch = anomaly.sourceId.match(/@(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    const sourceCorridorMatch = anomaly.sourceId.match(/^ais:[a-z_]+:([^@]+)@/i);
+    const corridorLabel = sourceCorridorMatch?.[1]
+      ? sourceCorridorMatch[1]
+        .split(/[\s_-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ')
+      : '';
+    const trajectoryDiagnostic = anomaly.signalType === 'ais_silence'
+      ? 'Dark/silent vessel signal pattern'
+      : anomaly.signalType === 'ais_loitering'
+      ? 'Holding/queue behavior around chokepoints'
+      : anomaly.signalType === 'ais_route_deviation'
+      ? 'Route shift away from expected corridor'
+      : '';
 
     return `
       <div class="popup-header apt ${severityClass}">
@@ -1128,6 +1150,26 @@ export class MapPopup {
             <span class="stat-label">Freshness</span>
             <span class="stat-value">${escapeHtml(freshnessLabel)}</span>
           </div>
+          ${isAisTrajectory ? `
+          <div class="popup-stat">
+            <span class="stat-label">Trajectory class</span>
+            <span class="stat-value">${escapeHtml(trajectoryLabels[anomaly.signalType] || anomaly.signalType)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Corridor</span>
+            <span class="stat-value">${escapeHtml(corridorLabel || anomaly.region || 'Unknown')}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Trajectory point</span>
+            <span class="stat-value">${sourceCoordinateMatch?.[1] && sourceCoordinateMatch?.[2]
+              ? `${Number(sourceCoordinateMatch[1]).toFixed(3)}, ${Number(sourceCoordinateMatch[2]).toFixed(3)}`
+              : `${anomaly.lat.toFixed(3)}, ${anomaly.lon.toFixed(3)}`}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Interpretation</span>
+            <span class="stat-value">${escapeHtml(trajectoryDiagnostic || 'AIS trajectory anomaly')}</span>
+          </div>
+          ` : ''}
           <div class="popup-stat">
             <span class="stat-label">P-value</span>
             <span class="stat-value">${anomaly.pValue.toFixed(4)}</span>

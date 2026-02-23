@@ -1,4 +1,4 @@
-import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, CyberThreat, ForensicsAnomalyOverlay } from '@/types';
+import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, CyberThreat, ForensicsAnomalyOverlay, AisDisruptionEvent } from '@/types';
 import {
   FEEDS,
   INTEL_SOURCES,
@@ -3769,9 +3769,101 @@ export class App {
     usniFleet?: import('@/types').USNIFleetReport;
   } = {};
   private cyberThreatsCache: CyberThreat[] | null = null;
+  private latestAisDisruptions: AisDisruptionEvent[] = [];
 
   private clampNumber(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
+  }
+
+  private classifyAisTrajectorySignal(
+    event: AisDisruptionEvent,
+  ): 'ais_route_deviation' | 'ais_loitering' | 'ais_silence' {
+    const text = `${event.name} ${event.description || ''} ${event.region || ''}`.toLowerCase();
+    const darkShips = Math.max(0, event.darkShips || 0);
+    const vesselCount = Math.max(0, event.vesselCount || 0);
+    const changeMagnitude = Math.abs(event.changePct || 0);
+    const windowHours = Math.max(1, event.windowHours || 1);
+
+    const silenceMatches = /dark|silence|gap|transponder|offline|blackout|signal loss|ais off/.test(text) ? 1 : 0;
+    const loiterMatches = /loiter|holding|queue|anchorage|waiting|dwell|congestion|bottleneck/.test(text) ? 1 : 0;
+    const routeMatches = /rerout|divert|deviat|off route|course shift|detour|alternate route/.test(text) ? 1 : 0;
+
+    const silenceScore = (event.type === 'gap_spike' ? 2 : 0)
+      + (darkShips > 0 ? 2 : 0)
+      + silenceMatches
+      + (changeMagnitude >= 20 ? 1 : 0);
+    const loiterScore = (event.type === 'chokepoint_congestion' ? 2 : 0)
+      + loiterMatches
+      + (vesselCount >= 30 ? 1 : 0)
+      + (windowHours >= 4 ? 1 : 0);
+    const routeScore = routeMatches
+      + (changeMagnitude >= 25 ? 1 : 0)
+      + (event.type === 'chokepoint_congestion' && changeMagnitude >= 35 ? 1 : 0);
+
+    if (silenceScore >= loiterScore && silenceScore >= routeScore) return 'ais_silence';
+    if (routeScore > loiterScore) return 'ais_route_deviation';
+    return 'ais_loitering';
+  }
+
+  private buildAisTrajectoryForensicsSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.latestAisDisruptions.length === 0) return [];
+
+    const severityWeight: Record<AisDisruptionEvent['severity'], number> = {
+      low: 1,
+      elevated: 1.4,
+      high: 1.9,
+    };
+
+    const signals: ForensicsSignalInput[] = [];
+    for (const event of this.latestAisDisruptions.slice(0, 80)) {
+      const signalType = this.classifyAisTrajectorySignal(event);
+      const observedAt = typeof event.observedAt === 'number' && Number.isFinite(event.observedAt) && event.observedAt > 0
+        ? event.observedAt
+        : now;
+      const changeMagnitude = Math.abs(event.changePct || 0);
+      const windowHours = Math.max(1, event.windowHours || 1);
+      const darkShips = Math.max(0, event.darkShips || 0);
+      const vesselCount = Math.max(0, event.vesselCount || 0);
+      const baseSeverity = severityWeight[event.severity] || 1;
+
+      let value = 0;
+      if (signalType === 'ais_silence') {
+        value = (darkShips * 2.2) + (changeMagnitude * 0.72) + (windowHours * 0.7) + (baseSeverity * 4.5);
+      } else if (signalType === 'ais_loitering') {
+        value = (vesselCount * 0.24) + (changeMagnitude * 0.66) + (windowHours * 0.95) + (baseSeverity * 3.6);
+      } else {
+        value = (changeMagnitude * 0.94) + (windowHours * 0.74) + (vesselCount * 0.12) + (baseSeverity * 3.4);
+      }
+
+      const trajectorySlug = event.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'corridor';
+      const lat = Number.isFinite(event.lat) ? event.lat : 0;
+      const lon = Number.isFinite(event.lon) ? event.lon : 0;
+      const locationToken = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+      const confidence = this.clampNumber(
+        0.56
+        + (baseSeverity * 0.12)
+        + Math.min(0.18, changeMagnitude / 200)
+        + (signalType === 'ais_silence' && darkShips > 0 ? 0.06 : 0),
+        0.52,
+        0.98,
+      );
+
+      signals.push({
+        sourceId: `ais:${signalType}:${trajectorySlug}@${locationToken}`,
+        region: event.region || event.name || 'global',
+        domain: 'maritime',
+        signalType,
+        value: Math.round(Math.max(0.1, value) * 100) / 100,
+        confidence: Math.round(confidence * 1000) / 1000,
+        observedAt,
+      });
+    }
+
+    return signals;
   }
 
   private buildIntelligenceForensicsSignals(): ForensicsSignalInput[] {
@@ -3849,7 +3941,7 @@ export class App {
       });
     }
 
-    return Array.from(bucket.values())
+    const baseSignals = Array.from(bucket.values())
       .map((entry) => {
         const severityAverage = entry.severityTotal / Math.max(1, entry.count);
         const value = (entry.count * 2.5) + (severityAverage * 3) + (entry.convergenceScore / 12);
@@ -3867,7 +3959,17 @@ export class App {
           confidence: Math.round(confidence * 1000) / 1000,
           observedAt: entry.latestObservedAt,
         };
-      })
+      });
+    const trajectorySignals = this.buildAisTrajectoryForensicsSignals(now);
+    const merged = new Map<string, ForensicsSignalInput>();
+    for (const signal of [...baseSignals, ...trajectorySignals]) {
+      const key = `${signal.sourceId}:${signal.signalType}`;
+      const existing = merged.get(key);
+      if (!existing || signal.value > existing.value) {
+        merged.set(key, signal);
+      }
+    }
+    return Array.from(merged.values())
       .sort((a, b) => b.value - a.value)
       .slice(0, 120);
   }
@@ -3877,6 +3979,8 @@ export class App {
     const signals: ForensicsSignalInput[] = [];
     const absChanges: number[] = [];
     const convictions: number[] = [];
+    let latestMarketObservedAt = 0;
+    let latestPredictionObservedAt = 0;
 
     for (const market of this.latestMarkets) {
       const change = market.change;
@@ -3884,6 +3988,11 @@ export class App {
       const absChange = Math.abs(change);
       if (absChange < 0.25) continue;
       absChanges.push(absChange);
+      const marketObservedAt = market.observedAt;
+      const observedAt = typeof marketObservedAt === 'number' && Number.isFinite(marketObservedAt) && marketObservedAt > 0
+        ? marketObservedAt
+        : now;
+      latestMarketObservedAt = Math.max(latestMarketObservedAt, observedAt);
       const confidence = this.clampNumber(0.62 + Math.min(0.28, absChange / 10), 0.62, 0.95);
       signals.push({
         sourceId: `market:${market.symbol}`,
@@ -3892,7 +4001,7 @@ export class App {
         signalType: 'market_change_pct',
         value: Math.round(absChange * 100) / 100,
         confidence: Math.round(confidence * 1000) / 1000,
-        observedAt: now,
+        observedAt,
       });
     }
 
@@ -3901,6 +4010,11 @@ export class App {
       const conviction = Math.abs(prediction.yesPrice - 50) / 50 * 100;
       if (conviction < 12) continue;
       convictions.push(conviction);
+      const predictionObservedAt = prediction.observedAt;
+      const observedAt = typeof predictionObservedAt === 'number' && Number.isFinite(predictionObservedAt) && predictionObservedAt > 0
+        ? predictionObservedAt
+        : now;
+      latestPredictionObservedAt = Math.max(latestPredictionObservedAt, observedAt);
       const titleSlug = prediction.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
@@ -3914,7 +4028,7 @@ export class App {
         signalType: 'prediction_conviction',
         value: Math.round(conviction * 100) / 100,
         confidence: Math.round(confidence * 1000) / 1000,
-        observedAt: now,
+        observedAt,
       });
     }
 
@@ -3927,7 +4041,7 @@ export class App {
         signalType: 'market_volatility',
         value: Math.round(avgVolatility * 100) / 100,
         confidence: 0.85,
-        observedAt: now,
+        observedAt: latestMarketObservedAt > 0 ? latestMarketObservedAt : now,
       });
     }
 
@@ -3940,7 +4054,7 @@ export class App {
         signalType: 'prediction_conviction',
         value: Math.round(avgConviction * 100) / 100,
         confidence: 0.8,
-        observedAt: now,
+        observedAt: latestPredictionObservedAt > 0 ? latestPredictionObservedAt : now,
       });
     }
 
@@ -3971,6 +4085,14 @@ export class App {
     .filter((hub) => hub.type === 'port' || hub.type === 'exchange')
     .slice(0, 12)
     .map((hub) => ({ lat: hub.lat, lon: hub.lon }));
+  private static readonly FORENSICS_MONITOR_STREAM_LABELS: Record<ForensicsAnomalyOverlay['monitorCategory'], string> = {
+    market: 'Market Shock',
+    maritime: 'Maritime Disruption',
+    cyber: 'Cyber Spike',
+    security: 'Security Escalation',
+    infrastructure: 'Infrastructure Stress',
+    other: 'Cross-Signal',
+  };
 
   private static hashString(value: string): number {
     let hash = 0;
@@ -4025,6 +4147,15 @@ export class App {
       || source.includes('ais')
       || domain === 'maritime'
     ) {
+      if (signal.includes('ais_silence')) {
+        return { category: 'maritime', label: 'AIS silence spike' };
+      }
+      if (signal.includes('ais_loitering')) {
+        return { category: 'maritime', label: 'Vessel loitering anomaly' };
+      }
+      if (signal.includes('ais_route_deviation')) {
+        return { category: 'maritime', label: 'Route deviation anomaly' };
+      }
       return { category: 'maritime', label: 'Unusual maritime activity' };
     }
     if (signal.includes('cyber') || domain === 'cyber') {
@@ -4063,6 +4194,396 @@ export class App {
     return Math.round(this.clampNumber(priority, 0, 1) * 1000) / 1000;
   }
 
+  private resolveForensicsAnomalyFreshness(
+    anomaly: ForensicsCalibratedAnomaly,
+    runCompletedAt: number,
+  ): { ageMinutes: number; isNearLive: boolean } {
+    const now = Date.now();
+    const observedAt = Number.isFinite(anomaly.observedAt) && anomaly.observedAt > 0
+      ? anomaly.observedAt
+      : 0;
+    const fallbackCompletedAt = Number.isFinite(runCompletedAt) && runCompletedAt > 0
+      ? runCompletedAt
+      : now;
+    const referenceTimestamp = observedAt > 0 ? observedAt : fallbackCompletedAt;
+    const ageMinutes = Math.max(0, Math.round((now - referenceTimestamp) / 60000));
+    return {
+      ageMinutes,
+      isNearLive: ageMinutes <= 45,
+    };
+  }
+
+  private buildForensicsMonitorStreams(
+    anomalies: ForensicsCalibratedAnomaly[],
+    runCompletedAt = Date.now(),
+  ): Array<{
+    category: ForensicsAnomalyOverlay['monitorCategory'];
+    label: string;
+    totalFlagged: number;
+    nearLiveCount: number;
+    minPValue: number;
+    maxPriority: number;
+    topItems: Array<{
+      sourceId: string;
+      signalType: string;
+      region: string;
+      label: string;
+      pValue: number;
+      priority: number;
+    }>;
+  }> {
+    const flagged = anomalies.filter((anomaly) => anomaly.isAnomaly);
+    if (flagged.length === 0) return [];
+
+    const agreementByRegionAndType = new Map<string, number>();
+    for (const anomaly of flagged) {
+      const agreementKey = `${(anomaly.region || 'global').toLowerCase()}::${anomaly.signalType}`;
+      agreementByRegionAndType.set(agreementKey, (agreementByRegionAndType.get(agreementKey) || 0) + 1);
+    }
+
+    const grouped = new Map<ForensicsAnomalyOverlay['monitorCategory'], {
+      category: ForensicsAnomalyOverlay['monitorCategory'];
+      label: string;
+      totalFlagged: number;
+      nearLiveCount: number;
+      minPValue: number;
+      maxPriority: number;
+      topItems: Array<{
+        sourceId: string;
+        signalType: string;
+        region: string;
+        label: string;
+        pValue: number;
+        priority: number;
+      }>;
+    }>();
+
+    for (const anomaly of flagged) {
+      const monitor = this.classifyForensicsMonitor(anomaly);
+      const category = monitor.category;
+      const streamLabel = App.FORENSICS_MONITOR_STREAM_LABELS[category] || 'Cross-Signal';
+      const group = grouped.get(category) || {
+        category,
+        label: streamLabel,
+        totalFlagged: 0,
+        nearLiveCount: 0,
+        minPValue: 1,
+        maxPriority: 0,
+        topItems: [],
+      };
+
+      const agreementKey = `${(anomaly.region || 'global').toLowerCase()}::${anomaly.signalType}`;
+      const supportCount = agreementByRegionAndType.get(agreementKey) || 1;
+      const { isNearLive } = this.resolveForensicsAnomalyFreshness(anomaly, runCompletedAt);
+      const priority = this.computeForensicsMonitorPriority(anomaly, supportCount, isNearLive);
+
+      group.totalFlagged += 1;
+      if (isNearLive) group.nearLiveCount += 1;
+      group.minPValue = Math.min(group.minPValue, anomaly.pValue || 1);
+      group.maxPriority = Math.max(group.maxPriority, priority);
+      group.topItems.push({
+        sourceId: anomaly.sourceId,
+        signalType: anomaly.signalType,
+        region: anomaly.region || 'global',
+        label: monitor.label,
+        pValue: anomaly.pValue,
+        priority,
+      });
+      grouped.set(category, group);
+    }
+
+    return Array.from(grouped.values())
+      .map((stream) => ({
+        ...stream,
+        topItems: stream.topItems
+          .sort((a, b) => (b.priority - a.priority) || (a.pValue - b.pValue))
+          .slice(0, 3),
+      }))
+      .sort((a, b) => (b.totalFlagged - a.totalFlagged) || (a.minPValue - b.minPValue));
+  }
+
+  private formatAisTrajectoryCorridor(sourceId: string): string {
+    const sourceMatch = sourceId.match(/^ais:[a-z_]+:([^@]+)@/i);
+    const slug = (sourceMatch?.[1] || sourceId)
+      .replace(/[^a-z0-9\-_ ]/gi, '')
+      .trim();
+    if (!slug) return 'Unknown corridor';
+    return slug
+      .split(/[\s_-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private buildAisTrajectoryStreams(
+    anomalies: ForensicsCalibratedAnomaly[],
+    runCompletedAt = Date.now(),
+  ): Array<{
+    signalType: 'ais_route_deviation' | 'ais_loitering' | 'ais_silence';
+    label: string;
+    totalFlagged: number;
+    nearLiveCount: number;
+    minPValue: number;
+    maxPriority: number;
+    topCorridors: string[];
+    topItems: Array<{
+      sourceId: string;
+      region: string;
+      corridor: string;
+      pValue: number;
+      priority: number;
+      ageMinutes: number;
+    }>;
+  }> {
+    const definitions: Array<{
+      signalType: 'ais_route_deviation' | 'ais_loitering' | 'ais_silence';
+      label: string;
+    }> = [
+      { signalType: 'ais_route_deviation', label: 'Route Deviation' },
+      { signalType: 'ais_loitering', label: 'Loitering' },
+      { signalType: 'ais_silence', label: 'AIS Silence' },
+    ];
+    const definitionByType = new Map(definitions.map((definition) => [definition.signalType, definition]));
+    const flagged = anomalies.filter((anomaly) =>
+      anomaly.isAnomaly && definitionByType.has(anomaly.signalType as (typeof definitions)[number]['signalType']),
+    );
+
+    const agreementByRegionAndType = new Map<string, number>();
+    for (const anomaly of flagged) {
+      const agreementKey = `${(anomaly.region || 'global').toLowerCase()}::${anomaly.signalType}`;
+      agreementByRegionAndType.set(agreementKey, (agreementByRegionAndType.get(agreementKey) || 0) + 1);
+    }
+
+    const streamMap = new Map(definitions.map((definition) => [
+      definition.signalType,
+      {
+        signalType: definition.signalType,
+        label: definition.label,
+        totalFlagged: 0,
+        nearLiveCount: 0,
+        minPValue: 1,
+        maxPriority: 0,
+        topCorridors: [] as string[],
+        topItems: [] as Array<{
+          sourceId: string;
+          region: string;
+          corridor: string;
+          pValue: number;
+          priority: number;
+          ageMinutes: number;
+        }>,
+      },
+    ]));
+    const corridorCountsByType = new Map<string, Map<string, number>>();
+    for (const definition of definitions) {
+      corridorCountsByType.set(definition.signalType, new Map());
+    }
+
+    for (const anomaly of flagged) {
+      const signalType = anomaly.signalType as (typeof definitions)[number]['signalType'];
+      const stream = streamMap.get(signalType);
+      if (!stream) continue;
+      const agreementKey = `${(anomaly.region || 'global').toLowerCase()}::${signalType}`;
+      const supportCount = agreementByRegionAndType.get(agreementKey) || 1;
+      const { ageMinutes, isNearLive } = this.resolveForensicsAnomalyFreshness(anomaly, runCompletedAt);
+      const priority = this.computeForensicsMonitorPriority(anomaly, supportCount, isNearLive);
+      const corridor = this.formatAisTrajectoryCorridor(anomaly.sourceId);
+      const corridorCounts = corridorCountsByType.get(signalType);
+      if (corridorCounts) {
+        corridorCounts.set(corridor, (corridorCounts.get(corridor) || 0) + 1);
+      }
+
+      stream.totalFlagged += 1;
+      if (isNearLive) stream.nearLiveCount += 1;
+      stream.minPValue = Math.min(stream.minPValue, anomaly.pValue || 1);
+      stream.maxPriority = Math.max(stream.maxPriority, priority);
+      stream.topItems.push({
+        sourceId: anomaly.sourceId,
+        region: anomaly.region || 'global',
+        corridor,
+        pValue: anomaly.pValue,
+        priority,
+        ageMinutes,
+      });
+    }
+
+    return definitions.map((definition) => {
+      const stream = streamMap.get(definition.signalType)!;
+      const corridorCounts = corridorCountsByType.get(definition.signalType) || new Map();
+      const topCorridors = Array.from(corridorCounts.entries())
+        .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+        .slice(0, 3)
+        .map(([corridor, count]) => `${corridor} (${count})`);
+
+      return {
+        ...stream,
+        minPValue: stream.totalFlagged > 0 ? stream.minPValue : 1,
+        topCorridors,
+        topItems: stream.topItems
+          .sort((a, b) => (b.priority - a.priority) || (a.pValue - b.pValue))
+          .slice(0, 3),
+      };
+    });
+  }
+
+  private buildTopologyWindowDrilldowns(
+    trends: Array<{
+      metric: string;
+      label: string;
+      points: Array<{
+        runId: string;
+        completedAt: number;
+        value: number;
+        region: string;
+      }>;
+    }>,
+  ): Array<{
+    metric: string;
+    label: string;
+    region: string;
+    shortWindowRuns: number;
+    longWindowRuns: number;
+    shortMean: number;
+    longMean: number;
+    delta: number;
+    slope: number;
+    latestValue: number;
+  }> {
+    const mean = (values: number[]): number =>
+      values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+
+    const drilldowns = trends
+      .map((series) => {
+        const points = series.points
+          .filter((point) => Number.isFinite(point.value) && Number.isFinite(point.completedAt))
+          .slice()
+          .sort((a, b) => a.completedAt - b.completedAt);
+        if (points.length === 0) return null;
+
+        const longWindowRuns = Math.min(6, points.length);
+        const shortWindowRuns = Math.min(3, points.length);
+        const longWindow = points.slice(-longWindowRuns);
+        const shortWindow = points.slice(-shortWindowRuns);
+        const longMean = mean(longWindow.map((point) => point.value));
+        const shortMean = mean(shortWindow.map((point) => point.value));
+        const latestPoint = points[points.length - 1];
+        const firstPoint = points[0];
+        if (!latestPoint || !firstPoint) return null;
+
+        const regionCounts = new Map<string, number>();
+        for (const point of longWindow) {
+          const regionKey = (point.region || 'global').trim() || 'global';
+          regionCounts.set(regionKey, (regionCounts.get(regionKey) || 0) + 1);
+        }
+        const dominantRegion = Array.from(regionCounts.entries())
+          .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))[0]?.[0]
+          || latestPoint?.region
+          || 'global';
+
+        return {
+          metric: series.metric,
+          label: series.label,
+          region: dominantRegion,
+          shortWindowRuns,
+          longWindowRuns,
+          shortMean,
+          longMean,
+          delta: shortMean - longMean,
+          slope: points.length > 1 ? (latestPoint.value - firstPoint.value) / (points.length - 1) : 0,
+          latestValue: latestPoint.value,
+        };
+      })
+      .filter((entry): entry is {
+        metric: string;
+        label: string;
+        region: string;
+        shortWindowRuns: number;
+        longWindowRuns: number;
+        shortMean: number;
+        longMean: number;
+        delta: number;
+        slope: number;
+        latestValue: number;
+      } => Boolean(entry));
+
+    return drilldowns
+      .sort((a, b) =>
+        (Math.abs(b.delta) - Math.abs(a.delta))
+        || (Math.abs(b.slope) - Math.abs(a.slope))
+        || a.label.localeCompare(b.label),
+      );
+  }
+
+  private buildTopologyDriftDiagnostics(
+    baselines: Array<{
+      domain: string;
+      region: string;
+      signalType: string;
+      count: number;
+      mean: number;
+      stdDev: number;
+      minValue: number;
+      maxValue: number;
+      lastValue: number;
+      lastUpdated: number;
+    }>,
+  ): Array<{
+    signalType: string;
+    region: string;
+    count: number;
+    lastValue: number;
+    mean: number;
+    stdDev: number;
+    zScore: number;
+    driftState: 'stable' | 'watch' | 'critical';
+    lastUpdated: number;
+  }> {
+    const EPSILON = 1e-6;
+    const diagnostics = baselines.map((baseline) => {
+      const delta = baseline.lastValue - baseline.mean;
+      const stdDev = Math.abs(baseline.stdDev);
+      const fallbackScale = Math.max(1, Math.abs(baseline.mean));
+      const hasSpread = stdDev > EPSILON;
+      const zScore = hasSpread
+        ? (delta / stdDev)
+        : Math.abs(delta) >= (0.05 * fallbackScale)
+        ? Math.sign(delta || 1) * 3
+        : 0;
+      const absZ = Math.abs(zScore);
+      const driftState: 'stable' | 'watch' | 'critical' = absZ >= 2.5
+        ? 'critical'
+        : absZ >= 1.25
+        ? 'watch'
+        : 'stable';
+
+      return {
+        signalType: baseline.signalType,
+        region: baseline.region || 'global',
+        count: baseline.count,
+        lastValue: baseline.lastValue,
+        mean: baseline.mean,
+        stdDev: baseline.stdDev,
+        zScore,
+        driftState,
+        lastUpdated: baseline.lastUpdated,
+      };
+    });
+
+    const stateRank: Record<'stable' | 'watch' | 'critical', number> = {
+      critical: 2,
+      watch: 1,
+      stable: 0,
+    };
+
+    return diagnostics
+      .sort((a, b) =>
+        (stateRank[b.driftState] - stateRank[a.driftState])
+        || (Math.abs(b.zScore) - Math.abs(a.zScore))
+        || (b.lastUpdated - a.lastUpdated)
+        || a.signalType.localeCompare(b.signalType),
+      );
+  }
+
   private resolveMarketSourceCoordinate(sourceId: string): { lat: number; lon: number } | null {
     const sourceUpper = sourceId.toUpperCase();
     const symbol = sourceUpper.includes(':')
@@ -4099,6 +4620,15 @@ export class App {
     domain: string,
     category: ForensicsAnomalyOverlay['monitorCategory'],
   ): { lat: number; lon: number } | null {
+    const sourceCoordinateMatch = sourceId.match(/@(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (sourceCoordinateMatch?.[1] && sourceCoordinateMatch?.[2]) {
+      const lat = Number(sourceCoordinateMatch[1]);
+      const lon = Number(sourceCoordinateMatch[2]);
+      if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+        return { lat, lon };
+      }
+    }
+
     if (category === 'market') {
       const marketCoordinate = this.resolveMarketSourceCoordinate(sourceId);
       if (marketCoordinate) return marketCoordinate;
@@ -4181,9 +4711,6 @@ export class App {
     if (!runId) return [];
     const flagged = anomalies.filter((anomaly) => anomaly.isAnomaly);
     if (flagged.length === 0) return [];
-    const referenceCompletedAt = Number.isFinite(runCompletedAt) && runCompletedAt > 0
-      ? runCompletedAt
-      : Date.now();
 
     const agreementByRegionAndType = new Map<string, number>();
     for (const anomaly of flagged) {
@@ -4204,8 +4731,7 @@ export class App {
 
       const agreementKey = `${(anomaly.region || 'global').toLowerCase()}::${anomaly.signalType}`;
       const supportCount = agreementByRegionAndType.get(agreementKey) || 1;
-      const ageMinutes = Math.max(0, Math.round((Date.now() - referenceCompletedAt) / 60000));
-      const isNearLive = ageMinutes <= 45;
+      const { ageMinutes, isNearLive } = this.resolveForensicsAnomalyFreshness(anomaly, runCompletedAt);
       overlay.push({
         id: `${runId}:${anomaly.sourceId}:${anomaly.signalType}:${index}`,
         runId,
@@ -4331,8 +4857,12 @@ export class App {
         panel.update({
           fusedSignals: [],
           anomalies: [],
+          monitorStreams: [],
+          aisTrajectoryStreams: [],
           topologyAlerts: [],
           topologyTrends: [],
+          topologyWindowDrilldowns: [],
+          topologyDrifts: [],
           topologyBaselines: [],
           trace: [],
           policy: [],
@@ -4353,8 +4883,12 @@ export class App {
         panel.update({
           fusedSignals: [],
           anomalies: [],
+          monitorStreams: [],
+          aisTrajectoryStreams: [],
           topologyAlerts: [],
           topologyTrends: [],
+          topologyWindowDrilldowns: [],
+          topologyDrifts: [],
           topologyBaselines: [],
           trace: [],
           policy: [],
@@ -4403,6 +4937,14 @@ export class App {
 
       this.applyForensicsMapOverlay(
         runId,
+        anomalyResult.anomalies,
+        latest.run?.completedAt || latest.run?.startedAt || Date.now(),
+      );
+      const monitorStreams = this.buildForensicsMonitorStreams(
+        anomalyResult.anomalies,
+        latest.run?.completedAt || latest.run?.startedAt || Date.now(),
+      );
+      const aisTrajectoryStreams = this.buildAisTrajectoryStreams(
         anomalyResult.anomalies,
         latest.run?.completedAt || latest.run?.startedAt || Date.now(),
       );
@@ -4486,6 +5028,8 @@ export class App {
           lastValue: baseline.lastValue,
           lastUpdated: baseline.lastUpdated,
         }));
+      const topologyWindowDrilldowns = this.buildTopologyWindowDrilldowns(topologyMetricSeries);
+      const topologyDrifts = this.buildTopologyDriftDiagnostics(topologyBaselines);
 
       const errorParts = [
         fusedResult.error,
@@ -4500,8 +5044,12 @@ export class App {
         summary: latest,
         fusedSignals: fusedResult.signals.slice(0, 6),
         anomalies: selectedAnomalies,
+        monitorStreams,
+        aisTrajectoryStreams,
         topologyAlerts,
         topologyTrends: topologyMetricSeries,
+        topologyWindowDrilldowns,
+        topologyDrifts,
         topologyBaselines,
         trace: traceResult.trace,
         policy: policyResult.entries.slice(0, 6),
@@ -4514,8 +5062,12 @@ export class App {
       panel.update({
         fusedSignals: [],
         anomalies: [],
+        monitorStreams: [],
+        aisTrajectoryStreams: [],
         topologyAlerts: [],
         topologyTrends: [],
+        topologyWindowDrilldowns: [],
+        topologyDrifts: [],
         topologyBaselines: [],
         trace: [],
         policy: [],
@@ -4848,6 +5400,7 @@ export class App {
   private async loadAisSignals(): Promise<void> {
     try {
       const { disruptions, density } = await fetchAisSignals();
+      this.latestAisDisruptions = disruptions;
       const aisStatus = getAisStatus();
       console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
       this.map?.setAisData(disruptions, density);
@@ -4877,6 +5430,7 @@ export class App {
       }
       void this.runOperationalForensicsShadow('intelligence');
     } catch (error) {
+      this.latestAisDisruptions = [];
       this.map?.setLayerReady('ais', false);
       this.statusPanel?.updateFeed('Shipping', { status: 'error', errorMessage: String(error) });
       this.statusPanel?.updateApi('AISStream', { status: 'error' });

@@ -10,6 +10,7 @@ export interface PredictionMarket {
   yesPrice: number;     // 0-100 scale (legacy compat)
   volume?: number;
   url?: string;
+  observedAt?: number;
 }
 
 // Internal Gamma API interfaces
@@ -21,6 +22,10 @@ interface PolymarketMarket {
   volumeNum?: number;
   closed?: boolean;
   slug?: string;
+  updatedAt?: string;
+  createdAt?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 interface PolymarketEvent {
@@ -32,6 +37,10 @@ interface PolymarketEvent {
   markets?: PolymarketMarket[];
   tags?: Array<{ slug: string }>;
   closed?: boolean;
+  updatedAt?: string;
+  createdAt?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 // Internal constants and state
@@ -207,6 +216,26 @@ function parseMarketPrice(market: PolymarketMarket): number {
   return 50;
 }
 
+function parseTimestamp(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    // Normalize second-resolution timestamps into milliseconds.
+    return value < 1e11 ? Math.round(value * 1000) : Math.round(value);
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function resolveObservedAt(...values: unknown[]): number {
+  for (const value of values) {
+    const parsed = parseTimestamp(value);
+    if (parsed > 0) return parsed;
+  }
+  return Date.now();
+}
+
 function buildMarketUrl(eventSlug?: string, marketSlug?: string): string | undefined {
   if (eventSlug) return `https://polymarket.com/event/${eventSlug}`;
   if (marketSlug) return `https://polymarket.com/market/${marketSlug}`;
@@ -227,6 +256,7 @@ async function fetchEventsByTag(tag: string, limit = 30): Promise<PolymarketEven
 }
 
 async function fetchTopMarkets(): Promise<PredictionMarket[]> {
+  const fetchObservedAt = Date.now();
   const response = await polyFetch('markets', {
     closed: 'false',
     order: 'volume',
@@ -246,12 +276,20 @@ async function fetchTopMarkets(): Promise<PredictionMarket[]> {
         yesPrice,
         volume,
         url: buildMarketUrl(undefined, m.slug),
+        observedAt: resolveObservedAt(
+          m.updatedAt,
+          m.createdAt,
+          m.endDate,
+          m.startDate,
+          fetchObservedAt,
+        ),
       };
     });
 }
 
 export async function fetchPredictions(): Promise<PredictionMarket[]> {
   return breaker.execute(async () => {
+    const fetchObservedAt = Date.now();
     const tags = SITE_VARIANT === 'tech' ? TECH_TAGS : GEOPOLITICAL_TAGS;
 
     const eventResults = await Promise.all(tags.map(tag => fetchEventsByTag(tag, 20)));
@@ -282,6 +320,17 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
             yesPrice,
             volume: eventVolume,
             url: buildMarketUrl(event.slug),
+            observedAt: resolveObservedAt(
+              topMarket.updatedAt,
+              topMarket.createdAt,
+              topMarket.endDate,
+              topMarket.startDate,
+              event.updatedAt,
+              event.createdAt,
+              event.endDate,
+              event.startDate,
+              fetchObservedAt,
+            ),
           });
         } else {
           markets.push({
@@ -289,6 +338,13 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
             yesPrice: 50,
             volume: eventVolume,
             url: buildMarketUrl(event.slug),
+            observedAt: resolveObservedAt(
+              event.updatedAt,
+              event.createdAt,
+              event.endDate,
+              event.startDate,
+              fetchObservedAt,
+            ),
           });
         }
       }
@@ -412,6 +468,7 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
   const variants = getCountryVariants(country);
 
   try {
+    const fetchObservedAt = Date.now();
     const eventResults = await Promise.all(uniqueTags.map(tag => fetchEventsByTag(tag, 30)));
     const seen = new Set<string>();
     const markets: PredictionMarket[] = [];
@@ -451,6 +508,17 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
             yesPrice: parseMarketPrice(topMarket),
             volume: event.volume ?? 0,
             url: buildMarketUrl(event.slug),
+            observedAt: resolveObservedAt(
+              topMarket.updatedAt,
+              topMarket.createdAt,
+              topMarket.endDate,
+              topMarket.startDate,
+              event.updatedAt,
+              event.createdAt,
+              event.endDate,
+              event.startDate,
+              fetchObservedAt,
+            ),
           });
         } else {
           markets.push({
@@ -458,6 +526,13 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
             yesPrice: 50,
             volume: event.volume ?? 0,
             url: buildMarketUrl(event.slug),
+            observedAt: resolveObservedAt(
+              event.updatedAt,
+              event.createdAt,
+              event.endDate,
+              event.startDate,
+              fetchObservedAt,
+            ),
           });
         }
       }

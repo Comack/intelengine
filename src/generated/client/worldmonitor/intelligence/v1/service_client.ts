@@ -206,6 +206,7 @@ export interface ForensicsCalibratedAnomaly {
   pValueTiming: number;
   timingNonconformity: number;
   intervalMs: number;
+  observedAt: number;
 }
 
 export interface ForensicsPhaseTrace {

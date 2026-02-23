@@ -1122,6 +1122,10 @@ components:
                     type: integer
                     format: int64
                     description: 'Observed inter-arrival interval for this signal (milliseconds).. Warning: Values > 2^53 may lose precision in JavaScript'
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Observation timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: ForensicsCalibratedAnomaly is a conformal anomaly decision for one signal.
         ForensicsPhaseTrace:
             type: object
