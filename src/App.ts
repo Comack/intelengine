@@ -1,4 +1,4 @@
-import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, CyberThreat, ForensicsAnomalyOverlay, AisDisruptionEvent, CableAdvisory, RepairShip, CableHealthResponse, NaturalEvent, PizzIntStatus, GdeltTensionPair } from '@/types';
+import type { NewsItem, Monitor, PanelConfig, MapLayers, RelatedAsset, InternetOutage, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, CyberThreat, ForensicsAnomalyOverlay, ForensicsTopologyWindowOverlay, AisDisruptionEvent, CableAdvisory, RepairShip, CableHealthResponse, NaturalEvent, PizzIntStatus, GdeltTensionPair } from '@/types';
 import {
   FEEDS,
   INTEL_SOURCES,
@@ -4148,6 +4148,7 @@ export class App {
   private cyberThreatsCache: CyberThreat[] | null = null;
   private latestAisDisruptions: AisDisruptionEvent[] = [];
   private latestForensicsOverlay: ForensicsAnomalyOverlay[] = [];
+  private latestTopologyWindowOverlay: ForensicsTopologyWindowOverlay[] = [];
 
   private clampNumber(value: number, min: number, max: number): number {
     return clampSignalNumber(value, min, max);
@@ -5604,6 +5605,76 @@ export class App {
     strategicRiskPanel?.setForensicsAnomalies(overlay);
   }
 
+  private buildTopologyWindowMapOverlay(
+    drilldowns: Array<{
+      metric: string;
+      label: string;
+      region: string;
+      shortWindowRuns: number;
+      longWindowRuns: number;
+      shortMean: number;
+      longMean: number;
+      delta: number;
+      slope: number;
+      latestValue: number;
+    }>,
+  ): ForensicsTopologyWindowOverlay[] {
+    if (drilldowns.length === 0) return [];
+
+    const sorted = drilldowns
+      .slice()
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+      .slice(0, 12);
+
+    const overlay: ForensicsTopologyWindowOverlay[] = [];
+    for (const entry of sorted) {
+      const coordinate = this.resolveForensicsCoordinate(
+        entry.region || 'global',
+        `topology:${entry.metric}`,
+        'intelligence',
+        'other',
+      );
+      if (!coordinate) continue;
+
+      overlay.push({
+        id: `topology:${entry.metric}:${entry.region}`,
+        metric: entry.metric,
+        label: entry.label,
+        region: entry.region,
+        latestValue: entry.latestValue,
+        shortMean: entry.shortMean,
+        longMean: entry.longMean,
+        delta: entry.delta,
+        slope: entry.slope,
+        shortWindowRuns: entry.shortWindowRuns,
+        longWindowRuns: entry.longWindowRuns,
+        lat: coordinate.lat,
+        lon: coordinate.lon,
+      });
+    }
+
+    return overlay;
+  }
+
+  private applyTopologyWindowMapOverlay(
+    drilldowns: Array<{
+      metric: string;
+      label: string;
+      region: string;
+      shortWindowRuns: number;
+      longWindowRuns: number;
+      shortMean: number;
+      longMean: number;
+      delta: number;
+      slope: number;
+      latestValue: number;
+    }>,
+  ): void {
+    const overlay = this.buildTopologyWindowMapOverlay(drilldowns);
+    this.latestTopologyWindowOverlay = overlay;
+    this.map?.setTopologyWindowOverlay(overlay);
+  }
+
   private async runOperationalForensicsShadow(scope: 'intelligence' | 'market'): Promise<void> {
     if (!this.panels['forensics']) return;
     if (scope === 'intelligence' && SITE_VARIANT !== 'full') return;
@@ -5689,6 +5760,7 @@ export class App {
       }
       if (runsResult.error) {
         this.applyForensicsMapOverlay('', []);
+        this.applyTopologyWindowMapOverlay([]);
         this.statusPanel?.updateFeed('Forensics', { status: 'error', itemCount: 0, errorMessage: runsResult.error });
         this.statusPanel?.updateApi('Forensics API', { status: 'error' });
         dataFreshness.recordError('forensics', runsResult.error);
@@ -5719,6 +5791,7 @@ export class App {
       const runId = latest?.run?.runId;
       if (!runId) {
         this.applyForensicsMapOverlay('', []);
+        this.applyTopologyWindowMapOverlay([]);
         this.statusPanel?.updateFeed('Forensics', {
           status: 'warning',
           itemCount: 0,
@@ -5877,6 +5950,7 @@ export class App {
         }));
       const topologyWindowDrilldowns = this.buildTopologyWindowDrilldowns(topologyMetricSeries);
       const topologyDrifts = this.buildTopologyDriftDiagnostics(topologyBaselines);
+      this.applyTopologyWindowMapOverlay(topologyWindowDrilldowns);
 
       const errorParts = [
         fusedResult.error,
@@ -5919,6 +5993,7 @@ export class App {
       this.updateSearchIndex();
     } catch (error) {
       this.applyForensicsMapOverlay('', []);
+      this.applyTopologyWindowMapOverlay([]);
       const message = error instanceof Error ? error.message : String(error);
       this.statusPanel?.updateFeed('Forensics', { status: 'error', itemCount: 0, errorMessage: message });
       this.statusPanel?.updateApi('Forensics API', { status: 'error' });

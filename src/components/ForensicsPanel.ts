@@ -178,13 +178,6 @@ function severityClass(value: string): string {
   return 'unknown';
 }
 
-function phaseStatusClass(value: string): string {
-  if (value === 'FORENSICS_PHASE_STATUS_SUCCESS') return 'success';
-  if (value === 'FORENSICS_PHASE_STATUS_FAILED') return 'failed';
-  if (value === 'FORENSICS_PHASE_STATUS_SKIPPED') return 'skipped';
-  if (value === 'FORENSICS_PHASE_STATUS_PENDING') return 'pending';
-  return 'unknown';
-}
 
 function topologyDriftClass(value: ForensicsTopologyDriftDiagnostic['driftState']): string {
   if (value === 'critical') return 'critical';
@@ -296,6 +289,116 @@ function buildProvenanceLinks(anomaly: ForensicsCalibratedAnomaly): ForensicsPro
     if (!deduped.has(link.url)) deduped.set(link.url, link);
   }
   return Array.from(deduped.values());
+}
+
+interface ForensicsPhaseNode {
+  phase: string;
+  displayName: string;
+  status: string;
+  startedAt: number;
+  elapsedMs: number;
+  error: string;
+  isSwappable: boolean;
+}
+
+const PHASE_DISPLAY_NAMES: Record<string, string> = {
+  'signal-collect': 'Signal Collect',
+  'topology-tda': 'Topology TDA',
+  'ws-fusion': 'WS Fusion',
+  'conformal': 'Conformal',
+  'policy-select': 'Policy Select',
+  'policy-update': 'Policy Update',
+  'persist': 'Persist',
+  'normalize': 'Normalize',
+  'enrich': 'Enrich',
+};
+
+const SWAPPABLE_PHASES = new Set(['ws-fusion', 'conformal']);
+
+function buildTraceGraph(trace: ForensicsPhaseTrace[]): string {
+  const validPhases: ForensicsPhaseNode[] = trace
+    .filter((phase) => Number.isFinite(phase.startedAt) && phase.startedAt > 0)
+    .map((phase) => ({
+      phase: phase.phase,
+      displayName: PHASE_DISPLAY_NAMES[phase.phase] || enumLabel(phase.phase, ''),
+      status: phase.status,
+      startedAt: phase.startedAt,
+      elapsedMs: Number.isFinite(phase.elapsedMs) && phase.elapsedMs > 0 ? phase.elapsedMs : 0,
+      error: phase.error || '',
+      isSwappable: SWAPPABLE_PHASES.has(phase.phase),
+    }));
+
+  if (validPhases.length === 0) {
+    return '<div class="forensics-empty">No phase trace available.</div>';
+  }
+
+  const runStart = Math.min(...validPhases.map((p) => p.startedAt));
+  const runEnd = Math.max(...validPhases.map((p) => p.startedAt + p.elapsedMs));
+  const totalWindow = Math.max(runEnd - runStart, 1);
+  const totalMs = Math.round(totalWindow);
+
+  const labelWidth = 120;
+  const barAreaWidth = 360;
+  const rowHeight = 22;
+  const headerHeight = 20;
+  const svgWidth = labelWidth + barAreaWidth + 70;
+  const svgHeight = headerHeight + validPhases.length * rowHeight + 10;
+
+  const statusColor = (status: string): string => {
+    if (status === 'FORENSICS_PHASE_STATUS_SUCCESS') return '#10b981';
+    if (status === 'FORENSICS_PHASE_STATUS_FAILED') return '#ef4444';
+    if (status === 'FORENSICS_PHASE_STATUS_SKIPPED') return '#64748b';
+    return '#334155';
+  };
+
+  let svg = `<svg class="forensics-trace-svg" viewBox="0 0 ${svgWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Header
+  svg += `<text x="${labelWidth}" y="13" fill="#94a3b8" font-size="9" font-family="monospace" font-weight="600">PHASE TIMELINE</text>`;
+  svg += `<text x="${svgWidth - 4}" y="13" fill="#64748b" font-size="9" font-family="monospace" text-anchor="end">total ${formatElapsed(totalMs)}</text>`;
+
+  // Phase rows
+  validPhases.forEach((phase, index) => {
+    const y = headerHeight + index * rowHeight;
+    const barY = y + 5;
+    const barHeight = 12;
+
+    // Label
+    svg += `<text x="${labelWidth - 6}" y="${barY + 10}" fill="#cbd5e1" font-size="10" font-family="monospace" text-anchor="end">${escapeHtml(phase.displayName)}</text>`;
+
+    // Duration bar
+    const offsetFrac = (phase.startedAt - runStart) / totalWindow;
+    const widthFrac = Math.max(phase.elapsedMs / totalWindow, 0.008);
+    const barX = labelWidth + offsetFrac * barAreaWidth;
+    const barW = Math.max(widthFrac * barAreaWidth, 3);
+    const color = statusColor(phase.status);
+    svg += `<rect x="${barX}" y="${barY}" width="${barW}" height="${barHeight}" rx="3" fill="${color}" opacity="0.85"/>`;
+
+    // Swappable bracket annotation
+    if (phase.isSwappable) {
+      svg += `<rect x="${barX - 2}" y="${barY - 2}" width="${barW + 4}" height="${barHeight + 4}" rx="4" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="3,2"/>`;
+    }
+
+    // Dashed connector to next phase
+    if (index < validPhases.length - 1) {
+      const nextPhase = validPhases[index + 1]!;
+      const nextOffsetFrac = (nextPhase.startedAt - runStart) / totalWindow;
+      const nextBarX = labelWidth + nextOffsetFrac * barAreaWidth;
+      const connectorStartX = barX + barW;
+      const connectorEndX = nextBarX;
+      const connectorY = barY + barHeight + 3;
+      if (connectorEndX > connectorStartX + 2) {
+        svg += `<line x1="${connectorStartX}" y1="${connectorY}" x2="${connectorEndX}" y2="${connectorY}" stroke="#475569" stroke-width="1" stroke-dasharray="3,2"/>`;
+      }
+    }
+
+    // Elapsed label
+    const elapsedLabel = phase.elapsedMs > 0 ? formatElapsed(phase.elapsedMs) : '-';
+    svg += `<text x="${barX + barW + 4}" y="${barY + 10}" fill="#94a3b8" font-size="9" font-family="monospace">${escapeHtml(elapsedLabel)}</text>`;
+  });
+
+  svg += '</svg>';
+  return svg;
 }
 
 export class ForensicsPanel extends Panel {
@@ -695,21 +798,7 @@ export class ForensicsPanel extends Panel {
         `).join('')
       : '<div class="forensics-empty">No topology alerts for this run.</div>';
 
-    const phaseHtml = trace.length > 0
-      ? trace.map((phase) => `
-          <div class="forensics-item">
-            <div class="forensics-item-head">
-              <span class="forensics-source">${escapeHtml(phase.phase)}</span>
-              <span class="forensics-phase ${phaseStatusClass(phase.status)}">${escapeHtml(enumLabel(phase.status, 'FORENSICS_PHASE_STATUS_'))}</span>
-            </div>
-            <div class="forensics-item-meta">
-              <span>${escapeHtml(formatTimestamp(phase.startedAt))}</span>
-              <span>${escapeHtml(formatElapsed(phase.elapsedMs))}</span>
-              <span>${escapeHtml(phase.error || 'OK')}</span>
-            </div>
-          </div>
-        `).join('')
-      : '<div class="forensics-empty">No phase trace available for this run.</div>';
+    const phaseHtml = buildTraceGraph(trace);
 
     const policyHtml = policy.length > 0
       ? policy.map((entry) => `

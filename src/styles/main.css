@@ -9070,6 +9070,12 @@ a.prediction-link:hover {
   padding: 8px 0;
 }
 
+.forensics-trace-svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+
 .forensics-warning {
   font-size: 11px;
   color: var(--semantic-high);

@@ -34,6 +34,7 @@ import type {
   CyberThreat,
   CableHealthRecord,
   ForensicsAnomalyOverlay,
+  ForensicsTopologyWindowOverlay,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -249,6 +250,7 @@ export class DeckGLMap {
   private weatherAlerts: WeatherAlert[] = [];
   private outages: InternetOutage[] = [];
   private forensicsAnomalies: ForensicsAnomalyOverlay[] = [];
+  private topologyWindowOverlay: ForensicsTopologyWindowOverlay[] = [];
   private cyberThreats: CyberThreat[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
@@ -1015,6 +1017,11 @@ export class DeckGLMap {
       if (pulseLayer) layers.push(pulseLayer);
     }
 
+    // Topology window drilldown overlay
+    if (mapLayers.forensics && this.topologyWindowOverlay.length > 0) {
+      layers.push(this.createTopologyWindowLayer());
+    }
+
     // Cyber threat IOC layer
     if (mapLayers.cyberThreats && this.cyberThreats.length > 0) {
       layers.push(this.createCyberThreatsLayer());
@@ -1618,6 +1625,29 @@ export class DeckGLMap {
       },
       lineWidthMinPixels: 1.5,
       updateTriggers: { radiusScale: this.pulseTime },
+    });
+  }
+
+  private createTopologyWindowLayer(): ScatterplotLayer<ForensicsTopologyWindowOverlay> {
+    return new ScatterplotLayer<ForensicsTopologyWindowOverlay>({
+      id: 'forensics-topology-window-layer',
+      data: this.topologyWindowOverlay,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => {
+        const absDelta = Math.abs(d.delta);
+        return 14000 + Math.min(absDelta * 50000, 50000);
+      },
+      radiusMinPixels: 7,
+      radiusMaxPixels: 28,
+      getFillColor: (d) => {
+        if (d.delta > 0.5) return [245, 158, 11, 190] as [number, number, number, number];
+        if (d.delta < -0.5) return [6, 182, 212, 190] as [number, number, number, number];
+        return [148, 163, 184, 160] as [number, number, number, number];
+      },
+      stroked: true,
+      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+      pickable: true,
     });
   }
 
@@ -2726,6 +2756,7 @@ export class DeckGLMap {
       'weather-layer': 'weather',
       'outages-layer': 'outage',
       'forensics-anomalies-layer': 'forensicsAnomaly',
+      'forensics-topology-window-layer': 'forensicsTopologyWindow',
       'cyber-threats-layer': 'cyberThreat',
       'protests-layer': 'protest',
       'military-flights-layer': 'militaryFlight',
@@ -3388,6 +3419,11 @@ export class DeckGLMap {
     this.forensicsAnomalies = anomalies;
     this.render();
     this.syncPulseAnimation();
+  }
+
+  public setTopologyWindowOverlay(overlay: ForensicsTopologyWindowOverlay[]): void {
+    this.topologyWindowOverlay = overlay;
+    this.render();
   }
 
   public setCyberThreats(threats: CyberThreat[]): void {

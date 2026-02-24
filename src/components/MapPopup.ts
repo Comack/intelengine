@@ -1,4 +1,4 @@
-import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat, ForensicsAnomalyOverlay } from '@/types';
+import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat, ForensicsAnomalyOverlay, ForensicsTopologyWindowOverlay } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
@@ -14,7 +14,7 @@ import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 import { getCableHealthRecord } from '@/services/cable-health';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'forensicsAnomaly' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'forensicsAnomaly' | 'forensicsTopologyWindow' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
 
 interface TechEventPopupData {
   id: string;
@@ -364,6 +364,8 @@ export class MapPopup {
         return this.renderCyberThreatPopup(data.data as CyberThreat);
       case 'forensicsAnomaly':
         return this.renderForensicsAnomalyPopup(data.data as ForensicsAnomalyOverlay);
+      case 'forensicsTopologyWindow':
+        return this.renderForensicsTopologyWindowPopup(data.data as unknown as ForensicsTopologyWindowOverlay);
       case 'nuclear':
         return this.renderNuclearPopup(data.data as NuclearFacility);
       case 'economic':
@@ -1335,6 +1337,52 @@ export class MapPopup {
     `;
   }
 
+
+  private renderForensicsTopologyWindowPopup(entry: ForensicsTopologyWindowOverlay): string {
+    const deltaSign = entry.delta >= 0 ? '+' : '';
+    const slopeSign = entry.slope >= 0 ? '+' : '';
+    const deltaClass = entry.delta > 0.5 ? 'elevated' : entry.delta < -0.5 ? 'low' : 'low';
+    return `
+      <div class="popup-header apt ${deltaClass}">
+        <span class="popup-title">Topology Window</span>
+        <span class="popup-badge ${deltaClass}">${escapeHtml(entry.metric)}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-subtitle">${escapeHtml(entry.label)} · ${escapeHtml(entry.region)}</div>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">Metric</span>
+            <span class="stat-value">${escapeHtml(entry.metric)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Region</span>
+            <span class="stat-value">${escapeHtml(entry.region)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Latest value</span>
+            <span class="stat-value">${entry.latestValue.toFixed(4)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Short mean</span>
+            <span class="stat-value">${entry.shortMean.toFixed(4)} (${entry.shortWindowRuns} runs)</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Long mean</span>
+            <span class="stat-value">${entry.longMean.toFixed(4)} (${entry.longWindowRuns} runs)</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Delta</span>
+            <span class="stat-value">${deltaSign}${entry.delta.toFixed(4)}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">Slope</span>
+            <span class="stat-value">${slopeSign}${entry.slope.toFixed(4)}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   private renderCyberThreatPopup(threat: CyberThreat): string {
     const severityClass = escapeHtml(threat.severity);

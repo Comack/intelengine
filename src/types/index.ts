@@ -246,6 +246,22 @@ export interface ForensicsAnomalyOverlay {
   lon: number;
 }
 
+export interface ForensicsTopologyWindowOverlay {
+  id: string;
+  metric: string;
+  label: string;
+  region: string;
+  latestValue: number;
+  shortMean: number;
+  longMean: number;
+  delta: number;
+  slope: number;
+  shortWindowRuns: number;
+  longWindowRuns: number;
+  lat: number;
+  lon: number;
+}
+
 export interface ConflictZone {
   id: string;
   name: string;

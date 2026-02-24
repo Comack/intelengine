@@ -465,3 +465,80 @@ describe('AIS disruption timestamp propagation', () => {
     assert.match(maritimeSrc, /observedAt:/);
   });
 });
+
+describe('Forensics topology map overlay', () => {
+  const typesSrc = readSrc('src/types/index.ts');
+  const appSrc = readSrc('src/App.ts');
+  const deckSrc = readSrc('src/components/DeckGLMap.ts');
+  const popupSrc = readSrc('src/components/MapPopup.ts');
+  const mapContainerSrc = readSrc('src/components/MapContainer.ts');
+
+  it('declares ForensicsTopologyWindowOverlay interface in types', () => {
+    assert.match(typesSrc, /interface ForensicsTopologyWindowOverlay/);
+    assert.match(typesSrc, /metric:\s*string/);
+    assert.match(typesSrc, /delta:\s*number/);
+    assert.match(typesSrc, /slope:\s*number/);
+    assert.match(typesSrc, /shortMean:\s*number/);
+    assert.match(typesSrc, /longMean:\s*number/);
+  });
+
+  it('builds and applies topology window map overlay in App', () => {
+    assert.match(appSrc, /buildTopologyWindowMapOverlay/);
+    assert.match(appSrc, /applyTopologyWindowMapOverlay/);
+    assert.match(appSrc, /latestTopologyWindowOverlay/);
+    assert.match(appSrc, /this\.map\?\.setTopologyWindowOverlay\(overlay\)/);
+    assert.match(appSrc, /this\.applyTopologyWindowMapOverlay\(topologyWindowDrilldowns\)/);
+    assert.match(appSrc, /this\.applyTopologyWindowMapOverlay\(\[\]\)/);
+  });
+
+  it('adds topology window scatter layer and popup wiring in DeckGLMap', () => {
+    assert.match(deckSrc, /forensics-topology-window-layer/);
+    assert.match(deckSrc, /setTopologyWindowOverlay/);
+    assert.match(deckSrc, /createTopologyWindowLayer/);
+    assert.match(deckSrc, /'forensics-topology-window-layer': 'forensicsTopologyWindow'/);
+  });
+
+  it('renders topology window popup in MapPopup', () => {
+    assert.match(popupSrc, /forensicsTopologyWindow/);
+    assert.match(popupSrc, /renderForensicsTopologyWindowPopup/);
+    assert.match(popupSrc, /Topology Window/);
+    assert.match(popupSrc, /Short mean/);
+    assert.match(popupSrc, /Long mean/);
+  });
+
+  it('fans out topology window overlay through MapContainer', () => {
+    assert.match(mapContainerSrc, /setTopologyWindowOverlay/);
+    assert.match(mapContainerSrc, /ForensicsTopologyWindowOverlay/);
+  });
+});
+
+describe('Forensics phase trace graph', () => {
+  const panelSrc = readSrc('src/components/ForensicsPanel.ts');
+  const cssSrc = readSrc('src/styles/main.css');
+
+  it('defines trace graph builder and phase constants', () => {
+    assert.match(panelSrc, /buildTraceGraph/);
+    assert.match(panelSrc, /forensics-trace-svg/);
+    assert.match(panelSrc, /PHASE_DISPLAY_NAMES/);
+    assert.match(panelSrc, /SWAPPABLE_PHASES/);
+    assert.match(panelSrc, /ForensicsPhaseNode/);
+  });
+
+  it('uses correct status colors for phase bars', () => {
+    assert.match(panelSrc, /#10b981/);
+    assert.match(panelSrc, /#ef4444/);
+    assert.match(panelSrc, /#64748b/);
+    assert.match(panelSrc, /#334155/);
+    assert.match(panelSrc, /#a78bfa/);
+  });
+
+  it('calls buildTraceGraph instead of flat rendering', () => {
+    assert.match(panelSrc, /const phaseHtml = buildTraceGraph\(trace\)/);
+    assert.doesNotMatch(panelSrc, /trace\.map\(\(phase\) => `\s*<div class="forensics-item">/);
+  });
+
+  it('adds forensics-trace-svg CSS rule', () => {
+    assert.match(cssSrc, /\.forensics-trace-svg/);
+    assert.match(cssSrc, /max-width:\s*100%/);
+  });
+});

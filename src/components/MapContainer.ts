@@ -26,6 +26,7 @@ import type {
   CyberThreat,
   CableHealthRecord,
   ForensicsAnomalyOverlay,
+  ForensicsTopologyWindowOverlay,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
@@ -226,6 +227,13 @@ export class MapContainer {
     } else {
       this.svgMap?.setForensicsAnomalies(anomalies);
     }
+  }
+
+  public setTopologyWindowOverlay(overlay: ForensicsTopologyWindowOverlay[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setTopologyWindowOverlay(overlay);
+    }
+    // SvgMap: no topology window layer (DeckGL-only feature)
   }
 
   public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
