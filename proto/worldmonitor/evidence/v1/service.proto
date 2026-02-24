@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package worldmonitor.evidence.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/evidence/v1/evidence.proto";
+
+message IngestEvidenceRequest {
+  string source_url = 1;
+  string title = 2;
+  string raw_content = 3;
+}
+
+message IngestEvidenceResponse {
+  Evidence evidence = 1;
+}
+
+message GetEvidenceRequest {
+  string id = 1;
+}
+
+message GetEvidenceResponse {
+  Evidence evidence = 1;
+}
+
+message ListEvidenceRequest {
+  int32 limit = 1;
+  string next_token = 2;
+}
+
+message ListEvidenceResponse {
+  repeated Evidence evidence = 1;
+  string next_token = 2;
+}
+
+service EvidenceService {
+  option (sebuf.http.service_config) = {base_path: "/api/evidence/v1"};
+
+  rpc IngestEvidence(IngestEvidenceRequest) returns (IngestEvidenceResponse) {
+    option (sebuf.http.config) = {path: "/ingest-evidence"};
+  }
+
+  rpc GetEvidence(GetEvidenceRequest) returns (GetEvidenceResponse) {
+    option (sebuf.http.config) = {path: "/get-evidence"};
+  }
+
+  rpc ListEvidence(ListEvidenceRequest) returns (ListEvidenceResponse) {
+    option (sebuf.http.config) = {path: "/list-evidence"};
+  }
+}

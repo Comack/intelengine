@@ -109,6 +109,7 @@ import { isFeatureAvailable } from '@/services/runtime-config';
 import { trackEvent, trackPanelView, trackVariantSwitch, trackThemeChanged, trackMapViewChange, trackMapLayerToggle, trackCountrySelected, trackCountryBriefOpened, trackSearchResultSelected, trackPanelToggled, trackUpdateShown, trackUpdateClicked, trackUpdateDismissed, trackCriticalBannerAction, trackDeeplinkOpened } from '@/services/analytics';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { getCountryAtCoordinates, hasCountryGeometry, isCoordinateInCountry, preloadCountryGeometry } from '@/services/country-geometry';
+import { getEvidence } from '@/services/evidence';
 import { initI18n, t, changeLanguage } from '@/services/i18n';
 import {
   FAST_FRESHNESS_PROFILE,
@@ -2664,6 +2665,13 @@ export class App {
       forensicsPanel.setOnAnomalySelected((anomalyKey) => {
         this.focusForensicsOverlayByKey(anomalyKey);
       });
+      forensicsPanel.setOnEvidenceSelected((evidenceId) => {
+        getEvidence(evidenceId).then(evidence => {
+          if (evidence && this.signalModal) {
+            this.signalModal.showEvidence(evidence);
+          }
+        });
+      });
       this.panels['forensics'] = forensicsPanel;
     }
 
@@ -4248,6 +4256,7 @@ export class App {
         value: Math.round(Math.max(0.1, value) * 100) / 100,
         confidence: Math.round(confidence * 1000) / 1000,
         observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -4289,6 +4298,7 @@ export class App {
               value: Math.round(value * 100) / 100,
               confidence: this.confidenceWithFreshness(0.62, magnitudeBonus, freshness.penalty),
               observedAt,
+              evidenceIds: [],
             });
           }
         }
@@ -4312,6 +4322,7 @@ export class App {
             value,
             confidence: this.confidenceWithFreshness(0.6, Math.min(0.24, value / 460), freshness.penalty),
             observedAt: this.latestUcdpFetchedAt,
+            evidenceIds: [],
           });
         }
       }
@@ -4335,6 +4346,7 @@ export class App {
             value: Math.round(value * 100) / 100,
             confidence: this.confidenceWithFreshness(0.6, magnitudeBonus, freshness.penalty),
             observedAt: this.latestHapiFetchedAt,
+            evidenceIds: [],
           });
         }
       }
@@ -4353,6 +4365,7 @@ export class App {
             value: Math.round(value * 100) / 100,
             confidence: this.confidenceWithFreshness(0.6, magnitudeBonus, freshness.penalty),
             observedAt: this.latestDisplacementFetchedAt,
+            evidenceIds: [],
           });
         }
       }
@@ -4371,6 +4384,7 @@ export class App {
             value: Math.round(value * 100) / 100,
             confidence: this.confidenceWithFreshness(0.58, magnitudeBonus, freshness.penalty),
             observedAt: this.latestClimateFetchedAt,
+            evidenceIds: [],
           });
         }
       }
@@ -4473,6 +4487,7 @@ export class App {
           value: Math.round(value * 100) / 100,
           confidence: Math.round(confidence * 1000) / 1000,
           observedAt: entry.latestObservedAt,
+          evidenceIds: [],
         };
       });
     const trajectorySignals = this.buildAisTrajectoryForensicsSignals(now)
@@ -4520,6 +4535,7 @@ export class App {
         value: Math.round(this.clampNumber(value, 0, 100) * 100) / 100,
         confidence: this.confidenceWithFreshness(0.61, magnitudeBonus, freshness.penalty),
         observedAt,
+        evidenceIds: [],
       });
     };
 
@@ -4625,6 +4641,7 @@ export class App {
         value: Math.round(value * 100) / 100,
         confidence: this.confidenceWithFreshness(0.6, magnitudeBonus, freshness.penalty),
         observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -4640,6 +4657,7 @@ export class App {
         value: Math.round(value * 100) / 100,
         confidence: this.confidenceWithFreshness(0.62, magnitudeBonus, freshness.penalty),
         observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -4678,6 +4696,7 @@ export class App {
         value: Math.round(value * 100) / 100,
         confidence: this.confidenceWithFreshness(0.62, magnitudeBonus, freshness.penalty),
         observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -4697,6 +4716,7 @@ export class App {
         value: Math.round(value * 100) / 100,
         confidence: this.confidenceWithFreshness(0.64, magnitudeBonus, freshness.penalty),
         observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -4728,6 +4748,7 @@ export class App {
             value: Math.round(value * 100) / 100,
             confidence: this.confidenceWithFreshness(0.58, magnitudeBonus, fredFreshness.penalty),
             observedAt: this.latestFredFetchedAt,
+            evidenceIds: [],
           });
         }
       }
@@ -4761,6 +4782,7 @@ export class App {
           value: Math.round(value * 100) / 100,
           confidence: this.confidenceWithFreshness(0.6, magnitudeBonus, freshness.penalty),
           observedAt,
+          evidenceIds: [],
         });
       }
     }
@@ -4802,6 +4824,7 @@ export class App {
         value: Math.round(absChange * 100) / 100,
         confidence,
         observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -4832,6 +4855,7 @@ export class App {
         value: Math.round(conviction * 100) / 100,
         confidence,
         observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -4848,6 +4872,7 @@ export class App {
           value: Math.round(avgVolatility * 100) / 100,
           confidence: this.confidenceWithFreshness(0.64, Math.min(0.18, avgVolatility * 0.01), freshness.penalty),
           observedAt,
+          evidenceIds: [],
         });
       }
     }
@@ -4865,6 +4890,7 @@ export class App {
           value: Math.round(avgConviction * 100) / 100,
           confidence: this.confidenceWithFreshness(0.62, Math.min(0.17, avgConviction / 180), freshness.penalty),
           observedAt,
+          evidenceIds: [],
         });
       }
     }
@@ -5268,6 +5294,7 @@ export class App {
     delta: number;
     slope: number;
     latestValue: number;
+    recentValues: number[];
   }> {
     const mean = (values: number[]): number =>
       values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
@@ -5311,6 +5338,7 @@ export class App {
           delta: shortMean - longMean,
           slope: points.length > 1 ? (latestPoint.value - firstPoint.value) / (points.length - 1) : 0,
           latestValue: latestPoint.value,
+          recentValues: points.slice(-8).map((p) => p.value),
         };
       })
       .filter((entry): entry is {
@@ -5324,6 +5352,7 @@ export class App {
         delta: number;
         slope: number;
         latestValue: number;
+        recentValues: number[];
       } => Boolean(entry));
 
     return drilldowns
@@ -5617,6 +5646,7 @@ export class App {
       delta: number;
       slope: number;
       latestValue: number;
+      recentValues: number[];
     }>,
   ): ForensicsTopologyWindowOverlay[] {
     if (drilldowns.length === 0) return [];
@@ -5636,6 +5666,8 @@ export class App {
       );
       if (!coordinate) continue;
 
+      const countryHit = getCountryAtCoordinates(coordinate.lat, coordinate.lon);
+
       overlay.push({
         id: `topology:${entry.metric}:${entry.region}`,
         metric: entry.metric,
@@ -5650,6 +5682,8 @@ export class App {
         longWindowRuns: entry.longWindowRuns,
         lat: coordinate.lat,
         lon: coordinate.lon,
+        countryCode: countryHit?.code,
+        historicalValues: entry.recentValues,
       });
     }
 
@@ -5668,6 +5702,7 @@ export class App {
       delta: number;
       slope: number;
       latestValue: number;
+      recentValues: number[];
     }>,
   ): void {
     const overlay = this.buildTopologyWindowMapOverlay(drilldowns);

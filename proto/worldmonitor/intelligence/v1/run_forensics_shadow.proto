@@ -23,6 +23,8 @@ message RunForensicsShadowRequest {
   ];
   // Whether to persist this run and results in blackboard storage.
   bool persist = 4;
+  // Raw evidence IDs to process and extract POLE graphs during the run.
+  repeated string evidence_ids = 5;
 }
 
 // RunForensicsShadowResponse returns full outputs from the shadow run.

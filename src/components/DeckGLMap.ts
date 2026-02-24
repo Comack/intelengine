@@ -85,6 +85,7 @@ import {
 import { getCountryScore } from '@/services/country-instability';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountriesGeoJson, getCountryAtCoordinates } from '@/services/country-geometry';
+import type { FeatureCollection, Geometry } from 'geojson';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -251,6 +252,8 @@ export class DeckGLMap {
   private outages: InternetOutage[] = [];
   private forensicsAnomalies: ForensicsAnomalyOverlay[] = [];
   private topologyWindowOverlay: ForensicsTopologyWindowOverlay[] = [];
+  private topologyChoroplethByCode: Map<string, ForensicsTopologyWindowOverlay> = new Map();
+  private topologyRegionGeoJson: FeatureCollection<Geometry> | null = null;
   private cyberThreats: CyberThreat[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
@@ -1017,7 +1020,13 @@ export class DeckGLMap {
       if (pulseLayer) layers.push(pulseLayer);
     }
 
-    // Topology window drilldown overlay
+    // Forensics topology region choropleth (country polygon fills)
+    if (mapLayers.forensics && this.topologyChoroplethByCode.size > 0) {
+      const regionLayer = this.createTopologyRegionLayer();
+      if (regionLayer) layers.push(regionLayer);
+    }
+
+    // Topology window drilldown overlay (point markers on top of choropleth)
     if (mapLayers.forensics && this.topologyWindowOverlay.length > 0) {
       layers.push(this.createTopologyWindowLayer());
     }
@@ -1649,6 +1658,55 @@ export class DeckGLMap {
       lineWidthMinPixels: 1,
       pickable: true,
     });
+  }
+
+  private createTopologyRegionLayer(): GeoJsonLayer | null {
+    if (!this.topologyRegionGeoJson || this.topologyChoroplethByCode.size === 0) return null;
+    return new GeoJsonLayer({
+      id: 'forensics-topology-region-layer',
+      data: this.topologyRegionGeoJson,
+      pickable: true,
+      filled: true,
+      stroked: true,
+      extruded: false,
+      getFillColor: (feature) => {
+        const code = (
+          (feature as { properties?: Record<string, unknown> }).properties?.['ISO3166-1-Alpha-2'] ??
+          (feature as { properties?: Record<string, unknown> }).properties?.ISO_A2 ??
+          ''
+        ).toString().toUpperCase();
+        const e = this.topologyChoroplethByCode.get(code);
+        if (!e) return [0, 0, 0, 0] as [number, number, number, number];
+        return this.getTopologyRegionFillColor(e.delta);
+      },
+      getLineColor: (feature) => {
+        const code = (
+          (feature as { properties?: Record<string, unknown> }).properties?.['ISO3166-1-Alpha-2'] ??
+          (feature as { properties?: Record<string, unknown> }).properties?.ISO_A2 ??
+          ''
+        ).toString().toUpperCase();
+        const e = this.topologyChoroplethByCode.get(code);
+        if (!e) return [0, 0, 0, 0] as [number, number, number, number];
+        return Math.abs(e.delta) >= 0.5
+          ? [255, 255, 255, 120] as [number, number, number, number]
+          : [0, 0, 0, 0] as [number, number, number, number];
+      },
+      lineWidthMinPixels: 1,
+      updateTriggers: {
+        getFillColor: [this.topologyChoroplethByCode.size],
+        getLineColor: [this.topologyChoroplethByCode.size],
+      },
+    });
+  }
+
+  private getTopologyRegionFillColor(delta: number): [number, number, number, number] {
+    if (delta > 1.0) return [239, 68, 68, 185];   // red – strong divergence
+    if (delta > 0.5) return [245, 158, 11, 150];   // amber – elevated
+    if (delta > 0.2) return [251, 191, 36, 80];    // yellow – slight
+    if (delta < -1.0) return [16, 185, 129, 175];  // green – strong compression
+    if (delta < -0.5) return [6, 182, 212, 145];   // cyan – compressed
+    if (delta < -0.2) return [34, 211, 238, 75];   // light cyan – slight
+    return [0, 0, 0, 0];                            // neutral → invisible
   }
 
   private createCyberThreatsLayer(): ScatterplotLayer<CyberThreat> {
@@ -2757,6 +2815,7 @@ export class DeckGLMap {
       'outages-layer': 'outage',
       'forensics-anomalies-layer': 'forensicsAnomaly',
       'forensics-topology-window-layer': 'forensicsTopologyWindow',
+      'forensics-topology-region-layer': 'forensicsTopologyWindow',
       'cyber-threats-layer': 'cyberThreat',
       'protests-layer': 'protest',
       'military-flights-layer': 'militaryFlight',
@@ -2795,6 +2854,14 @@ export class DeckGLMap {
       const conflictId = info.object.properties.id;
       const fullConflict = CONFLICT_ZONES.find(c => c.id === conflictId);
       if (fullConflict) data = fullConflict;
+    }
+    if (layerId === 'forensics-topology-region-layer' && info.object?.properties) {
+      const code = (
+        (info.object.properties['ISO3166-1-Alpha-2'] ?? info.object.properties.ISO_A2 ?? '') as string
+      ).toUpperCase();
+      const entry = this.topologyChoroplethByCode.get(code);
+      if (!entry) return;
+      data = entry;
     }
 
     // Get click coordinates relative to container
@@ -3423,6 +3490,14 @@ export class DeckGLMap {
 
   public setTopologyWindowOverlay(overlay: ForensicsTopologyWindowOverlay[]): void {
     this.topologyWindowOverlay = overlay;
+    this.topologyChoroplethByCode = new Map(
+      overlay
+        .filter((e) => e.countryCode)
+        .map((e) => [e.countryCode!.toUpperCase(), e]),
+    );
+    if (this.topologyChoroplethByCode.size > 0 && !this.topologyRegionGeoJson) {
+      void this.ensureTopologyRegionGeoJson();
+    }
     this.render();
   }
 
@@ -3962,6 +4037,14 @@ export class DeckGLMap {
         console.log('[DeckGLMap] Country boundaries loaded');
       })
       .catch((err) => console.warn('[DeckGLMap] Failed to load country boundaries:', err));
+  }
+
+  private async ensureTopologyRegionGeoJson(): Promise<void> {
+    if (this.topologyRegionGeoJson) return;
+    const geo = await getCountriesGeoJson();
+    if (!geo) return;
+    this.topologyRegionGeoJson = geo;
+    this.render();
   }
 
   private setupCountryHover(): void {

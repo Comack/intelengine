@@ -1,0 +1,277 @@
+openapi: 3.1.0
+info:
+    title: EvidenceService API
+    version: 1.0.0
+paths:
+    /api/evidence/v1/ingest-evidence:
+        post:
+            tags:
+                - EvidenceService
+            summary: IngestEvidence
+            operationId: IngestEvidence
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/IngestEvidenceRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IngestEvidenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/evidence/v1/get-evidence:
+        post:
+            tags:
+                - EvidenceService
+            summary: GetEvidence
+            operationId: GetEvidence
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetEvidenceRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEvidenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/evidence/v1/list-evidence:
+        post:
+            tags:
+                - EvidenceService
+            summary: ListEvidence
+            operationId: ListEvidence
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListEvidenceRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListEvidenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        IngestEvidenceRequest:
+            type: object
+            properties:
+                sourceUrl:
+                    type: string
+                title:
+                    type: string
+                rawContent:
+                    type: string
+        IngestEvidenceResponse:
+            type: object
+            properties:
+                evidence:
+                    $ref: '#/components/schemas/Evidence'
+        Evidence:
+            type: object
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                sourceUrl:
+                    type: string
+                title:
+                    type: string
+                rawContent:
+                    type: string
+                scrapedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                extractedPole:
+                    $ref: '#/components/schemas/POLEGraph'
+                isProcessed:
+                    type: boolean
+            required:
+                - id
+        POLEGraph:
+            type: object
+            properties:
+                persons:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/POLEPerson'
+                objects:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/POLEObject'
+                locations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/POLELocation'
+                events:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/POLEEvent'
+        POLEPerson:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                aliases:
+                    type: array
+                    items:
+                        type: string
+                role:
+                    type: string
+        POLEObject:
+            type: object
+            properties:
+                id:
+                    type: string
+                type:
+                    type: string
+                name:
+                    type: string
+                description:
+                    type: string
+        POLELocation:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                countryCode:
+                    type: string
+        POLEEvent:
+            type: object
+            properties:
+                id:
+                    type: string
+                type:
+                    type: string
+                description:
+                    type: string
+                timestamp:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                involvedPersonIds:
+                    type: array
+                    items:
+                        type: string
+                involvedObjectIds:
+                    type: array
+                    items:
+                        type: string
+                locationIds:
+                    type: array
+                    items:
+                        type: string
+        GetEvidenceRequest:
+            type: object
+            properties:
+                id:
+                    type: string
+        GetEvidenceResponse:
+            type: object
+            properties:
+                evidence:
+                    $ref: '#/components/schemas/Evidence'
+        ListEvidenceRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                nextToken:
+                    type: string
+        ListEvidenceResponse:
+            type: object
+            properties:
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Evidence'
+                nextToken:
+                    type: string

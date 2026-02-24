@@ -34,6 +34,8 @@ message ForensicsSignalInput {
   ];
   // Observation timestamp, as Unix epoch milliseconds.
   int64 observed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Associated POLE/evidence objects backing this signal.
+  repeated string evidence_ids = 8;
 }
 
 // ForensicsSignalContributor describes the contribution of one signal type.
@@ -76,6 +78,8 @@ message ForensicsFusedSignal {
   ];
   // Top contributors used for explainability.
   repeated ForensicsSignalContributor contributors = 8;
+  // Associated POLE/evidence objects backing this fused signal.
+  repeated string evidence_ids = 9;
 }
 
 // ForensicsCalibratedAnomaly is a conformal anomaly decision for one signal.
@@ -128,6 +132,8 @@ message ForensicsCalibratedAnomaly {
   int64 interval_ms = 17 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Observation timestamp, as Unix epoch milliseconds.
   int64 observed_at = 18 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Associated POLE/evidence objects backing this anomaly.
+  repeated string evidence_ids = 19;
 }
 
 // ForensicsPhaseStatus reports execution status for each orchestrator phase.
@@ -153,6 +159,8 @@ message ForensicsPhaseTrace {
   int64 elapsed_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Optional error message for failed phases.
   string error = 6;
+  // Parent phases that this phase depends on (forms a DAG).
+  repeated string parent_phases = 7;
 }
 
 // ForensicsRunMetadata identifies one shadow pipeline run.

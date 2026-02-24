@@ -32,6 +32,7 @@ export async function runForensicsShadow(
       signals,
       alpha,
       persist: true,
+      evidenceIds: [],
     });
   } catch (error) {
     return {

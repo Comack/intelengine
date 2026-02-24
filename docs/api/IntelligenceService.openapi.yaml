@@ -898,6 +898,11 @@ components:
                 persist:
                     type: boolean
                     description: Whether to persist this run and results in blackboard storage.
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+                        description: Raw evidence IDs to process and extract POLE graphs during the run.
             required:
                 - domain
             description: RunForensicsShadowRequest triggers a deterministic shadow forensics run.
@@ -933,6 +938,11 @@ components:
                     type: integer
                     format: int64
                     description: 'Observation timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+                        description: Associated POLE/evidence objects backing this signal.
             required:
                 - sourceId
                 - domain
@@ -1026,6 +1036,11 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/ForensicsSignalContributor'
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+                        description: Associated POLE/evidence objects backing this fused signal.
             description: ForensicsFusedSignal is the weak-supervision fusion output for one source.
         ForensicsSignalContributor:
             type: object
@@ -1126,6 +1141,11 @@ components:
                     type: integer
                     format: int64
                     description: 'Observation timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+                        description: Associated POLE/evidence objects backing this anomaly.
             description: ForensicsCalibratedAnomaly is a conformal anomaly decision for one signal.
         ForensicsPhaseTrace:
             type: object
@@ -1157,6 +1177,11 @@ components:
                 error:
                     type: string
                     description: Optional error message for failed phases.
+                parentPhases:
+                    type: array
+                    items:
+                        type: string
+                        description: Parent phases that this phase depends on (forms a DAG).
             description: ForensicsPhaseTrace is a per-phase execution trace record.
         ListFusedSignalsRequest:
             type: object

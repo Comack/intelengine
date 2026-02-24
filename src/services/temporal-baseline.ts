@@ -136,6 +136,7 @@ export async function updateAndCheck(
         value: m.count,
         confidence: 1,
         observedAt: Date.now(),
+        evidenceIds: [],
       }));
       const metricBySourceId = new Map(signals.map((s, i) => [s.sourceId, metrics[i]]));
 
@@ -144,6 +145,7 @@ export async function updateAndCheck(
         signals,
         alpha: 0.05,
         persist: true,
+        evidenceIds: [],
       });
 
       const calibrated = forensics.anomalies

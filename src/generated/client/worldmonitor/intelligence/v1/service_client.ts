@@ -141,6 +141,7 @@ export interface RunForensicsShadowRequest {
   signals: ForensicsSignalInput[];
   alpha: number;
   persist: boolean;
+  evidenceIds: string[];
 }
 
 export interface ForensicsSignalInput {
@@ -151,6 +152,7 @@ export interface ForensicsSignalInput {
   value: number;
   confidence: number;
   observedAt: number;
+  evidenceIds: string[];
 }
 
 export interface RunForensicsShadowResponse {
@@ -180,6 +182,7 @@ export interface ForensicsFusedSignal {
   confidenceLower: number;
   confidenceUpper: number;
   contributors: ForensicsSignalContributor[];
+  evidenceIds: string[];
 }
 
 export interface ForensicsSignalContributor {
@@ -207,6 +210,7 @@ export interface ForensicsCalibratedAnomaly {
   timingNonconformity: number;
   intervalMs: number;
   observedAt: number;
+  evidenceIds: string[];
 }
 
 export interface ForensicsPhaseTrace {
@@ -216,6 +220,7 @@ export interface ForensicsPhaseTrace {
   completedAt: number;
   elapsedMs: number;
   error: string;
+  parentPhases: string[];
 }
 
 export interface ListFusedSignalsRequest {

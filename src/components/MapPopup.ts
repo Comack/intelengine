@@ -16,6 +16,18 @@ import { getCableHealthRecord } from '@/services/cable-health';
 
 export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'forensicsAnomaly' | 'forensicsTopologyWindow' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
 
+function buildTopologySparkline(values: number[]): string {
+  if (values.length < 2) return '';
+  const W = 80, H = 22;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const pts = values
+    .map((v, i) => `${(i / (values.length - 1)) * W},${H - ((v - min) / range) * H}`)
+    .join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="topo-sparkline"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+}
+
 interface TechEventPopupData {
   id: string;
   title: string;
@@ -1341,7 +1353,8 @@ export class MapPopup {
   private renderForensicsTopologyWindowPopup(entry: ForensicsTopologyWindowOverlay): string {
     const deltaSign = entry.delta >= 0 ? '+' : '';
     const slopeSign = entry.slope >= 0 ? '+' : '';
-    const deltaClass = entry.delta > 0.5 ? 'elevated' : entry.delta < -0.5 ? 'low' : 'low';
+    const deltaClass = entry.delta > 0.5 ? 'elevated' : entry.delta < -0.5 ? 'low' : 'neutral';
+    const sparkline = buildTopologySparkline(entry.historicalValues ?? []);
     return `
       <div class="popup-header apt ${deltaClass}">
         <span class="popup-title">Topology Window</span>
@@ -1350,6 +1363,7 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         <div class="popup-subtitle">${escapeHtml(entry.label)} · ${escapeHtml(entry.region)}</div>
+        ${sparkline ? `<div class="popup-sparkline" style="margin:6px 0 2px;opacity:0.85;">${sparkline}</div>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">Metric</span>

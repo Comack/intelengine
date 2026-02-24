@@ -260,6 +260,8 @@ export interface ForensicsTopologyWindowOverlay {
   longWindowRuns: number;
   lat: number;
   lon: number;
+  countryCode?: string;        // ISO 3166-1 Alpha-2 for GeoJSON polygon matching
+  historicalValues?: number[]; // Last ~8 point values (chron order) for sparkline
 }
 
 export interface ConflictZone {

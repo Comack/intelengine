@@ -24,6 +24,8 @@ import {
   upsertForensicsPolicyEntry,
 } from './forensics-blackboard';
 import { deriveFinancialTopologySignals } from './financial-topology';
+import { getCachedJson } from '../../../_shared/redis';
+import type { Evidence, POLEGraph } from '../../../../src/generated/server/worldmonitor/evidence/v1/service_server';
 
 const WORKER_TIMEOUT_MS = 8_000;
 
@@ -71,6 +73,7 @@ export function normalizeSignals(reqDomain: string, signals: ForensicsSignalInpu
       region: signal.region || 'global',
       confidence: Number.isFinite(signal.confidence) ? clamp(signal.confidence, 0, 1) : 1,
       observedAt: Number.isFinite(signal.observedAt) && signal.observedAt > 0 ? signal.observedAt : Date.now(),
+      evidenceIds: signal.evidenceIds || [],
     });
   }
   return normalized;
@@ -238,6 +241,7 @@ export function runWeakSupervisionFusion(signals: ForensicsSignalInput[]): Foren
   const valueMatrix = Array.from({ length: sourceIds.length }, () => Array.from({ length: signalTypes.length }, () => 0));
   const domainBySource = new Map<string, string>();
   const regionBySource = new Map<string, string>();
+  const evidenceIdsBySource = new Map<string, Set<string>>();
 
   for (const signal of signals) {
     const i = sourceIndex.get(signal.sourceId);
@@ -246,6 +250,16 @@ export function runWeakSupervisionFusion(signals: ForensicsSignalInput[]): Foren
     valueMatrix[i]![j] = (valueMatrix[i]![j] ?? 0) + signal.value;
     if (!domainBySource.has(signal.sourceId)) domainBySource.set(signal.sourceId, signal.domain || 'infrastructure');
     if (!regionBySource.has(signal.sourceId)) regionBySource.set(signal.sourceId, signal.region || 'global');
+    
+    if (signal.evidenceIds && signal.evidenceIds.length > 0) {
+      if (!evidenceIdsBySource.has(signal.sourceId)) {
+        evidenceIdsBySource.set(signal.sourceId, new Set());
+      }
+      const set = evidenceIdsBySource.get(signal.sourceId)!;
+      for (const id of signal.evidenceIds) {
+        set.add(id);
+      }
+    }
   }
 
   const thresholds = signalTypes.map((_signalType, j) => {
@@ -413,6 +427,7 @@ export function runWeakSupervisionFusion(signals: ForensicsSignalInput[]): Foren
       confidenceLower: Math.round(clamp(probability - margin, 0, 1) * 1_000_000) / 1_000_000,
       confidenceUpper: Math.round(clamp(probability + margin, 0, 1) * 1_000_000) / 1_000_000,
       contributors: contributors.slice(0, 8),
+      evidenceIds: Array.from(evidenceIdsBySource.get(sourceId) || []),
     };
   });
 
@@ -491,6 +506,7 @@ export async function runConformalAnomalies(
       timingNonconformity: Math.round(timingNcm * 1_000_000) / 1_000_000,
       intervalMs: Math.max(0, Math.round(intervalMs)),
       observedAt: Math.max(0, Math.round(signal.observedAt || 0)),
+      evidenceIds: signal.evidenceIds || [],
     });
 
     await appendCalibrationValue(metricKey, signal.value);
@@ -504,6 +520,7 @@ export async function runConformalAnomalies(
 async function executePhase<T>(
   trace: ForensicsPhaseTrace[],
   phase: string,
+  parentPhases: string[],
   fn: () => Promise<T>,
 ): Promise<T> {
   const startedAt = Date.now();
@@ -517,6 +534,7 @@ async function executePhase<T>(
       completedAt,
       elapsedMs: completedAt - startedAt,
       error: '',
+      parentPhases,
     });
     return result;
   } catch (error) {
@@ -528,6 +546,7 @@ async function executePhase<T>(
       completedAt,
       elapsedMs: completedAt - startedAt,
       error: error instanceof Error ? error.message : String(error),
+      parentPhases,
     });
     throw error;
   }
@@ -666,14 +685,43 @@ export async function runForensicsShadowPipeline(
   let anomalies: ForensicsCalibratedAnomaly[] = [];
 
   try {
-    const normalizedSignals = await executePhase(trace, 'ingest-signals', async () => {
+    let normalizedSignals = await executePhase(trace, 'ingest-signals', [], async () => {
       const validSignals = normalizeSignals(domain, req.signals || []);
-      if (validSignals.length === 0) {
-        throw new Error('No valid forensics signals were provided');
+      if (validSignals.length === 0 && (!req.evidenceIds || req.evidenceIds.length === 0)) {
+        throw new Error('No valid forensics signals or evidence IDs were provided');
       }
       return validSignals;
     });
-    const enrichedSignals = await executePhase(trace, 'topology-tda', async () => {
+
+    const poleSignals = await executePhase(trace, 'extract-pole', [], async () => {
+      const signals: ForensicsSignalInput[] = [];
+      if (!req.evidenceIds || req.evidenceIds.length === 0) return signals;
+
+      for (const id of req.evidenceIds) {
+        try {
+          const evidence = (await getCachedJson(`evidence:${id}`)) as Evidence | null;
+          if (!evidence || !evidence.extractedPole) continue;
+
+          // Convert POLE events to signals
+          for (const ev of evidence.extractedPole.events) {
+            signals.push({
+              sourceId: `evidence:${id}`,
+              region: 'global',
+              domain,
+              signalType: `pole_event:${ev.type}`.substring(0, 100).toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+              value: 1.0,
+              confidence: 0.85,
+              observedAt: ev.timestamp || Date.now(),
+            });
+          }
+        } catch { /* ignore */ }
+      }
+      return signals;
+    });
+    
+    normalizedSignals = [...normalizedSignals, ...poleSignals];
+
+    const enrichedSignals = await executePhase(trace, 'topology-tda', ['ingest-signals', 'extract-pole'], async () => {
       const topology = deriveFinancialTopologySignals(normalizedSignals, domain);
       if (topology.derivedSignals.length === 0) {
         return normalizedSignals;
@@ -692,7 +740,7 @@ export async function runForensicsShadowPipeline(
       }
       return Array.from(deduped.values());
     });
-    const policySelection = await executePhase(trace, 'policy-select', async () => {
+    const policySelection = await executePhase(trace, 'policy-select', ['topology-tda'], async () => {
       const stateHash = buildPolicyStateHash(domain, alpha, enrichedSignals);
       const phaseOrder = await selectPolicyOrder(domain, stateHash);
       return { stateHash, phaseOrder };
@@ -701,7 +749,7 @@ export async function runForensicsShadowPipeline(
     for (const action of policySelection.phaseOrder) {
       try {
         if (action === 'weak-supervision-fusion') {
-          fusedSignals = await executePhase(trace, action, async () => {
+          fusedSignals = await executePhase(trace, action, ['policy-select'], async () => {
             const workerPayload = { domain, signals: enrichedSignals, alpha };
             const workerResponse = await callWorker<WorkerFuseResponse>('/internal/forensics/v1/fuse', workerPayload);
             if (isWorkerFuseResponse(workerResponse)) {
@@ -711,7 +759,7 @@ export async function runForensicsShadowPipeline(
             return runWeakSupervisionFusion(enrichedSignals);
           });
         } else {
-          anomalies = await executePhase(trace, action, async () => {
+          anomalies = await executePhase(trace, action, ['policy-select'], async () => {
             const workerPayload = { domain, signals: enrichedSignals, alpha };
             const workerResponse = await callWorker<WorkerAnomalyResponse>('/internal/forensics/v1/anomaly', workerPayload);
             if (isWorkerAnomalyResponse(workerResponse)) {
@@ -746,7 +794,7 @@ export async function runForensicsShadowPipeline(
       workerMode,
     };
 
-    await executePhase(trace, 'persist-results', async () => {
+    await executePhase(trace, 'persist-results', policySelection.phaseOrder, async () => {
       if (!persist) return;
       await saveForensicsRun({
         run,

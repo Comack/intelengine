@@ -299,21 +299,27 @@ interface ForensicsPhaseNode {
   elapsedMs: number;
   error: string;
   isSwappable: boolean;
+  parentPhases: string[];
 }
 
 const PHASE_DISPLAY_NAMES: Record<string, string> = {
   'signal-collect': 'Signal Collect',
+  'extract-pole': 'Extract POLE',
+  'ingest-signals': 'Ingest Signals',
   'topology-tda': 'Topology TDA',
   'ws-fusion': 'WS Fusion',
   'conformal': 'Conformal',
+  'conformal-anomaly': 'Conformal',
+  'weak-supervision-fusion': 'WS Fusion',
   'policy-select': 'Policy Select',
   'policy-update': 'Policy Update',
   'persist': 'Persist',
+  'persist-results': 'Persist Results',
   'normalize': 'Normalize',
   'enrich': 'Enrich',
 };
 
-const SWAPPABLE_PHASES = new Set(['ws-fusion', 'conformal']);
+const SWAPPABLE_PHASES = new Set(['ws-fusion', 'conformal', 'weak-supervision-fusion', 'conformal-anomaly']);
 
 function buildTraceGraph(trace: ForensicsPhaseTrace[]): string {
   const validPhases: ForensicsPhaseNode[] = trace
@@ -326,10 +332,22 @@ function buildTraceGraph(trace: ForensicsPhaseTrace[]): string {
       elapsedMs: Number.isFinite(phase.elapsedMs) && phase.elapsedMs > 0 ? phase.elapsedMs : 0,
       error: phase.error || '',
       isSwappable: SWAPPABLE_PHASES.has(phase.phase),
+      parentPhases: phase.parentPhases || [],
     }));
 
   if (validPhases.length === 0) {
     return '<div class="forensics-empty">No phase trace available.</div>';
+  }
+
+  // Sort phases chronologically to ensure parents generally appear above children
+  validPhases.sort((a, b) => a.startedAt - b.startedAt);
+
+  // If no parent phase data exists at all (legacy data), infer a linear chain
+  const hasDagInfo = validPhases.some(p => p.parentPhases.length > 0);
+  if (!hasDagInfo) {
+    for (let i = 1; i < validPhases.length; i++) {
+      validPhases[i]!.parentPhases = [validPhases[i - 1]!.phase];
+    }
   }
 
   const runStart = Math.min(...validPhases.map((p) => p.startedAt));
@@ -339,7 +357,7 @@ function buildTraceGraph(trace: ForensicsPhaseTrace[]): string {
 
   const labelWidth = 120;
   const barAreaWidth = 360;
-  const rowHeight = 22;
+  const rowHeight = 32; // Increased to give room for routing edges
   const headerHeight = 20;
   const svgWidth = labelWidth + barAreaWidth + 70;
   const svgHeight = headerHeight + validPhases.length * rowHeight + 10;
@@ -354,47 +372,77 @@ function buildTraceGraph(trace: ForensicsPhaseTrace[]): string {
   let svg = `<svg class="forensics-trace-svg" viewBox="0 0 ${svgWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
 
   // Header
-  svg += `<text x="${labelWidth}" y="13" fill="#94a3b8" font-size="9" font-family="monospace" font-weight="600">PHASE TIMELINE</text>`;
+  svg += `<text x="${labelWidth}" y="13" fill="#94a3b8" font-size="9" font-family="monospace" font-weight="600">AGENT OBSERVABILITY DAG</text>`;
   svg += `<text x="${svgWidth - 4}" y="13" fill="#64748b" font-size="9" font-family="monospace" text-anchor="end">total ${formatElapsed(totalMs)}</text>`;
 
-  // Phase rows
+  // Pre-calculate positions to draw edges first (so they render underneath)
+  const positions = new Map<string, { x: number, y: number, w: number, h: number }>();
   validPhases.forEach((phase, index) => {
     const y = headerHeight + index * rowHeight;
-    const barY = y + 5;
+    const barY = y + 10;
     const barHeight = 12;
+    const offsetFrac = (phase.startedAt - runStart) / totalWindow;
+    const widthFrac = Math.max(phase.elapsedMs / totalWindow, 0.008);
+    const barX = labelWidth + offsetFrac * barAreaWidth;
+    const barW = Math.max(widthFrac * barAreaWidth, 3);
+    positions.set(phase.phase, { x: barX, y: barY, w: barW, h: barHeight });
+  });
+
+  // Draw DAG edges
+  validPhases.forEach((childPhase) => {
+    const childPos = positions.get(childPhase.phase);
+    if (!childPos) return;
+
+    childPhase.parentPhases.forEach(parentId => {
+      const parentPos = positions.get(parentId);
+      if (!parentPos) return;
+
+      const startX = parentPos.x + parentPos.w;
+      const startY = parentPos.y + parentPos.h / 2;
+      const endX = childPos.x;
+      const endY = childPos.y + childPos.h / 2;
+
+      // Draw a smooth bezier curve from parent end to child start
+      // Control points to enforce horizontal exiting/entering
+      const cpX1 = startX + Math.max(10, (endX - startX) / 3);
+      const cpY1 = startY;
+      const cpX2 = endX - Math.max(10, (endX - startX) / 3);
+      const cpY2 = endY;
+
+      svg += `<path d="M ${startX} ${startY} C ${cpX1} ${cpY1}, ${cpX2} ${cpY2}, ${endX} ${endY}" fill="none" stroke="#475569" stroke-width="1.5" stroke-dasharray="3,2" marker-end="url(#arrowhead)"/>`;
+    });
+  });
+
+  // Define Arrowhead marker
+  svg += `
+    <defs>
+      <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
+        <polygon points="0 0, 6 2, 0 4" fill="#475569" />
+      </marker>
+    </defs>
+  `;
+
+  // Draw Phase Nodes (over the edges)
+  validPhases.forEach((phase) => {
+    const pos = positions.get(phase.phase);
+    if (!pos) return;
+    const { x: barX, y: barY, w: barW, h: barHeight } = pos;
 
     // Label
     svg += `<text x="${labelWidth - 6}" y="${barY + 10}" fill="#cbd5e1" font-size="10" font-family="monospace" text-anchor="end">${escapeHtml(phase.displayName)}</text>`;
 
     // Duration bar
-    const offsetFrac = (phase.startedAt - runStart) / totalWindow;
-    const widthFrac = Math.max(phase.elapsedMs / totalWindow, 0.008);
-    const barX = labelWidth + offsetFrac * barAreaWidth;
-    const barW = Math.max(widthFrac * barAreaWidth, 3);
     const color = statusColor(phase.status);
-    svg += `<rect x="${barX}" y="${barY}" width="${barW}" height="${barHeight}" rx="3" fill="${color}" opacity="0.85"/>`;
+    svg += `<rect x="${barX}" y="${barY}" width="${barW}" height="${barHeight}" rx="3" fill="${color}" opacity="0.95"/>`;
 
     // Swappable bracket annotation
     if (phase.isSwappable) {
       svg += `<rect x="${barX - 2}" y="${barY - 2}" width="${barW + 4}" height="${barHeight + 4}" rx="4" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="3,2"/>`;
     }
 
-    // Dashed connector to next phase
-    if (index < validPhases.length - 1) {
-      const nextPhase = validPhases[index + 1]!;
-      const nextOffsetFrac = (nextPhase.startedAt - runStart) / totalWindow;
-      const nextBarX = labelWidth + nextOffsetFrac * barAreaWidth;
-      const connectorStartX = barX + barW;
-      const connectorEndX = nextBarX;
-      const connectorY = barY + barHeight + 3;
-      if (connectorEndX > connectorStartX + 2) {
-        svg += `<line x1="${connectorStartX}" y1="${connectorY}" x2="${connectorEndX}" y2="${connectorY}" stroke="#475569" stroke-width="1" stroke-dasharray="3,2"/>`;
-      }
-    }
-
     // Elapsed label
     const elapsedLabel = phase.elapsedMs > 0 ? formatElapsed(phase.elapsedMs) : '-';
-    svg += `<text x="${barX + barW + 4}" y="${barY + 10}" fill="#94a3b8" font-size="9" font-family="monospace">${escapeHtml(elapsedLabel)}</text>`;
+    svg += `<text x="${barX + barW + 6}" y="${barY + 10}" fill="#94a3b8" font-size="9" font-family="monospace">${escapeHtml(elapsedLabel)}</text>`;
   });
 
   svg += '</svg>';
@@ -405,14 +453,29 @@ export class ForensicsPanel extends Panel {
   private snapshot: ForensicsPanelSnapshot | null = null;
   private selectedAnomalyKey = '';
   private onAnomalySelected?: (anomalyKey: string) => void;
+  private onEvidenceSelected?: (evidenceId: string) => void;
 
   public setOnAnomalySelected(handler: (anomalyKey: string) => void): void {
     this.onAnomalySelected = handler;
   }
 
+  public setOnEvidenceSelected(handler: (evidenceId: string) => void): void {
+    this.onEvidenceSelected = handler;
+  }
+
   private onContentClick = (event: Event): void => {
     const target = event.target as HTMLElement | null;
     if (!target) return;
+    
+    const evidenceBtn = target.closest('[data-forensics-evidence-id]') as HTMLElement | null;
+    if (evidenceBtn) {
+      const evidenceId = evidenceBtn.dataset.forensicsEvidenceId;
+      if (evidenceId) {
+        this.onEvidenceSelected?.(evidenceId);
+        return;
+      }
+    }
+    
     const row = target.closest('[data-forensics-anomaly-key]') as HTMLElement | null;
     if (!row) return;
     const key = row.dataset.forensicsAnomalyKey || '';
@@ -425,6 +488,17 @@ export class ForensicsPanel extends Panel {
   private onContentKeydown = (event: KeyboardEvent): void => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     const target = event.target as HTMLElement | null;
+    
+    const evidenceBtn = target?.closest('[data-forensics-evidence-id]') as HTMLElement | null;
+    if (evidenceBtn) {
+      event.preventDefault();
+      const evidenceId = evidenceBtn.dataset.forensicsEvidenceId;
+      if (evidenceId) {
+        this.onEvidenceSelected?.(evidenceId);
+        return;
+      }
+    }
+
     const row = target?.closest('[data-forensics-anomaly-key]') as HTMLElement | null;
     if (!row) return;
     event.preventDefault();
@@ -847,14 +921,22 @@ export class ForensicsPanel extends Panel {
             `).join('')
           : '<div class="forensics-empty">No contributor trace for this anomaly in current fused window.</div>';
 
-        const provenanceHtml = buildProvenanceLinks(selectedAnomaly)
-          .map((link) => {
-            const href = sanitizeUrl(link.url);
-            if (!href) return '';
-            return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a>`;
-          })
-          .filter(Boolean)
-          .join('');
+        let provenanceHtml = '';
+        if (selectedAnomaly.evidenceIds && selectedAnomaly.evidenceIds.length > 0) {
+          provenanceHtml = selectedAnomaly.evidenceIds.map((id) => {
+            const shortId = id.replace('evidence_', '').slice(0, 8);
+            return `<button type="button" class="forensics-provenance-btn" data-forensics-evidence-id="${escapeHtml(id)}">View Evidence ${escapeHtml(shortId)}</button>`;
+          }).join('');
+        } else {
+          provenanceHtml = buildProvenanceLinks(selectedAnomaly)
+            .map((link) => {
+              const href = sanitizeUrl(link.url);
+              if (!href) return '';
+              return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a>`;
+            })
+            .filter(Boolean)
+            .join('');
+        }
 
         return `
             <section class="forensics-section forensics-detail-section">

@@ -13,12 +13,6 @@ interface TopologyNode {
   signalTypes: Set<string>;
 }
 
-interface TopologyEdge {
-  a: number;
-  b: number;
-  weight: number;
-}
-
 export interface FinancialTopologyDiagnostics {
   nodeCount: number;
   edgeCount: number;
@@ -54,23 +48,11 @@ const FINANCIAL_SIGNAL_HINTS = [
 ];
 
 const EDGE_THRESHOLD = 0.55;
-const FILTRATION_THRESHOLDS = [0.55, 0.65, 0.75, 0.85];
 const MAX_FINANCIAL_NODES = 40;
 const MAX_DERIVED_SIGNALS = 80;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function mean(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function stddev(values: number[], avg: number): number {
-  if (values.length < 2) return 0;
-  const variance = values.reduce((sum, value) => sum + ((value - avg) ** 2), 0) / (values.length - 1);
-  return Math.sqrt(Math.max(0, variance));
 }
 
 function round(value: number, digits = 6): number {
@@ -149,14 +131,20 @@ function jaccardOverlap(a: Set<string>, b: Set<string>): number {
   return union > 0 ? intersection / union : 0;
 }
 
-function buildEdges(nodes: TopologyNode[]): TopologyEdge[] {
-  const edges: TopologyEdge[] = [];
-  for (let i = 0; i < nodes.length; i += 1) {
-    for (let j = i + 1; j < nodes.length; j += 1) {
-      const left = nodes[i];
-      const right = nodes[j];
-      if (!left || !right) continue;
+interface PersistencePair {
+  birth: number;
+  death: number | null;
+  persistence: number;
+}
 
+function computePersistentHomology(nodes: TopologyNode[]) {
+  const numNodes = nodes.length;
+  const distanceMatrix = Array.from({ length: numNodes }, () => new Float64Array(numNodes).fill(0));
+
+  for (let i = 0; i < numNodes; i++) {
+    for (let j = i + 1; j < numNodes; j++) {
+      const left = nodes[i]!;
+      const right = nodes[j]!;
       const maxValue = Math.max(left.value, right.value, 1);
       const valueSimilarity = 1 - clamp(Math.abs(left.value - right.value) / maxValue, 0, 1);
       const confidenceSimilarity = 1 - clamp(Math.abs(left.confidence - right.confidence), 0, 1);
@@ -177,69 +165,167 @@ function buildEdges(nodes: TopologyNode[]): TopologyEdge[] {
         1,
       );
 
-      if (score >= EDGE_THRESHOLD) {
-        edges.push({ a: i, b: j, weight: round(score, 6) });
+      const dist = 1 - score;
+      distanceMatrix[i]![j] = dist;
+      distanceMatrix[j]![i] = dist;
+    }
+  }
+
+  interface Simplex {
+    dim: number;
+    vertices: number[];
+    weight: number;
+  }
+
+  const simplices: Simplex[] = [];
+  for (let i = 0; i < numNodes; i++) {
+    simplices.push({ dim: 0, vertices: [i], weight: 0 });
+  }
+
+  for (let i = 0; i < numNodes; i++) {
+    for (let j = i + 1; j < numNodes; j++) {
+      simplices.push({ dim: 1, vertices: [i, j], weight: distanceMatrix[i]![j]! });
+    }
+  }
+
+  for (let i = 0; i < numNodes; i++) {
+    for (let j = i + 1; j < numNodes; j++) {
+      for (let k = j + 1; k < numNodes; k++) {
+        const w = Math.max(distanceMatrix[i]![j]!, distanceMatrix[j]![k]!, distanceMatrix[i]![k]!);
+        simplices.push({ dim: 2, vertices: [i, j, k], weight: w });
       }
     }
   }
-  return edges;
-}
 
-function countComponents(nodeCount: number, edges: TopologyEdge[], threshold: number): number {
-  if (nodeCount <= 0) return 0;
-  const adjacency = Array.from({ length: nodeCount }, () => [] as number[]);
-  for (const edge of edges) {
-    if (edge.weight < threshold) continue;
-    adjacency[edge.a]?.push(edge.b);
-    adjacency[edge.b]?.push(edge.a);
-  }
-
-  const seen = new Array<boolean>(nodeCount).fill(false);
-  let components = 0;
-  for (let i = 0; i < nodeCount; i += 1) {
-    if (seen[i]) continue;
-    components += 1;
-    const stack = [i];
-    seen[i] = true;
-    while (stack.length > 0) {
-      const node = stack.pop();
-      if (node === undefined) continue;
-      for (const next of adjacency[node] || []) {
-        if (seen[next]) continue;
-        seen[next] = true;
-        stack.push(next);
-      }
-    }
-  }
-  return components;
-}
-
-function computeBetaSeries(nodeCount: number, edges: TopologyEdge[]): number[] {
-  return FILTRATION_THRESHOLDS.map((threshold) => {
-    const filteredEdges = edges.filter((edge) => edge.weight >= threshold);
-    const components = countComponents(nodeCount, filteredEdges, threshold);
-    const beta1 = filteredEdges.length - nodeCount + components;
-    return Math.max(0, beta1);
+  simplices.sort((a, b) => {
+    if (Math.abs(a.weight - b.weight) > 1e-9) return a.weight - b.weight;
+    return a.dim - b.dim;
   });
+
+  const getVertexKey = (v: number[]): number => {
+    if (v.length === 1) return v[0]!;
+    if (v.length === 2) return v[0]! + (v[1]! << 6);
+    if (v.length === 3) return v[0]! + (v[1]! << 6) + (v[2]! << 12);
+    return 0;
+  };
+
+  const vertexToId = new Map<number, number>();
+  for (let i = 0; i < simplices.length; i++) {
+    vertexToId.set(getVertexKey(simplices[i]!.vertices), i);
+  }
+
+  const getBoundary = (vertices: number[]): number[] => {
+    const boundary: number[] = [];
+    for (let i = 0; i < vertices.length; i++) {
+      const face: number[] = [];
+      for (let j = 0; j < vertices.length; j++) {
+        if (j !== i) face.push(vertices[j]!);
+      }
+      const faceIndex = vertexToId.get(getVertexKey(face));
+      if (faceIndex !== undefined) {
+        boundary.push(faceIndex);
+      }
+    }
+    return boundary.sort((a, b) => b - a);
+  };
+
+  const pivot = new Map<number, number>(); 
+  const V: number[][] = []; 
+  
+  const h0Pairs: PersistencePair[] = [];
+  const h1Pairs: PersistencePair[] = [];
+  
+  const symDiff = (a: number[], b: number[]): number[] => {
+    const res: number[] = [];
+    let i = 0, j = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) {
+        i++; j++;
+      } else if (a[i]! > b[j]!) {
+        res.push(a[i]!); i++;
+      } else {
+        res.push(b[j]!); j++;
+      }
+    }
+    while (i < a.length) res.push(a[i++]!);
+    while (j < b.length) res.push(b[j++]!);
+    return res;
+  };
+
+  const createdBy = new Array(simplices.length).fill(true);
+
+  for (let j = 0; j < simplices.length; j++) {
+    let col = getBoundary(simplices[j]!.vertices);
+    
+    while (col.length > 0) {
+      const low = col[0]!;
+      if (pivot.has(low)) {
+        const k = pivot.get(low)!;
+        col = symDiff(col, V[k]!);
+      } else {
+        break;
+      }
+    }
+    
+    V.push(col);
+    
+    if (col.length === 0) {
+      createdBy[j] = true;
+    } else {
+      const i = col[0]!;
+      pivot.set(i, j);
+      createdBy[j] = false;
+      createdBy[i] = false;
+      
+      const birthWeight = simplices[i]!.weight;
+      const deathWeight = simplices[j]!.weight;
+      const persistence = deathWeight - birthWeight;
+      
+      if (persistence > 1e-6) {
+        if (simplices[i]!.dim === 0) {
+          h0Pairs.push({ birth: birthWeight, death: deathWeight, persistence });
+        } else if (simplices[i]!.dim === 1) {
+          h1Pairs.push({ birth: birthWeight, death: deathWeight, persistence });
+        }
+      }
+    }
+  }
+
+  for (let j = 0; j < simplices.length; j++) {
+    if (createdBy[j]) {
+      const birth = simplices[j]!.weight;
+      const death = 1.0; 
+      const persistence = death - birth;
+      if (persistence > 1e-6) {
+        if (simplices[j]!.dim === 0) {
+          h0Pairs.push({ birth, death: null, persistence });
+        } else if (simplices[j]!.dim === 1) {
+          h1Pairs.push({ birth, death: null, persistence });
+        }
+      }
+    }
+  }
+
+  return { h0Pairs, h1Pairs, distanceMatrix };
 }
 
-function triangleStrengthByNode(nodeCount: number, edges: TopologyEdge[]): { cycleStrength: number[]; cycleCount: number[] } {
+function triangleStrengthByNode(numNodes: number, edges: {a: number, b: number, weight: number}[]): { cycleStrength: number[]; cycleCount: number[] } {
   const weights = new Map<string, number>();
   for (const edge of edges) {
-    weights.set(`${edge.a}:${edge.b}`, edge.weight);
-    weights.set(`${edge.b}:${edge.a}`, edge.weight);
+    weights.set(`\${edge.a}:\${edge.b}`, edge.weight);
+    weights.set(`\${edge.b}:\${edge.a}`, edge.weight);
   }
 
-  const cycleStrength = new Array<number>(nodeCount).fill(0);
-  const cycleCount = new Array<number>(nodeCount).fill(0);
+  const cycleStrength = new Array<number>(numNodes).fill(0);
+  const cycleCount = new Array<number>(numNodes).fill(0);
 
-  for (let i = 0; i < nodeCount; i += 1) {
-    for (let j = i + 1; j < nodeCount; j += 1) {
-      const wij = weights.get(`${i}:${j}`);
+  for (let i = 0; i < numNodes; i += 1) {
+    for (let j = i + 1; j < numNodes; j += 1) {
+      const wij = weights.get(`\${i}:\${j}`);
       if (!wij) continue;
-      for (let k = j + 1; k < nodeCount; k += 1) {
-        const wik = weights.get(`${i}:${k}`);
-        const wjk = weights.get(`${j}:${k}`);
+      for (let k = j + 1; k < numNodes; k += 1) {
+        const wik = weights.get(`\${i}:\${k}`);
+        const wjk = weights.get(`\${j}:\${k}`);
         if (!wik || !wjk) continue;
         const triangleStrength = (wij + wik + wjk) / 3;
         cycleStrength[i] += triangleStrength;
@@ -253,20 +339,6 @@ function triangleStrengthByNode(nodeCount: number, edges: TopologyEdge[]): { cyc
   }
 
   return { cycleStrength, cycleCount };
-}
-
-function valueFromBetaSeries(betaSeries: number[], nodeCount: number): number {
-  const avg = mean(betaSeries);
-  const dispersion = stddev(betaSeries, avg);
-  const persistenceMass = betaSeries.reduce((sum, beta, index) => {
-    const prev = index > 0 ? FILTRATION_THRESHOLDS[index - 1] : 0;
-    const width = (FILTRATION_THRESHOLDS[index] || prev) - prev;
-    return sum + (beta * Math.max(width, 0));
-  }, 0);
-  const baseBeta = betaSeries[0] ?? 0;
-  const nodeScale = Math.max(1, nodeCount / 4);
-  const raw = (dispersion + (0.8 * persistenceMass) + (0.5 * baseBeta)) / nodeScale;
-  return clamp(raw * 22, 0, 100);
 }
 
 export function deriveFinancialTopologySignals(
@@ -288,43 +360,49 @@ export function deriveFinancialTopologySignals(
     };
   }
 
-  const edges = buildEdges(nodes);
-  if (edges.length < 3) {
-    return {
-      derivedSignals: [],
-      diagnostics: {
-        nodeCount: nodes.length,
-        edgeCount: edges.length,
-        componentCount: countComponents(nodes.length, edges, EDGE_THRESHOLD),
-        beta1: 0,
-        tsi: 0,
-        derivedSignalCount: 0,
-      },
-    };
+  const { h0Pairs, h1Pairs, distanceMatrix } = computePersistentHomology(nodes);
+
+  const numNodes = nodes.length;
+  let edgeCount = 0;
+  const degreeStrength = new Array<number>(numNodes).fill(0);
+  const edges: {a: number, b: number, weight: number}[] = [];
+
+  for (let i = 0; i < numNodes; i++) {
+    for (let j = i + 1; j < numNodes; j++) {
+      const dist = distanceMatrix[i]![j]!;
+      const weight = 1 - dist;
+      if (weight >= EDGE_THRESHOLD) {
+        edgeCount++;
+        degreeStrength[i] += weight;
+        degreeStrength[j] += weight;
+        edges.push({ a: i, b: j, weight });
+      }
+    }
   }
 
-  const degreeStrength = new Array<number>(nodes.length).fill(0);
-  for (const edge of edges) {
-    degreeStrength[edge.a] = (degreeStrength[edge.a] || 0) + edge.weight;
-    degreeStrength[edge.b] = (degreeStrength[edge.b] || 0) + edge.weight;
-  }
+  const { cycleStrength, cycleCount } = triangleStrengthByNode(numNodes, edges);
 
-  const { cycleStrength, cycleCount } = triangleStrengthByNode(nodes.length, edges);
-  const betaSeries = computeBetaSeries(nodes.length, edges);
-  const beta1 = betaSeries[0] ?? 0;
-  const tsi = valueFromBetaSeries(betaSeries, nodes.length);
+  const totalH0Persistence = h0Pairs.reduce((sum, p) => sum + p.persistence, 0);
+  const totalH1Persistence = h1Pairs.reduce((sum, p) => sum + p.persistence, 0);
+
+  const h0Norm = totalH0Persistence / Math.max(1, numNodes - 1);
+  const h1Norm = totalH1Persistence / Math.max(1, numNodes / 2);
+  const tsi = clamp((h0Norm * 40) + (h1Norm * 60), 0, 100);
+
+  const robustCycles = h1Pairs.filter(p => p.persistence > 0.05).length;
+  const beta1 = robustCycles;
 
   const maxDegree = Math.max(...degreeStrength, 1);
   const maxCycle = Math.max(...cycleStrength, 1);
   const maxObservedAt = Math.max(...nodes.map((node) => node.observedAt), Date.now());
   const domain = FINANCIAL_DOMAIN_HINTS.has(runDomain.toLowerCase()) ? runDomain : 'market';
-  const edgeDensity = edges.length / Math.max(1, (nodes.length * (nodes.length - 1)) / 2);
+  const edgeDensity = edgeCount / Math.max(1, (numNodes * (numNodes - 1)) / 2);
   const baseConfidence = clamp(0.55 + (0.35 * edgeDensity), 0.55, 0.95);
 
   const derivedSignals: ForensicsSignalInput[] = [];
 
   derivedSignals.push({
-    sourceId: `topology:tsi:${domain}`,
+    sourceId: \`topology:tsi:\${domain}\`,
     region: 'global',
     domain,
     signalType: 'topology_tsi',
@@ -334,11 +412,11 @@ export function deriveFinancialTopologySignals(
   });
 
   derivedSignals.push({
-    sourceId: `topology:beta1:${domain}`,
+    sourceId: \`topology:beta1:\${domain}\`,
     region: 'global',
     domain,
     signalType: 'topology_beta1',
-    value: round(beta1, 4),
+    value: round(totalH1Persistence, 4),
     confidence: round(clamp(baseConfidence - 0.05, 0.45, 0.9), 6),
     observedAt: maxObservedAt,
   });
@@ -409,7 +487,7 @@ export function deriveFinancialTopologySignals(
   for (const alert of regionAlerts) {
     if (alert.risk < 10) continue;
     derivedSignals.push({
-      sourceId: `topology:region:${alert.region.toLowerCase()}`,
+      sourceId: \`topology:region:\${alert.region.toLowerCase()}\`,
       region: alert.region,
       domain,
       signalType: 'topology_cycle_risk',
@@ -421,7 +499,7 @@ export function deriveFinancialTopologySignals(
 
   const dedupedByKey = new Map<string, ForensicsSignalInput>();
   for (const signal of derivedSignals) {
-    const key = `${signal.sourceId}::${signal.signalType}::${signal.region || 'global'}`;
+    const key = \`\${signal.sourceId}::\${signal.signalType}::\${signal.region || 'global'}\`;
     const existing = dedupedByKey.get(key);
     if (!existing || signal.value > existing.value) {
       dedupedByKey.set(key, signal);
@@ -432,13 +510,12 @@ export function deriveFinancialTopologySignals(
     .sort((a, b) => b.value - a.value)
     .slice(0, MAX_DERIVED_SIGNALS);
 
-  const componentCount = countComponents(nodes.length, edges, EDGE_THRESHOLD);
   return {
     derivedSignals: outputSignals,
     diagnostics: {
-      nodeCount: nodes.length,
-      edgeCount: edges.length,
-      componentCount,
+      nodeCount: numNodes,
+      edgeCount,
+      componentCount: h0Pairs.filter(p => p.death === null).length,
       beta1,
       tsi: round(tsi, 4),
       derivedSignalCount: outputSignals.length,

@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package worldmonitor.evidence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message POLEPerson {
+  string id = 1;
+  string name = 2;
+  repeated string aliases = 3;
+  string role = 4;
+}
+
+message POLEObject {
+  string id = 1;
+  string type = 2;
+  string name = 3;
+  string description = 4;
+}
+
+message POLELocation {
+  string id = 1;
+  string name = 2;
+  double lat = 3;
+  double lon = 4;
+  string country_code = 5;
+}
+
+message POLEEvent {
+  string id = 1;
+  string type = 2;
+  string description = 3;
+  int64 timestamp = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  repeated string involved_person_ids = 5;
+  repeated string involved_object_ids = 6;
+  repeated string location_ids = 7;
+}
+
+message POLEGraph {
+  repeated POLEPerson persons = 1;
+  repeated POLEObject objects = 2;
+  repeated POLELocation locations = 3;
+  repeated POLEEvent events = 4;
+}
+
+message Evidence {
+  string id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  string source_url = 2;
+  string title = 3;
+  string raw_content = 4;
+  int64 scraped_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  
+  POLEGraph extracted_pole = 6;
+  bool is_processed = 7;
+}

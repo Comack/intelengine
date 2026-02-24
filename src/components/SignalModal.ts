@@ -2,7 +2,7 @@ import type { CorrelationSignal } from '@/services/correlation';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
 import type { ForensicsAnomalyOverlay } from '@/types';
 import { suppressTrendingTerm } from '@/services/trending-keywords';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
@@ -113,6 +113,59 @@ export class SignalModal {
   public showSignal(signal: CorrelationSignal): void {
     this.currentSignals = [signal];
     this.renderSignals();
+    this.element.classList.add('active');
+  }
+
+  public showEvidence(evidence: any): void {
+    if (document.fullscreenElement) return;
+    const content = this.element.querySelector('.signal-modal-content')!;
+    
+    const timeAgo = Math.max(0, Math.floor((Date.now() - evidence.scrapedAt) / 1000));
+    const timeStr = timeAgo < 60 ? `${timeAgo}s ago` : timeAgo < 3600 ? `${Math.floor(timeAgo/60)}m ago` : `${Math.floor(timeAgo/3600)}h ago`;
+
+    let poleHtml = '';
+    if (evidence.extractedPole) {
+      const { persons = [], objects = [], locations = [], events = [] } = evidence.extractedPole;
+      poleHtml = `
+        <div class="evidence-pole-grid">
+          ${persons.length ? `<div class="pole-col"><strong>Persons</strong><ul>${persons.map((p: any) => `<li>${escapeHtml(p.name)}</li>`).join('')}</ul></div>` : ''}
+          ${objects.length ? `<div class="pole-col"><strong>Objects</strong><ul>${objects.map((o: any) => `<li>${escapeHtml(o.name)}</li>`).join('')}</ul></div>` : ''}
+          ${locations.length ? `<div class="pole-col"><strong>Locations</strong><ul>${locations.map((l: any) => `<li>${escapeHtml(l.name)}</li>`).join('')}</ul></div>` : ''}
+          ${events.length ? `<div class="pole-col"><strong>Events</strong><ul>${events.map((e: any) => `<li>${escapeHtml(e.type)}</li>`).join('')}</ul></div>` : ''}
+        </div>
+      `;
+    }
+
+    content.innerHTML = `
+      <div class="signal-item">
+        <div class="signal-header" style="border-left: 4px solid var(--semantic-elevated)">
+          <div class="signal-icon">📄</div>
+          <div class="signal-title-container">
+            <div class="signal-title">${escapeHtml(evidence.title || 'Raw Evidence')}</div>
+            <div class="signal-meta">
+              <span class="signal-type">Source Evidence</span>
+              <span class="signal-time">${escapeHtml(timeStr)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="signal-context">
+          ${evidence.sourceUrl ? `
+          <div class="signal-context-item">
+            <span class="context-label">Source URL</span>
+            <span class="context-value"><a href="${sanitizeUrl(evidence.sourceUrl)}" target="_blank">${escapeHtml(evidence.sourceUrl)}</a></span>
+          </div>` : ''}
+          ${poleHtml}
+          <div class="signal-context-item">
+            <span class="context-label">Raw Content</span>
+            <div class="context-value" style="white-space: pre-wrap; font-family: monospace; max-height: 250px; overflow-y: auto; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">${escapeHtml(evidence.rawContent?.substring(0, 1500) || '')}${evidence.rawContent?.length > 1500 ? '...' : ''}</div>
+          </div>
+        </div>
+      </div>
+      <div class="signal-actions">
+        <button class="signal-dismiss-btn">Close</button>
+      </div>
+    `;
+
     this.element.classList.add('active');
   }
 
