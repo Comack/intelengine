@@ -522,6 +522,7 @@ These normalized signals, alongside exact timestamps, form the structured matrix
 ### Weak Supervision Fusion
 
 To combine signals from disparate, unlabeled sources, the pipeline uses an **Expectation-Maximization (EM)** algorithm:
+
 1. **Source Accuracy Learning**: Iteratively estimates the true accuracy of each signal source based on consensus and independence.
 2. **Dependency Penalty**: Pairwise correlation analysis penalizes redundant signals to prevent double-counting correlated inputs (e.g., two news outlets repeating the same wire).
 3. **Probabilistic Fusion**: Outputs a unified `ForensicsFusedSignal` with a 0-100 score, exact probability bounds, and a list of weighted contributors.
@@ -529,6 +530,7 @@ To combine signals from disparate, unlabeled sources, the pipeline uses an **Exp
 ### Conformal Anomaly Detection
 
 Instead of relying on rigid thresholds, the system utilizes **Inductive Conformal Prediction** to identify anomalies with statistical rigor:
+
 - **Dual Nonconformity Measures**: Calculates nonconformity for both the signal's *value* (magnitude) and *timing* (interval since the last event).
 - **CADES Combination**: Combines the value and timing p-values using Bonferroni correction to emit a single unified p-value.
 - Anomalies are flagged if the combined p-value falls below the configured alpha threshold (typically α=0.05).
@@ -546,6 +548,7 @@ The pipeline uses **Topological Data Analysis (TDA)** to map the shape and struc
 ### Causal Discovery
 
 The Causal Discovery engine identifies directed relationships and temporal lags between different signal types (e.g., `pipeline_disruption` → `market_move_oil`):
+
 - **Activation Bucketing**: Signals are bucketed into 30-minute intervals over a configurable lookback window (up to 4 hours).
 - **Conditional Lift**: Calculates the probability of signal B activating given signal A's prior activation, divided by B's baseline probability.
 - **Minimum Description Length (MDL)**: Computes a causal score based on MDL gain, filtering out weak or coincidental relationships.
@@ -553,13 +556,15 @@ The Causal Discovery engine identifies directed relationships and temporal lags 
 ### Explainability (Counterfactual Levers)
 
 To make AI-driven anomalies understandable, the system computes **Counterfactual Levers**:
+
 - Reconstructs the logit (log-odds) that led to an anomaly classification.
 - Iteratively simulates flipping each contributing signal from a positive to a negative vote.
 - Computes the "delta logit" required to un-flag the anomaly, allowing analysts to interact with a "what-if" sandbox to understand exactly which inputs drove the alert.
 
 ### Evidence Ingestion & POLE Extraction
 
-The **Evidence Service** backs every forensic signal with ground truth data. 
+The **Evidence Service** backs every forensic signal with ground truth data.
+
 - **Algorithmic Scraper**: Uses robust extraction (JSON-LD, semantic tag parsing, noise stripping) to ingest raw web content without heavy headless browsers.
 - **Proxy Fallback**: Transparently falls back to a Railway relay proxy to bypass IP blocks and bot protections.
 - **POLE Graph**: Converts unstructured text into a structured graph of Persons, Objects, Locations, and Events, which are fed back into the orchestrator as primary signals.
@@ -567,6 +572,7 @@ The **Evidence Service** backs every forensic signal with ground truth data.
 ### Data Freshness & Shadow Fetching
 
 To ensure forensics operate on the most accurate timeline:
+
 - **Shadow Fetching**: Tier-2 sources (weather, flights, cables) are silently fetched in the background even if their UI layers are disabled, ensuring the forensics baseline remains complete.
 - **Freshness Profiles**: Signals degrade according to specific profiles (FAST, SLOW, CONFLICT, EVENT). A signal's confidence incorporates a computed freshness penalty based on its `observedAt` timestamp versus the current time, gracefully aging out stale intelligence.
 
@@ -584,6 +590,7 @@ Advanced visualization components allow analysts to interact with forensic data 
 ### Integrated Forensics Dashboard
 
 To make forensics deeply actionable, the `ForensicsPanel` consolidates intelligence into dense UI representations:
+
 - **Monitor Streams**: Grouped lists (Market Shock, Maritime Disruption, Cyber Spike) displaying the `p-value`, priority score, and age of the most critical anomalous signals.
 - **Trajectory Clusters**: Aggregated views tracking anomalous vessel behavior across global corridors (e.g., `ais_route_deviation`, `ais_silence`).
 - **Topology Drift & Baselines**: Diagnostic cards alerting users to the degradation of historical signal baselines and standard-deviation drifts over sliding windows.
