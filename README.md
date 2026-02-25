@@ -47,7 +47,7 @@
 | Intelligence Black Box             | **Forensics Engine** with weak supervision fusion, conformal anomalies, and causal discovery                |
 | Siloed financial data              | **Finance variant** with 92 stock exchanges, 19 financial centers, 13 central banks, and Gulf FDI tracking |
 | Advanced Visualizations            | **Interactive D3.js Graphs** for causal DAGs, POLE entity maps, and convergence radars                     |
-| Undocumented, fragile APIs         | **Proto-first API contracts** — 17 typed services with auto-generated clients, servers, and OpenAPI docs   |
+| Undocumented, fragile APIs         | **Proto-first API contracts** — 18 typed services with auto-generated clients, servers, and OpenAPI docs   |
 
 ---
 
@@ -538,7 +538,7 @@ Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) 
 
 The entire API surface is defined in Protocol Buffer (`.proto`) files using [sebuf](https://github.com/SebastienMelki/sebuf) HTTP annotations. Code generation produces TypeScript clients, server handler stubs, and OpenAPI 3.1.0 documentation from a single source of truth — eliminating request/response schema drift between frontend and backend.
 
-**17 service domains** cover every data vertical:
+**18 service domains** cover every data vertical:
 
 | Domain           | RPCs                                             |
 | ---------------- | ------------------------------------------------ |
@@ -548,8 +548,9 @@ The entire API surface is defined in Protocol Buffer (`.proto`) files using [seb
 | `cyber`          | Cyber threat IOCs                                |
 | `displacement`   | Population displacement, exposure data           |
 | `economic`       | Energy prices, FRED series, macro signals, World Bank |
+| `evidence`       | Raw source material ingestion, POLE entity extraction |
 | `infrastructure` | Internet outages, service statuses, temporal baselines |
-| `intelligence`   | Event classification, country briefs, risk scores|
+| `intelligence`   | Event classification, briefs, forensics shadow runs|
 | `maritime`       | Vessel snapshots, navigational warnings          |
 | `market`         | Stock indices, crypto/commodity quotes, ETF flows|
 | `military`       | Aircraft details, theater posture, USNI fleet    |
@@ -568,7 +569,7 @@ The entire API surface is defined in Protocol Buffer (`.proto`) files using [seb
 
 Proto definitions include `buf.validate` field constraints (e.g., latitude ∈ [−90, 90]), so request validation is generated automatically — handlers receive pre-validated data. Breaking changes are caught at CI time via `buf breaking` against the main branch.
 
-**Edge gateway** — a single Vercel Edge Function (`api/[domain]/v1/[rpc].ts`) imports all 17 `createServiceRoutes()` functions into a flat `Map<string, handler>` router. Every RPC is a POST endpoint at a static path (e.g., `POST /api/aviation/v1/list-airport-delays`), with CORS enforcement, a top-level error boundary that hides internal details on 5xx responses, and rate-limit support (`retryAfter` on 429). The same router runs locally via a Vite dev-server plugin (`sebufApiPlugin` in `vite.config.ts`) with HMR invalidation on handler changes.
+**Edge gateway** — a single Vercel Edge Function (`api/[domain]/v1/[rpc].ts`) imports all 18 `createServiceRoutes()` functions into a flat `Map<string, handler>` router. Every RPC is a POST endpoint at a static path (e.g., `POST /api/aviation/v1/list-airport-delays`), with CORS enforcement, a top-level error boundary that hides internal details on 5xx responses, and rate-limit support (`retryAfter` on 429). The same router runs locally via a Vite dev-server plugin (`sebufApiPlugin` in `vite.config.ts`) with HMR invalidation on handler changes.
 
 ### Cyber Threat Intelligence Layer
 
@@ -934,7 +935,7 @@ All three variants run on three platforms that work together:
 ┌─────────────────────────────────────┐
 │          Vercel (Edge)              │
 │  60+ edge functions · static SPA    │
-│  Proto gateway (17 typed services)  │
+│  Proto gateway (18 typed services)  │
 │  CORS allowlist · Redis cache       │
 │  AI pipeline · market analytics     │
 │  CDN caching (s-maxage) · PWA host  │
@@ -1253,7 +1254,7 @@ Set `WS_RELAY_URL` (server-side, HTTPS) and `VITE_WS_RELAY_URL` (client-side, WS
 
 | Category              | Technologies                                                                                                                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Frontend**          | TypeScript, Vite, deck.gl (WebGL 3D globe), MapLibre GL, vite-plugin-pwa (service worker + manifest)                                           |
+| **Frontend**          | TypeScript, Vite, deck.gl (WebGL 3D globe), MapLibre GL, D3.js, vite-plugin-pwa (service worker + manifest)                                           |
 | **Desktop**           | Tauri 2 (Rust) with Node.js sidecar, OS keychain integration (keyring crate), native TLS (reqwest)                                             |
 | **AI/ML**             | Ollama / LM Studio (local, OpenAI-compatible), Groq (Llama 3.1 8B), OpenRouter (fallback), Transformers.js (browser-side T5, NER, embeddings) |
 | **Caching**           | Redis (Upstash) — 3-tier cache with in-memory + Redis + upstream, cross-user AI deduplication. Vercel CDN (s-maxage). Service worker (Workbox) |
@@ -1262,7 +1263,7 @@ Set `WS_RELAY_URL` (server-side, HTTPS) and `VITE_WS_RELAY_URL` (client-side, WS
 | **Threat Intel APIs** | abuse.ch (Feodo Tracker, URLhaus), AlienVault OTX, AbuseIPDB, C2IntelFeeds                                                                     |
 | **Economic APIs**     | FRED (Federal Reserve), EIA (Energy), Finnhub (stock quotes)                                                                                   |
 | **Localization**      | i18next (14 languages: en, fr, de, es, it, pl, pt, nl, sv, ru, ar, zh, ja, tr), RTL support, lazy-loaded bundles                                |
-| **API Contracts**     | Protocol Buffers (92 proto files, 17 services), sebuf HTTP annotations, buf CLI (lint + breaking checks), auto-generated TypeScript clients/servers + OpenAPI 3.1.0 docs |
+| **API Contracts**     | Protocol Buffers (94 proto files, 18 services), sebuf HTTP annotations, buf CLI (lint + breaking checks), auto-generated TypeScript clients/servers + OpenAPI 3.1.0 docs |
 | **Deployment**        | Vercel Edge Functions (60+ endpoints) + Railway (WebSocket relay) + Tauri (macOS/Windows/Linux) + PWA (installable)                            |
 | **Finance Data**      | 92 stock exchanges, 19 financial centers, 13 central banks, 10 commodity hubs, 64 Gulf FDI investments                                         |
 | **Data**              | 150+ RSS feeds, ADS-B transponders, AIS maritime data, VIIRS satellite imagery, 8 live YouTube streams                                         |
@@ -1354,7 +1355,7 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Consolidated keychain vault (single OS prompt on startup)
 - [x] Cross-window secret synchronization (main ↔ settings)
 - [x] API key verification pipeline with soft-pass on network errors
-- [x] Proto-first API contracts (92 proto files, 17 service domains, auto-generated TypeScript + OpenAPI docs)
+- [x] Proto-first API contracts (94 proto files, 18 service domains, auto-generated TypeScript + OpenAPI docs)
 - [x] USNI Fleet Intelligence (weekly deployment reports merged with live AIS tracking)
 - [x] Aircraft enrichment via Wingbits (military confidence classification)
 - [x] Undersea cable health monitoring (NGA navigational warnings + AIS cable ship tracking)

@@ -484,34 +484,110 @@ This broad coverage enables correlation detection across diverse geopolitical an
 
 ## Intelligence Forensics & Analysis
 
-The forensics pipeline provides deterministic, multi-modal analysis of signal telemetry to identify and explain complex anomalies.
+The forensics pipeline provides deterministic, multi-modal analysis of signal telemetry to identify and explain complex anomalies. It continuously monitors the environment via background shadow runs and tier-2 source shadow fetching.
 
 ### Forensics Orchestrator
 
-The system runs "shadow runs" that process batches of signals through a multi-phase pipeline:
+The system runs "shadow runs" that process batches of signals through a dynamic, multi-phase pipeline. The orchestrator uses a **Reinforcement Learning Policy (Epsilon-Greedy MAB)** to dynamically order execution phases based on state hashes, optimizing for information gain and computational efficiency.
 
 | Phase | Description |
 |-------|-------------|
-| **Signal Collect** | Ingestion of raw telemetry from news, markets, and infrastructure trackers. |
-| **Extract POLE** | Automatic extraction of Persons, Objects, Locations, and Events from raw evidence. |
+| **Signal Collect** | Ingestion of raw telemetry from news, markets, and infrastructure trackers. Exact `observedAt` timestamps are propagated. |
+| **Extract POLE** | Automatic extraction of Persons, Objects, Locations, and Events from raw evidence (URLs, PDFs). |
+| **Topology TDA** | Enriches signals with topological baselines and deviation metrics. |
 | **Weak Fusion** | Use of Weak Supervision (EM algorithm) to learn source accuracies and fuse signals without labels. |
-| **Conformal Anomaly** | Rigorous anomaly detection using inductive conformal prediction to calculate exact p-values. |
+| **Conformal Anomaly** | Rigorous anomaly detection using inductive conformal prediction to calculate exact p-values for value and timing. |
 | **Causal Discovery** | Detection of directed relationships (A → B) and temporal lags between signal types. |
 | **Explainability** | Computation of counterfactual levers to show which specific signals drove an anomaly. |
 
+### Signal Ingestion & Transformation
+
+The pipeline ingests raw telemetry and intelligence from across the dashboard, normalizing them into a unified `ForensicsSignalInput` schema (`domain`, `signalType`, `value`, `confidence`, `observedAt`). The `ForensicsSignalBuilder` acts as the translation layer:
+
+1. **Geopolitical & Conflict (`buildCountryRiskSignals`)**:
+   - Converts event bursts, UCDP conflict intensities, HAPI political violence metrics, displacement outflows, and climate stress into forensic signals.
+   - Values are logarithmically scaled based on severity, fatalities, and event counts.
+2. **Maritime & Trajectory (`buildAisTrajectorySignals`)**:
+   - Classifies maritime events into specific signal types: `ais_silence` (dark ships/transponder gaps), `ais_loitering` (congestion), and `ais_route_deviation`.
+   - Confidence and values are derived from vessel counts, duration (windowHours), and severity baseline.
+3. **Market & Macro (`buildMarketSignals`, `buildMacroSignals`, `buildEtfSignals`, `buildStablecoinSignals`)**:
+   - Analyzes raw market data to emit signals like `market_change_pct`, `market_volatility`, and `prediction_conviction`.
+   - Incorporates deep macro signals such as `macro_liquidity_extreme`, `macro_regime_rotation`, `macro_technical_dislocation`, and ETF/Stablecoin flow pressures.
+4. **General Intelligence (`buildIntelligenceSignals`)**:
+   - Sweeps the main application's signal aggregator (which tracks protests, military flights, internet outages, etc.).
+   - Re-weights them for forensic analysis by combining raw counts, maximum severity, and geographic convergence scores.
+
+These normalized signals, alongside exact timestamps, form the structured matrix that the Weak Supervision and Conformal Anomaly phases process.
+
+### Weak Supervision Fusion
+
+To combine signals from disparate, unlabeled sources, the pipeline uses an **Expectation-Maximization (EM)** algorithm:
+1. **Source Accuracy Learning**: Iteratively estimates the true accuracy of each signal source based on consensus and independence.
+2. **Dependency Penalty**: Pairwise correlation analysis penalizes redundant signals to prevent double-counting correlated inputs (e.g., two news outlets repeating the same wire).
+3. **Probabilistic Fusion**: Outputs a unified `ForensicsFusedSignal` with a 0-100 score, exact probability bounds, and a list of weighted contributors.
+
+### Conformal Anomaly Detection
+
+Instead of relying on rigid thresholds, the system utilizes **Inductive Conformal Prediction** to identify anomalies with statistical rigor:
+- **Dual Nonconformity Measures**: Calculates nonconformity for both the signal's *value* (magnitude) and *timing* (interval since the last event).
+- **CADES Combination**: Combines the value and timing p-values using Bonferroni correction to emit a single unified p-value.
+- Anomalies are flagged if the combined p-value falls below the configured alpha threshold (typically α=0.05).
+
+### Financial Topology (Topological Data Analysis)
+
+The pipeline uses **Topological Data Analysis (TDA)** to map the shape and structure of financial and geopolitical signal networks, identifying hidden coordination and systemic risks before they manifest as direct market crashes.
+
+- **Persistent Homology**: Computes the H0 (connected components) and H1 (cycles/loops) persistence of the signal graph across multiple distance scales.
+- **Topological Shape Index (TSI)**: A composite metric deriving the overall structural integrity of the market from the normalized persistence of components and cycles.
+- **Betti Numbers (β1)**: Tracks the count of robust 1-dimensional cycles (e.g., A affects B, B affects C, C affects A). High cycle density indicates systemic fragility or coordinated rotation.
+- **Hyperedge Coordination**: Uses higher-order network analysis to detect 3-way and 4-way signal coordination across different domains (e.g., a simultaneous anomaly in Crypto, Oil, and Tech).
+- **Derived Signals**: The TDA engine emits its own signals (`topology_tsi`, `topology_beta1`, `topology_cycle_risk`, `topology_hyperedge_density`) which are then fed into the Conformal Anomaly and Weak Supervision phases.
+
+### Causal Discovery
+
+The Causal Discovery engine identifies directed relationships and temporal lags between different signal types (e.g., `pipeline_disruption` → `market_move_oil`):
+- **Activation Bucketing**: Signals are bucketed into 30-minute intervals over a configurable lookback window (up to 4 hours).
+- **Conditional Lift**: Calculates the probability of signal B activating given signal A's prior activation, divided by B's baseline probability.
+- **Minimum Description Length (MDL)**: Computes a causal score based on MDL gain, filtering out weak or coincidental relationships.
+
+### Explainability (Counterfactual Levers)
+
+To make AI-driven anomalies understandable, the system computes **Counterfactual Levers**:
+- Reconstructs the logit (log-odds) that led to an anomaly classification.
+- Iteratively simulates flipping each contributing signal from a positive to a negative vote.
+- Computes the "delta logit" required to un-flag the anomaly, allowing analysts to interact with a "what-if" sandbox to understand exactly which inputs drove the alert.
+
+### Evidence Ingestion & POLE Extraction
+
+The **Evidence Service** backs every forensic signal with ground truth data. 
+- **Algorithmic Scraper**: Uses robust extraction (JSON-LD, semantic tag parsing, noise stripping) to ingest raw web content without heavy headless browsers.
+- **Proxy Fallback**: Transparently falls back to a Railway relay proxy to bypass IP blocks and bot protections.
+- **POLE Graph**: Converts unstructured text into a structured graph of Persons, Objects, Locations, and Events, which are fed back into the orchestrator as primary signals.
+
+### Data Freshness & Shadow Fetching
+
+To ensure forensics operate on the most accurate timeline:
+- **Shadow Fetching**: Tier-2 sources (weather, flights, cables) are silently fetched in the background even if their UI layers are disabled, ensuring the forensics baseline remains complete.
+- **Freshness Profiles**: Signals degrade according to specific profiles (FAST, SLOW, CONFLICT, EVENT). A signal's confidence incorporates a computed freshness penalty based on its `observedAt` timestamp versus the current time, gracefully aging out stale intelligence.
+
 ### Deterministic Visualizations
 
-Advanced visualization components allow analysts to interact with forensic data:
+Advanced visualization components allow analysts to interact with forensic data natively within the map and panels:
 
-- **Interactive Causal Graph** — A D3.js force-directed DAG showing how signals propagate through the system.
-- **POLE Relationship Map** — Visualization of the entity graph extracted from evidence, showing the links between key actors and events.
-- **Counterfactual Sandbox** — Interactive explainability sliders that allow analysts to simulate "what-if" scenarios.
-- **Convergence Radar** — Venn-diagram visualization of multi-source triangulation (Gov + Wire + Intel).
-- **Hexagonal Column Layer** — 3D map rendering where column height represents anomaly magnitude and intensity represents confidence.
+- **Interactive Causal Graph**: A D3.js force-directed DAG showing how signals propagate through the system. Hot anomaly nodes glow red, while causal edges illustrate delays and direction.
+- **POLE Relationship Map**: D3.js visualization of the entity graph extracted from evidence. Nodes are color-coded (Events=Red, Persons=Blue, Objects=Orange, Locations=Green).
+- **Convergence Radar**: A Venn-diagram visualization depicting the overlap and triangulation of different topics.
+- **Topology Map Overlays**: A DeckGL scatter/column layer on the globe representing topological drill-downs, color-coded by delta direction (amber=rising, cyan=falling, slate=stable).
+- **Phase Trace Swimlanes**: Inline SVG timelines showing the precise execution order, duration bars, and status colors of the forensics pipeline's phases.
+- **Counterfactual Sandbox**: Interactive explainability sliders that allow analysts to simulate "what-if" scenarios.
 
-### Evidence Ingestion
+### Integrated Forensics Dashboard
 
-The **Evidence Service** maintains a repository of raw source material (scraped content, PDF reports, telemetry logs) that backs every forensic signal. Analysts can view the "Ground Truth" by drilling down from an anomaly into the associated POLE graph and raw content.
+To make forensics deeply actionable, the `ForensicsPanel` consolidates intelligence into dense UI representations:
+- **Monitor Streams**: Grouped lists (Market Shock, Maritime Disruption, Cyber Spike) displaying the `p-value`, priority score, and age of the most critical anomalous signals.
+- **Trajectory Clusters**: Aggregated views tracking anomalous vessel behavior across global corridors (e.g., `ais_route_deviation`, `ais_silence`).
+- **Topology Drift & Baselines**: Diagnostic cards alerting users to the degradation of historical signal baselines and standard-deviation drifts over sliding windows.
+- **Run Trend Summaries**: Sparkline-powered cards tracking the frequency and maximum fused scores of flagged anomalies across sequential shadow runs.
 
 ### Historical Timeline DVR
 
@@ -3277,6 +3353,7 @@ Historical filtering is client-side—all data is fetched but filtered for displ
 | **Build** | Vite | Fast HMR, optimized production builds |
 | **Map (Desktop)** | deck.gl + MapLibre GL | WebGL-accelerated rendering for large datasets |
 | **Map (Mobile)** | D3.js + TopoJSON | SVG fallback for battery efficiency |
+| **Analysis** | D3.js | Interactive causal DAGs and relationship graphs |
 | **Concurrency** | Web Workers | Off-main-thread clustering and correlation |
 | **AI/ML** | ONNX Runtime Web | Browser-based inference for offline summarization |
 | **Networking** | WebSocket + REST | Real-time AIS stream, HTTP for other APIs |
@@ -3306,7 +3383,7 @@ The map uses a hybrid rendering strategy optimized for each platform:
 
 - **deck.gl**: High-performance WebGL visualization layers
 - **MapLibre GL**: Open-source map rendering engine
-- **D3.js**: SVG map rendering, zoom behavior (mobile fallback)
+- **D3.js**: SVG map rendering, interactive causal DAGs, and entity relationship graphs
 - **TopoJSON**: Efficient geographic data encoding
 - **ONNX Runtime**: Browser-based ML inference
 - **Custom HTML escaping**: XSS prevention (DOMPurify pattern)

@@ -1,5 +1,7 @@
 # Copilot Instructions
 
+**CRITICAL: You MUST read `README.md` in the project root and `docs/DOCUMENTATION.md` before performing any task. This ensures you have a full grasp of the application's purpose, goals, and technical architecture.**
+
 ## What This Is
 
 World Monitor is a tri-variant real-time intelligence dashboard (geopolitical `full`, tech ecosystem `tech`, financial `finance`) built from a single TypeScript codebase. All three variants share the same source; `VITE_VARIANT` controls which panels/features are active.

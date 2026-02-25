@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+**CRITICAL: You MUST read `README.md` in the project root and `docs/DOCUMENTATION.md` before performing any task. This ensures you have a full grasp of the application's purpose, goals, and technical architecture.**
+
 ## Codebase Purpose
 World Monitor is a tri-variant intelligence platform built from one TypeScript codebase:
 - `full` variant for geopolitical and infrastructure monitoring.

@@ -1,5 +1,7 @@
 # World Monitor Project Context
 
+**CRITICAL: You MUST read `README.md` in the project root and `docs/DOCUMENTATION.md` before performing any task. This ensures you have a full grasp of the application's purpose, goals, and technical architecture.**
+
 World Monitor is a tri-variant intelligence platform (Geopolitical, Tech, Finance) providing real-time global situational awareness. It is a monorepo-style TypeScript project built with a "contract-first" architecture using Protocol Buffers and custom code generation.
 
 ## Project Overview
@@ -32,7 +34,7 @@ The project follows a strict domain-driven contract pattern. Features are organi
   - `src/components/`: UI components (PascalCase).
   - `src/services/`: Domain clients and analysis pipelines (kebab-case).
 - `proto/`: Source of truth for API contracts.
-- `server/`: Backend handler logic for all 17+ domains.
+- `server/`: Backend handler logic for all 18 domains.
 - `api/`: Vercel Edge Function entrypoints and legacy routes.
 - `src-tauri/`: Desktop app shell (Rust) and sidecar logic.
 - `docs/`: Extensive documentation on endpoints and release processes.

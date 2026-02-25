@@ -57,4 +57,5 @@ If required secrets are missing/disabled:
 - NASA FIRMS: satellite fire detection returns empty state.
 - Wingbits: flight enrichment disabled, heuristic-only flight classification remains.
 - AIS / OpenSky relay: live tracking features are disabled cleanly.
+- Forensics: Shadow runs and causal discovery fallback to in-memory state if Redis is unreachable.
 - WorldMonitor API key: cloud fallback is blocked; desktop operates local-only.
