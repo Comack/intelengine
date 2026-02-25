@@ -10,6 +10,8 @@ import type {
   ForensicsTopologyBaselineSummary,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
+import { renderCausalDag } from './ForensicsVisualizations';
+
 export interface ForensicsRunTrendPoint {
   runId: string;
   domain: string;
@@ -293,38 +295,8 @@ function buildProvenanceLinks(anomaly: ForensicsCalibratedAnomaly): ForensicsPro
   return Array.from(deduped.values());
 }
 
-function buildCausalChainHtml(
-  causalEdges: ForensicsCausalEdge[],
-  anomalies: ForensicsCalibratedAnomaly[],
-): string {
-  if (causalEdges.length === 0) return '<div class="forensics-empty">No causal edges discovered yet.</div>';
-
-  const flaggedTypes = new Set(
-    anomalies.filter((a) => a.isAnomaly).map((a) => a.signalType),
-  );
-
-  return causalEdges.slice(0, 10).map((edge) => {
-    const isHot = flaggedTypes.has(edge.causeSignalType) || flaggedTypes.has(edge.effectSignalType);
-    const hotClass = isHot ? ' forensics-causal-hot' : '';
-    const delayLabel = edge.delayMs > 0
-      ? edge.delayMs >= 3600_000
-        ? `${(edge.delayMs / 3600_000).toFixed(1)}h`
-        : `${Math.round(edge.delayMs / 60_000)}m`
-      : '—';
-    return `
-      <div class="forensics-item${hotClass}">
-        <div class="forensics-item-head">
-          <span class="forensics-source">${escapeHtml(edge.causeSignalType)} → ${escapeHtml(edge.effectSignalType)}</span>
-          <span class="forensics-score">${(edge.causalScore * 100).toFixed(1)}%</span>
-        </div>
-        <div class="forensics-item-meta">
-          <span>delay ${escapeHtml(delayLabel)}</span>
-          <span>lift ×${edge.conditionalLift.toFixed(2)}</span>
-          <span>n=${edge.supportCount}</span>
-        </div>
-      </div>
-    `;
-  }).join('');
+function buildCausalChainHtml(): string {
+  return '<div id="causal-dag-container" style="width: 100%; min-height: 300px;"></div>';
 }
 
 function buildCounterfactualLeversHtml(anomaly: ForensicsCalibratedAnomaly): string {
@@ -332,21 +304,27 @@ function buildCounterfactualLeversHtml(anomaly: ForensicsCalibratedAnomaly): str
   if (!levers || levers.length === 0) return '';
 
   const rows = levers.map((lever) => {
-    const barWidth = Math.round(lever.leverImpact * 100);
     return `
-      <div class="forensics-detail-item">
-        <span class="forensics-detail-key">${escapeHtml(lever.signalType)}</span>
-        <span class="forensics-detail-value">
-          ${escapeHtml(lever.direction)} · impact ${(lever.leverImpact * 100).toFixed(1)}%
-          <span class="forensics-lever-bar" style="--bar-width:${barWidth}%"></span>
-        </span>
+      <div class="forensics-detail-item forensics-lever-row">
+        <div class="forensics-lever-header" style="display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 4px;">
+          <span class="forensics-detail-key" style="color: var(--text-muted);">${escapeHtml(lever.signalType)}</span>
+          <span class="forensics-detail-value">Impact: ${(lever.leverImpact * 100).toFixed(1)}%</span>
+        </div>
+        <div class="forensics-lever-controls" style="display: flex; align-items: center; gap: 8px;">
+          <input type="range" class="forensics-lever-slider" min="0" max="100" step="1" value="100" 
+            data-weight="${lever.learnedWeight}" data-impact="${lever.leverImpact}" style="flex: 1; cursor: pointer; accent-color: var(--accent);" />
+          <span class="forensics-lever-val" style="width: 40px; text-align: right; font-family: monospace;">100%</span>
+        </div>
       </div>
     `;
   }).join('');
 
   return `
-    <div class="forensics-detail-block">
-      <div class="forensics-detail-heading">Counterfactual Levers</div>
+    <div class="forensics-detail-block forensics-sandbox" data-base-pvalue="${anomaly.pValue}">
+      <div class="forensics-detail-heading">Counterfactual Sandbox</div>
+      <div class="forensics-sandbox-result" style="margin-bottom: 8px; font-size: 0.9em; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+        Simulated p-value: <span class="forensics-simulated-pvalue" style="font-weight: 600;">${formatPValue(anomaly.pValue)}</span>
+      </div>
       ${rows}
     </div>
   `;
@@ -571,6 +549,32 @@ export class ForensicsPanel extends Panel {
     this.onAnomalySelected?.(key);
   };
 
+  private onContentInput = (event: Event): void => {
+    const target = event.target as HTMLInputElement;
+    if (target.classList?.contains('forensics-lever-slider')) {
+      const valSpan = target.nextElementSibling;
+      if (valSpan) valSpan.textContent = `${target.value}%`;
+
+      const sandbox = target.closest('.forensics-sandbox') as HTMLElement;
+      if (sandbox) {
+        const baseP = parseFloat(sandbox.dataset.basePvalue || '0');
+        let totalReduction = 0;
+        const sliders = sandbox.querySelectorAll('.forensics-lever-slider') as NodeListOf<HTMLInputElement>;
+        sliders.forEach(slider => {
+          const impact = parseFloat(slider.dataset.impact || '0');
+          const val = parseFloat(slider.value) / 100;
+          totalReduction += impact * (1 - val);
+        });
+        const newP = Math.max(0, baseP * (1 - totalReduction));
+        const resultSpan = sandbox.querySelector('.forensics-simulated-pvalue');
+        if (resultSpan) {
+          resultSpan.textContent = formatPValue(newP);
+          resultSpan.className = `forensics-simulated-pvalue ${newP <= 0.05 ? 'forensics-severity-high' : ''}`;
+        }
+      }
+    }
+  };
+
   constructor(title = 'Forensics Signals') {
     super({
       id: 'forensics',
@@ -581,6 +585,7 @@ export class ForensicsPanel extends Panel {
     });
     this.content.addEventListener('click', this.onContentClick);
     this.content.addEventListener('keydown', this.onContentKeydown);
+    this.content.addEventListener('input', this.onContentInput);
     this.showLoading('Loading forensics telemetry...');
   }
 
@@ -853,7 +858,7 @@ export class ForensicsPanel extends Panel {
     const causalChainHtml = `
       <section class="forensics-section">
         <h4>Causal Chain</h4>
-        ${buildCausalChainHtml(causalEdges, anomalies)}
+        ${buildCausalChainHtml()}
       </section>
     `;
 
@@ -1101,11 +1106,17 @@ export class ForensicsPanel extends Panel {
         ${anomalyDetailHtml}
       </div>
     `);
+
+    // D3 Causal DAG Rendering
+    if (causalEdges) {
+      renderCausalDag('#causal-dag-container', causalEdges, anomalies);
+    }
   }
 
   public destroy(): void {
     this.content.removeEventListener('click', this.onContentClick);
     this.content.removeEventListener('keydown', this.onContentKeydown);
+    this.content.removeEventListener('input', this.onContentInput);
     super.destroy();
   }
 }

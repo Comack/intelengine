@@ -5,7 +5,7 @@
  */
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
-import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer } from '@deck.gl/layers';
+import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, ColumnLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
 import Supercluster from 'supercluster';
 import type {
@@ -1586,26 +1586,26 @@ export class DeckGLMap {
       || (anomaly.monitorPriority || 0) >= 0.72;
   }
 
-  private createForensicsAnomaliesLayer(): ScatterplotLayer<ForensicsAnomalyOverlay> {
-    return new ScatterplotLayer<ForensicsAnomalyOverlay>({
+  private createForensicsAnomaliesLayer(): ColumnLayer<ForensicsAnomalyOverlay> {
+    return new ColumnLayer<ForensicsAnomalyOverlay>({
       id: 'forensics-anomalies-layer',
       data: this.forensicsAnomalies,
+      diskResolution: 6,
+      radius: 40000, // 40km radius hexagons
+      extruded: true,
+      elevationScale: 1,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => this.getForensicsMarkerRadius(d),
+      getElevation: (d) => Math.max(1, Math.abs(d.legacyZScore || 0)) * 60000,
       getFillColor: (d) => {
-        const [r, g, b, baseAlpha] = this.getForensicsCategoryColor(d);
-        const significanceBoost = d.pValue <= 0.01 ? 32 : d.pValue <= 0.05 ? 22 : d.pValue <= 0.1 ? 10 : 0;
-        const nearLiveBoost = d.isNearLive ? 14 : 0;
-        const alpha = Math.min(245, baseAlpha + significanceBoost + nearLiveBoost);
-        return [r, g, b, alpha] as [number, number, number, number];
+        const [r, g, b] = this.getForensicsCategoryColor(d);
+        // Map conformal p-value to color intensity (alpha)
+        const intensity = 255 * (1 - Math.min(1, Math.max(0, d.pValue)));
+        return [r, g, b, Math.max(120, intensity)] as [number, number, number, number];
       },
-      radiusMinPixels: 6,
-      radiusMaxPixels: 22,
-      stroked: true,
       getLineColor: (d) => d.isNearLive
-        ? [255, 255, 255, 235] as [number, number, number, number]
+        ? [255, 255, 255, 255] as [number, number, number, number]
         : [255, 255, 255, 170] as [number, number, number, number],
-      getLineWidth: (d) => d.isNearLive ? 2.2 : 1.2,
+      stroked: true,
       lineWidthMinPixels: 1,
       pickable: true,
     });

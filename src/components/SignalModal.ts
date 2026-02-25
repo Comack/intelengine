@@ -6,6 +6,7 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
+import { renderPoleGraph, renderConvergenceRadar } from './ForensicsVisualizations';
 
 export class SignalModal {
   private element: HTMLElement;
@@ -128,6 +129,7 @@ export class SignalModal {
       const { persons = [], objects = [], locations = [], events = [] } = evidence.extractedPole;
       poleHtml = `
         <div class="evidence-pole-grid">
+          <div id="pole-graph-container" style="width: 100%; height: 300px; grid-column: 1 / -1;"></div>
           ${persons.length ? `<div class="pole-col"><strong>Persons</strong><ul>${persons.map((p: any) => `<li>${escapeHtml(p.name)}</li>`).join('')}</ul></div>` : ''}
           ${objects.length ? `<div class="pole-col"><strong>Objects</strong><ul>${objects.map((o: any) => `<li>${escapeHtml(o.name)}</li>`).join('')}</ul></div>` : ''}
           ${locations.length ? `<div class="pole-col"><strong>Locations</strong><ul>${locations.map((l: any) => `<li>${escapeHtml(l.name)}</li>`).join('')}</ul></div>` : ''}
@@ -165,6 +167,13 @@ export class SignalModal {
         <button class="signal-dismiss-btn">Close</button>
       </div>
     `;
+
+    if (evidence.extractedPole) {
+      // Use setTimeout to ensure DOM is updated before rendering D3 graph
+      setTimeout(() => {
+        renderPoleGraph('#pole-graph-container', evidence.extractedPole);
+      }, 0);
+    }
 
     this.element.classList.add('active');
   }
@@ -441,6 +450,9 @@ export class SignalModal {
               ${signal.data.relatedTopics.map(t => `<span class="signal-topic">${escapeHtml(t)}</span>`).join('')}
             </div>
           ` : ''}
+          ${signal.type === 'triangulation' && (signal.data.relatedTopics?.length ?? 0) >= 3 ? `
+            <div id="radar-${escapeHtml(signal.id)}" style="width: 100%; height: 150px; margin-top: 10px; background: rgba(0,0,0,0.1); border-radius: 8px;"></div>
+          ` : ''}
           ${signal.type === 'keyword_spike' && typeof data?.term === 'string' ? `
             <div class="signal-actions">
               <button class="suppress-keyword-btn" data-term="${escapeHtml(data.term)}">${t('modals.signal.suppress')}</button>
@@ -451,6 +463,14 @@ export class SignalModal {
     }).join('');
 
     content.innerHTML = html;
+
+    this.currentSignals.forEach(signal => {
+      if (signal.type === 'triangulation' && signal.data.relatedTopics && signal.data.relatedTopics.length >= 3) {
+        setTimeout(() => {
+          renderConvergenceRadar(`#radar-${signal.id}`, signal.data.relatedTopics as string[]);
+        }, 0);
+      }
+    });
   }
 
   private formatTime(date: Date): string {

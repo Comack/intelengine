@@ -4,6 +4,8 @@ import { t } from '@/services/i18n';
 export class PlaybackControl {
   private element: HTMLElement;
   private isPlaybackMode = false;
+  private isPlaying = false;
+  private playInterval: number | null = null;
   private timestamps: number[] = [];
   private currentIndex = 0;
   private onSnapshotChange: ((snapshot: DashboardSnapshot | null) => void) | null = null;
@@ -27,6 +29,7 @@ export class PlaybackControl {
         <div class="playback-controls">
           <button class="playback-btn" data-action="start">⏮</button>
           <button class="playback-btn" data-action="prev">◀</button>
+          <button class="playback-btn" data-action="play" title="Play">⏵</button>
           <button class="playback-btn playback-live" data-action="live">${t('components.playback.live')}</button>
           <button class="playback-btn" data-action="next">▶</button>
           <button class="playback-btn" data-action="end">⏭</button>
@@ -103,12 +106,23 @@ export class PlaybackControl {
     this.element.querySelector('.playback-live')?.classList.remove('active');
   }
 
+  public stopPlayback(): void {
+    this.isPlaying = false;
+    if (this.playInterval !== null) {
+      window.clearInterval(this.playInterval);
+      this.playInterval = null;
+    }
+    const playBtn = this.element.querySelector('[data-action="play"]');
+    if (playBtn) playBtn.textContent = '⏵';
+  }
+
   private goLive(): void {
+    this.stopPlayback();
     this.isPlaybackMode = false;
     this.currentIndex = this.timestamps.length - 1;
 
     const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;
-    slider.value = slider.max;
+    if (slider) slider.value = slider.max;
 
     this.updateTimeDisplay();
     this.onSnapshotChange?.(null);
@@ -118,6 +132,8 @@ export class PlaybackControl {
   }
 
   private handleAction(action: string): void {
+    if (action !== 'play') this.stopPlayback();
+
     switch (action) {
       case 'start':
         this.currentIndex = 0;
@@ -125,6 +141,30 @@ export class PlaybackControl {
       case 'prev':
         this.currentIndex = Math.max(0, this.currentIndex - 1);
         break;
+      case 'play':
+        if (this.isPlaying) {
+          this.stopPlayback();
+          return;
+        }
+        this.isPlaying = true;
+        const playBtn = this.element.querySelector('[data-action="play"]');
+        if (playBtn) playBtn.textContent = '⏸';
+        if (this.currentIndex >= this.timestamps.length - 1) {
+          this.currentIndex = 0;
+        }
+        this.playInterval = window.setInterval(() => {
+          if (this.currentIndex >= this.timestamps.length - 1) {
+            this.stopPlayback();
+            return;
+          }
+          this.currentIndex++;
+          const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;
+          if (slider) slider.value = String(this.currentIndex);
+          this.loadSnapshot(this.currentIndex);
+        }, 1500) as unknown as number;
+        // Load the current frame immediately
+        this.loadSnapshot(this.currentIndex);
+        return;
       case 'next':
         this.currentIndex = Math.min(this.timestamps.length - 1, this.currentIndex + 1);
         break;
@@ -137,7 +177,7 @@ export class PlaybackControl {
     }
 
     const slider = this.element.querySelector('.playback-slider') as HTMLInputElement;
-    slider.value = String(this.currentIndex);
+    if (slider) slider.value = String(this.currentIndex);
     this.loadSnapshot(this.currentIndex);
   }
 
