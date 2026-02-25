@@ -28,6 +28,8 @@ Remaining non-sebuf `api/*.js` files serve non-JSON content (RSS XML, HTML, redi
 | P1 | Map layers (conflicts, outages, AIS, military flights) | `src/services/conflict/`, `src/services/infrastructure/`, `src/services/maritime/`, `src/services/military/` | conflict, infrastructure, maritime, military | `server/worldmonitor/{domain}/v1/` | Requires user-provided API key | ✅ Explicit fallback: unavailable feeds are disabled while map rendering remains active for local/static layers. |
 | P2 | Summaries | `src/services/news/` | news | `server/worldmonitor/news/v1/` | Requires user-provided API key | ✅ Explicit fallback chain: Groq → OpenRouter → browser model. |
 | P2 | MarketPanel | `src/services/market/`, `src/services/prediction/` | market, prediction | `server/worldmonitor/market/v1/`, `server/worldmonitor/prediction/v1/` | Fully local | ✅ Multi-provider and cache-aware fetch behavior maintained in sidecar mode. |
+| P2 | Forensics Engine | `src/services/forensics.ts` | intelligence | `server/worldmonitor/intelligence/v1/` | Fully local | ✅ Heavy compute orchestration executed locally; Redis-aware storage fallback. |
+| P3 | Evidence Service | `src/services/evidence.ts` | evidence | `server/worldmonitor/evidence/v1/` | Fully local | ✅ Local ingestion and POLE graph extraction active in sidecar. |
 | P3 | Flight enrichment | `src/services/military/` | military | `server/worldmonitor/military/v1/` | Requires user-provided API key | ✅ Explicit fallback: heuristic-only classification mode. |
 | P3 | OpenSky relay fallback path | `src/services/military/` | military | `server/worldmonitor/military/v1/` | Requires cloud fallback | ✅ Relay fallback documented; no hard failure when relay is unavailable. |
 

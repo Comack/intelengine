@@ -91,6 +91,12 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 
 **Show**: Open Settings → LLMs tab → Ollama model dropdown auto-populated → generate a summary with the local model.
 
+### 12. Intelligence Forensics Visualizations
+
+Interactive D3.js graphs for deep signal analysis. Visualizes causal DAGs (cause/effect chains with time lags), POLE entity relationship maps (Persons, Objects, Locations, Events), and multi-source convergence radars. Includes a "What-If" sandbox to simulate how signal changes affect anomaly significance.
+
+**Show**: Click a forensics anomaly → show the Causal DAG. Open evidence → show the POLE relationship map. Use the sliders in the Counterfactual Sandbox.
+
 ---
 
 ## Visual Content Suggestions
@@ -154,6 +160,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 
 | Version | Feature |
 |---------|---------|
+| v2.5.3 | Intelligence Forensics Engine, D3 causal DAGs, POLE entity relationship maps, Counterfactual Sandbox, Hexagonal Column map layers, Timeline DVR mode |
 | v2.5.1 | Batch FRED fetching, parallel UCDP, partial cache TTL, bot middleware |
 | v2.5.0 | Ollama/LM Studio local LLM support, settings split into LLMs + API Keys tabs, keychain vault consolidation |
 | v2.4.1 | Ultra-wide layout (panels wrap around map on 2000px+ screens) |

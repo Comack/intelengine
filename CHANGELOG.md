@@ -2,6 +2,19 @@
 
 All notable changes to World Monitor are documented here.
 
+## [2.5.3] - 2026-02-25
+
+### Added
+
+- **Intelligence Forensics Engine** — deterministic, multi-modal analysis pipeline for signal telemetry; implements shadow forensics runs with weak supervision fusion (learns source accuracies without labels), conformal anomaly detection (rigorous p-values), and causal discovery (A → B directed edges with temporal lags)
+- **Interactive Causal DAG** — force-directed graph visualization (D3.js) of causal relationships between signal types, highlighting "hot" anomaly paths
+- **POLE Entity Relationship Map** — visual entity graph extracted from evidence, showing relational links between Persons, Objects, Locations, and Events
+- **"What-If" Counterfactual Sandbox** — interactive explainability widget allowing analysts to drag contribution sliders and simulate how signal changes would affect anomaly p-values
+- **Timeline DVR Mode** — automatic playback for the global historical scrubber, allowing for high-fidelity review of cascading alert events across the dashboard
+- **Hexagonal Column Map Layer** — high-performance 3D anomaly visualization using deck.gl `ColumnLayer`, where hexagonal column height represents magnitude (`legacyZScore`) and color intensity represents confidence (`pValue`)
+- **Convergence Radar** — Venn-diagram style radar visualizing triangulation consensus between Gov, Wire, and Intel sources for multi-source alerts
+- **Evidence Ingestion Service** — backend support for ingesting raw source material linked to forensic signals with automated POLE entity extraction
+
 ## [2.5.2] - 2026-02-21
 
 ### Fixed

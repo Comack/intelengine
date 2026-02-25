@@ -46,6 +46,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 | **Country Instability Index** | Real-time stability scores for 20 monitored countries |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
+| **Deterministic Forensics** | Shadow-run orchestration with causal discovery and entity relationship mapping |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 
 ### News Coverage
@@ -193,6 +194,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Country Instability Index** | Real-time stability scores for 20 monitored countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
+| **Deterministic Forensics** | Shadow-run orchestration with causal discovery and entity relationship mapping |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
 
@@ -477,6 +479,45 @@ The entity registry spans strategically significant sectors:
 | **Consumer** | Tesla, Walmart, Costco, Home Depot | EV, retail, grocery, housing |
 
 This broad coverage enables correlation detection across diverse geopolitical and market events.
+
+---
+
+## Intelligence Forensics & Analysis
+
+The forensics pipeline provides deterministic, multi-modal analysis of signal telemetry to identify and explain complex anomalies.
+
+### Forensics Orchestrator
+
+The system runs "shadow runs" that process batches of signals through a multi-phase pipeline:
+
+| Phase | Description |
+|-------|-------------|
+| **Signal Collect** | Ingestion of raw telemetry from news, markets, and infrastructure trackers. |
+| **Extract POLE** | Automatic extraction of Persons, Objects, Locations, and Events from raw evidence. |
+| **Weak Fusion** | Use of Weak Supervision (EM algorithm) to learn source accuracies and fuse signals without labels. |
+| **Conformal Anomaly** | Rigorous anomaly detection using inductive conformal prediction to calculate exact p-values. |
+| **Causal Discovery** | Detection of directed relationships (A → B) and temporal lags between signal types. |
+| **Explainability** | Computation of counterfactual levers to show which specific signals drove an anomaly. |
+
+### Deterministic Visualizations
+
+Advanced visualization components allow analysts to interact with forensic data:
+
+- **Interactive Causal Graph** — A D3.js force-directed DAG showing how signals propagate through the system.
+- **POLE Relationship Map** — Visualization of the entity graph extracted from evidence, showing the links between key actors and events.
+- **Counterfactual Sandbox** — Interactive explainability sliders that allow analysts to simulate "what-if" scenarios.
+- **Convergence Radar** — Venn-diagram visualization of multi-source triangulation (Gov + Wire + Intel).
+- **Hexagonal Column Layer** — 3D map rendering where column height represents anomaly magnitude and intensity represents confidence.
+
+### Evidence Ingestion
+
+The **Evidence Service** maintains a repository of raw source material (scraped content, PDF reports, telemetry logs) that backs every forensic signal. Analysts can view the "Ground Truth" by drilling down from an anomaly into the associated POLE graph and raw content.
+
+### Historical Timeline DVR
+
+A global playback controller with automatic playback allows for high-fidelity historical review. Analysts can scrubber through saved dashboard snapshots to watch cascading events unfold in real-time speed or accelerated time.
+
+---
 
 ### Entity Registry Architecture
 
@@ -3687,6 +3728,12 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 - ✅ **Naval Vessel Classification** - Known vessel database with hull number matching and AIS type inference
 - ✅ **Strike Capability Detection** - Assessment of offensive force packages (tankers + AWACS + fighters)
 - ✅ **Theater Posture Thresholds** - Custom elevated/critical thresholds for each strategic theater
+- ✅ **Intelligence Forensics Engine** - Shadow-run orchestration with causal discovery and weak supervision fusion
+- ✅ **Deterministic Visualizations** - Interactive D3 causal DAGs, POLE entity maps, and convergence radars
+- ✅ **Evidence Ingestion Service** - Structured POLE extraction from raw source material linked to signals
+- ✅ **Anomaly Counterfactual Sandbox** - Interactive "what-if" simulation for anomaly explainability
+- ✅ **Hexagonal Column Map Layer** - 3D anomaly magnitude/confidence markers
+- ✅ **Timeline DVR Mode** - Automatic playback for historical scrubber
 
 ### Planned
 
@@ -3697,7 +3744,6 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 
 **Medium Priority:**
 
-- **Historical Playback** - Review past dashboard states with timeline scrubbing
 - **Election Calendar Integration** - Auto-boost sensitivity 30 days before major elections
 - **Choropleth CII Map Layer** - Country-colored overlay showing instability scores
 

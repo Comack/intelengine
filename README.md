@@ -44,7 +44,9 @@
 | Cloud-dependent AI tools           | **Run AI locally** with Ollama/LM Studio — no API keys, no data leaves your machine                       |
 | Web-only dashboards                | **Native desktop app** (Tauri) for macOS, Windows, and Linux + installable PWA with offline map support    |
 | Flat 2D maps                       | **3D WebGL globe** with deck.gl rendering and 35+ toggleable data layers                                   |
+| Intelligence Black Box             | **Forensics Engine** with weak supervision fusion, conformal anomalies, and causal discovery                |
 | Siloed financial data              | **Finance variant** with 92 stock exchanges, 19 financial centers, 13 central banks, and Gulf FDI tracking |
+| Advanced Visualizations            | **Interactive D3.js Graphs** for causal DAGs, POLE entity maps, and convergence radars                     |
 | Undocumented, fragile APIs         | **Proto-first API contracts** — 17 typed services with auto-generated clients, servers, and OpenAPI docs   |
 
 ---
@@ -91,6 +93,8 @@ All three variants run from a single codebase — switch between them with one c
 - **Country Instability Index** — real-time stability scores for 22 monitored nations using weighted multi-signal blend
 - **Trending Keyword Spike Detection** — 2-hour rolling window vs 7-day baseline flags surging terms across RSS feeds, with CVE/APT entity extraction and auto-summarization
 - **Strategic Posture Assessment** — composite risk score combining all intelligence modules with trend detection
+- **Deterministic Forensics** — multi-modal analysis pipeline using weak supervision fusion to learn source weights, conformal anomaly detection for rigorous p-values, and causal discovery to map signal propagation.
+- **Evidence Ingestion** — automated and manual ingestion of raw evidence with structured POLE (Persons, Objects, Locations, Events) entity extraction.
 - **Country Brief Pages** — click any country for a full-page intelligence dossier with CII score ring, AI-generated analysis, top news with citation anchoring, prediction markets, 7-day event timeline, active signal chips, infrastructure exposure, and stock market index — exportable as JSON, CSV, or image
 
 ### Real-Time Data Layers
@@ -167,6 +171,15 @@ All three variants run from a single codebase — switch between them with one c
 - Gulf FDI investment layer — 64 Saudi/UAE foreign direct investments plotted globally, color-coded by status (operational, under-construction, announced), sized by investment amount
 
 </details>
+
+### Forensics & Analysis Visualizations
+
+- **Interactive Causal DAG** — Force-directed graph (D3.js) visualizing the causal relationships and time lags between different signal types (e.g., how a `military_surge` leads to a `market_drop`).
+- **POLE Entity Relationship Map** — Relational context for evidence, graphing the connections between extracted Persons, Objects, Locations, and Events.
+- **"What-If" Counterfactual Sandbox** — Interactive anomaly explainability allowing analysts to drag contribution sliders and simulate how signal changes would affect anomaly significance.
+- **Geospatial Hexagonal Columns** — High-performance 3D map markers for anomalies using deck.gl `ColumnLayer`, where column height represents magnitude (`legacyZScore`) and opacity represents confidence (`pValue`).
+- **Timeline DVR Mode** — Global playback scrubber with automatic playback, allowing historical review of cascading alerts across the entire dashboard.
+- **Convergence Radar** — Venn-diagram style radar visualizing triangulation consensus between Wire, Gov, and Intel sources.
 
 ### Live News & Video
 
@@ -1348,6 +1361,11 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Dynamic Open Graph images for social sharing (SVG card generation with CII scores)
 - [x] Storage quota management (graceful degradation on exhausted localStorage/IndexedDB)
 - [x] Chunk reload guard (one-shot recovery from stale-asset 404s after deployments)
+- [x] Deterministic Forensics Engine (Shadow runs, weak supervision fusion, conformal p-values)
+- [x] Evidence Ingestion Service (Structured POLE extraction from raw evidence)
+- [x] Advanced D3.js Visualizations (Causal DAG, POLE Map, Convergence Radar)
+- [x] Counterfactual Sandbox (Interactive "what-if" anomaly simulation)
+- [x] Timeline DVR (Automatic playback for historical situational awareness)
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts
 - [ ] Self-hosted Docker image
