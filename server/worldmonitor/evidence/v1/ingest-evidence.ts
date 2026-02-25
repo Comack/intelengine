@@ -11,7 +11,7 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.1-8b-instant';
 
 async function extractPoleGraph(text: string, description?: string, metadata?: any[]): Promise<POLEGraph> {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error('GROQ_API_KEY not configured');
   }
@@ -63,7 +63,7 @@ ${text}`;
 }
 
 export async function ingestEvidence(
-  ctx: ServerContext,
+  _ctx: ServerContext,
   req: IngestEvidenceRequest,
 ): Promise<IngestEvidenceResponse> {
   const id = `evidence_${generateId()}`;

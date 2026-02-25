@@ -2,7 +2,7 @@ import type { ServerContext, ListEvidenceRequest, ListEvidenceResponse, Evidence
 import { getCachedJson } from '../../../_shared/redis';
 
 export async function listEvidence(
-  ctx: ServerContext,
+  _ctx: ServerContext,
   req: ListEvidenceRequest,
 ): Promise<ListEvidenceResponse> {
   const indexKey = 'evidence:index';

@@ -7,7 +7,7 @@ import type {
 import {
   MONITORED_AIRPORTS,
   FAA_AIRPORTS,
-} from '../../../../src/config/airports';
+} from './_airports';
 import {
   FAA_URL,
   parseFaaXml,

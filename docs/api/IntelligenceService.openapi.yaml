@@ -968,6 +968,10 @@ components:
                 error:
                     type: string
                     description: Error message if the run failed.
+                causalEdges:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsCausalEdge'
             description: RunForensicsShadowResponse returns full outputs from the shadow run.
         ForensicsRunMetadata:
             type: object
@@ -1146,7 +1150,37 @@ components:
                     items:
                         type: string
                         description: Associated POLE/evidence objects backing this anomaly.
+                counterfactualLevers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ForensicsCounterfactualLever'
             description: ForensicsCalibratedAnomaly is a conformal anomaly decision for one signal.
+        ForensicsCounterfactualLever:
+            type: object
+            properties:
+                signalType:
+                    type: string
+                    description: Signal type for this lever.
+                currentContribution:
+                    type: number
+                    format: double
+                    description: Current contribution (0-100 scale).
+                requiredDelta:
+                    type: number
+                    format: double
+                    description: How much the signal value must change to push the anomaly below threshold.
+                direction:
+                    type: string
+                    description: '"increase" or "decrease".'
+                learnedWeight:
+                    type: number
+                    format: double
+                    description: Learned weight from weak supervision EM.
+                leverImpact:
+                    type: number
+                    format: double
+                    description: Leverage impact (0-1, higher = more leverage).
+            description: ForensicsCounterfactualLever describes how much one signal drives an anomaly.
         ForensicsPhaseTrace:
             type: object
             properties:
@@ -1183,6 +1217,32 @@ components:
                         type: string
                         description: Parent phases that this phase depends on (forms a DAG).
             description: ForensicsPhaseTrace is a per-phase execution trace record.
+        ForensicsCausalEdge:
+            type: object
+            properties:
+                causeSignalType:
+                    type: string
+                    description: Cause signal type.
+                effectSignalType:
+                    type: string
+                    description: Effect signal type.
+                causalScore:
+                    type: number
+                    format: double
+                    description: MDL-based causal score (0-1).
+                delayMs:
+                    type: integer
+                    format: int64
+                    description: 'Estimated median causal lag in milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                supportCount:
+                    type: integer
+                    format: int32
+                    description: Number of co-activation instances supporting this edge.
+                conditionalLift:
+                    type: number
+                    format: double
+                    description: 'Conditional lift: P(B|A) / P(B baseline).'
+            description: ForensicsCausalEdge describes a directed causal relationship between two signal types.
         ListFusedSignalsRequest:
             type: object
             properties:
@@ -1383,6 +1443,10 @@ components:
                     type: number
                     format: double
                     description: Minimum p-value observed in this run (0-1). Defaults to 1 when empty.
+                causalEdgeCount:
+                    type: integer
+                    format: int32
+                    description: Number of causal edges discovered in this run.
             description: ForensicsRunSummary is a compact record for run history listing.
         GetForensicsPolicyRequest:
             type: object

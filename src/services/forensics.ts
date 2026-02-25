@@ -1,5 +1,6 @@
 import {
   IntelligenceServiceClient,
+  type ForensicsCausalEdge,
   type ForensicsSignalInput,
   type ForensicsFusedSignal,
   type ForensicsCalibratedAnomaly,
@@ -17,6 +18,7 @@ export interface ForensicsShadowResult {
   run?: ForensicsRunMetadata;
   fusedSignals: ForensicsFusedSignal[];
   anomalies: ForensicsCalibratedAnomaly[];
+  causalEdges: ForensicsCausalEdge[];
   trace: ForensicsPhaseTrace[];
   error: string;
 }
@@ -27,18 +29,20 @@ export async function runForensicsShadow(
   alpha = 0.05,
 ): Promise<ForensicsShadowResult> {
   try {
-    return await client.runForensicsShadow({
+    const result = await client.runForensicsShadow({
       domain,
       signals,
       alpha,
       persist: true,
       evidenceIds: [],
     });
+    return { ...result, causalEdges: result.causalEdges ?? [] };
   } catch (error) {
     return {
       run: undefined,
       fusedSignals: [],
       anomalies: [],
+      causalEdges: [],
       trace: [],
       error: error instanceof Error ? error.message : String(error),
     };

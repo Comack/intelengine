@@ -1,7 +1,9 @@
 declare const process: { env: Record<string, string | undefined> };
 
 import type {
+  ForensicsCausalEdge,
   ForensicsCalibratedAnomaly,
+  ForensicsCounterfactualLever,
   ForensicsFusedSignal,
   ForensicsPhaseStatus,
   ForensicsPhaseTrace,
@@ -24,8 +26,9 @@ import {
   upsertForensicsPolicyEntry,
 } from './forensics-blackboard';
 import { deriveFinancialTopologySignals } from './financial-topology';
+import { runCausalDiscovery } from './forensics-causal';
 import { getCachedJson } from '../../../_shared/redis';
-import type { Evidence, POLEGraph } from '../../../../src/generated/server/worldmonitor/evidence/v1/service_server';
+import type { Evidence } from '../../../../src/generated/server/worldmonitor/evidence/v1/service_server';
 
 const WORKER_TIMEOUT_MS = 8_000;
 
@@ -126,6 +129,8 @@ const TOPOLOGY_BASELINE_SIGNAL_TYPES = new Set([
   'topology_tsi',
   'topology_beta1',
   'topology_cycle_risk',
+  'topology_hyperedge_density',
+  'topology_cross_domain_sync',
 ]);
 
 function shouldTrackTopologyBaseline(signalType: string): boolean {
@@ -163,6 +168,7 @@ async function enrichTopologySignalsWithBaseline(
         value: roundValue(baselineStrength, 4),
         confidence: roundValue(confidence, 6),
         observedAt: signal.observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -230,8 +236,15 @@ async function callWorker<T>(path: string, body: unknown): Promise<T | null> {
   }
 }
 
-export function runWeakSupervisionFusion(signals: ForensicsSignalInput[]): ForensicsFusedSignal[] {
-  if (signals.length === 0) return [];
+interface WeakSupervisionResult {
+  fusedSignals: ForensicsFusedSignal[];
+  learnedWeights: Map<string, number>;     // signalType → normalized weight
+  learnedAccuracies: Map<string, number>;  // signalType → EM accuracy
+  classPrior: number;
+}
+
+export function runWeakSupervisionFusion(signals: ForensicsSignalInput[]): WeakSupervisionResult {
+  if (signals.length === 0) return { fusedSignals: [], learnedWeights: new Map(), learnedAccuracies: new Map(), classPrior: 0.5 };
 
   const sourceIds = Array.from(new Set(signals.map((signal) => signal.sourceId)));
   const signalTypes = Array.from(new Set(signals.map((signal) => signal.signalType)));
@@ -432,7 +445,74 @@ export function runWeakSupervisionFusion(signals: ForensicsSignalInput[]): Foren
   });
 
   outputs.sort((a, b) => b.score - a.score);
-  return outputs;
+
+  const learnedWeights = new Map<string, number>();
+  const learnedAccuracies = new Map<string, number>();
+  signalTypes.forEach((type, j) => {
+    learnedWeights.set(type, weights[j] ?? 0);
+    learnedAccuracies.set(type, accuracies[j] ?? 0.501);
+  });
+
+  return { fusedSignals: outputs, learnedWeights, learnedAccuracies, classPrior };
+}
+
+function computeCounterfactualLevers(
+  anomaly: ForensicsCalibratedAnomaly,
+  signals: ForensicsSignalInput[],
+  learnedWeights: Map<string, number>,
+  learnedAccuracies: Map<string, number>,
+  classPrior: number,
+  alpha: number,
+): ForensicsCounterfactualLever[] {
+  if (!anomaly.isAnomaly || anomaly.calibrationCount < 8) return [];
+
+  // Reconstruct logit for this anomaly's source/region context
+  const sourceSignals = signals.filter(
+    (s) => s.sourceId === anomaly.sourceId || s.domain === anomaly.domain,
+  );
+  if (sourceSignals.length === 0) return [];
+
+  const logitPrior = Math.log(Math.max(1e-6, classPrior) / Math.max(1e-6, 1 - classPrior));
+  const signalTypes = Array.from(learnedAccuracies.keys());
+
+  // Compute current logit sum
+  let currentLogit = logitPrior;
+  const activeTypes = new Set(sourceSignals.map((s) => s.signalType));
+
+  for (const type of activeTypes) {
+    const accuracy = clamp(learnedAccuracies.get(type) ?? 0.7, 0.501, 0.999);
+    const odds = Math.log(accuracy / (1 - accuracy));
+    currentLogit += odds; // assume positive vote for active signals
+  }
+
+  const currentP = sigmoid(currentLogit);
+  if (currentP <= alpha) return []; // not actually anomalous by our logit reconstruction
+
+  const levers: ForensicsCounterfactualLever[] = [];
+
+  for (const type of signalTypes) {
+    if (!activeTypes.has(type)) continue;
+    const accuracy = clamp(learnedAccuracies.get(type) ?? 0.7, 0.501, 0.999);
+    const weight = learnedWeights.get(type) ?? 0;
+    const currentContribution = weight * 100;
+
+    // Delta logit from flipping this signal from positive to negative vote
+    const deltaLogit = -2 * Math.log(accuracy / (1 - accuracy));
+    const newP = sigmoid(currentLogit + deltaLogit);
+    const leverImpact = clamp((currentP - newP) / Math.max(currentP, 1e-6), 0, 1);
+
+    levers.push({
+      signalType: type,
+      currentContribution: Math.round(currentContribution * 100) / 100,
+      requiredDelta: Math.round(Math.abs(deltaLogit) * 1_000_000) / 1_000_000,
+      direction: 'decrease',
+      learnedWeight: Math.round(weight * 1_000_000) / 1_000_000,
+      leverImpact: Math.round(leverImpact * 1_000_000) / 1_000_000,
+    });
+  }
+
+  levers.sort((a, b) => b.leverImpact - a.leverImpact);
+  return levers.slice(0, 4);
 }
 
 function severityFromPValue(pValue: number, alpha: number, isAnomaly: boolean): SeverityLevel {
@@ -507,6 +587,7 @@ export async function runConformalAnomalies(
       intervalMs: Math.max(0, Math.round(intervalMs)),
       observedAt: Math.max(0, Math.round(signal.observedAt || 0)),
       evidenceIds: signal.evidenceIds || [],
+      counterfactualLevers: [],
     });
 
     await appendCalibrationValue(metricKey, signal.value);
@@ -623,7 +704,7 @@ async function selectPolicyOrder(
   if (Math.random() < POLICY_EPSILON) {
     return Math.random() < 0.5
       ? [...POLICY_ACTIONS]
-      : [POLICY_ACTIONS[1], POLICY_ACTIONS[0]];
+      : [POLICY_ACTIONS[1]!, POLICY_ACTIONS[0]!];
   }
 
   const fusionQ = qMap.get('weak-supervision-fusion') ?? 0;
@@ -683,6 +764,10 @@ export async function runForensicsShadowPipeline(
   let workerMode = process.env.FORENSICS_WORKER_URL ? 'remote' : 'local';
   let fusedSignals: ForensicsFusedSignal[] = [];
   let anomalies: ForensicsCalibratedAnomaly[] = [];
+  let causalEdges: ForensicsCausalEdge[] = [];
+  let learnedWeights = new Map<string, number>();
+  let learnedAccuracies = new Map<string, number>();
+  let classPrior = 0.5;
 
   try {
     let normalizedSignals = await executePhase(trace, 'ingest-signals', [], async () => {
@@ -712,6 +797,7 @@ export async function runForensicsShadowPipeline(
               value: 1.0,
               confidence: 0.85,
               observedAt: ev.timestamp || Date.now(),
+              evidenceIds: [id],
             });
           }
         } catch { /* ignore */ }
@@ -753,10 +839,19 @@ export async function runForensicsShadowPipeline(
             const workerPayload = { domain, signals: enrichedSignals, alpha };
             const workerResponse = await callWorker<WorkerFuseResponse>('/internal/forensics/v1/fuse', workerPayload);
             if (isWorkerFuseResponse(workerResponse)) {
+              // Worker path: run locally once to capture learned weights (sub-5ms for typical counts)
+              const localResult = runWeakSupervisionFusion(enrichedSignals);
+              learnedWeights = localResult.learnedWeights;
+              learnedAccuracies = localResult.learnedAccuracies;
+              classPrior = localResult.classPrior;
               return workerResponse.fusedSignals || [];
             }
             if (workerMode === 'remote') workerMode = 'mixed';
-            return runWeakSupervisionFusion(enrichedSignals);
+            const result = runWeakSupervisionFusion(enrichedSignals);
+            learnedWeights = result.learnedWeights;
+            learnedAccuracies = result.learnedAccuracies;
+            classPrior = result.classPrior;
+            return result.fusedSignals;
           });
         } else {
           anomalies = await executePhase(trace, action, ['policy-select'], async () => {
@@ -783,6 +878,27 @@ export async function runForensicsShadowPipeline(
       }
     }
 
+    // Counterfactual levers: explain each flagged anomaly using learned fusion weights
+    if (learnedWeights.size > 0) {
+      anomalies = anomalies.map((a) => {
+        if (!a.isAnomaly) return a;
+        const levers = computeCounterfactualLevers(
+          a, enrichedSignals, learnedWeights, learnedAccuracies, classPrior, alpha,
+        );
+        if (levers.length === 0) return a;
+        return { ...a, counterfactualLevers: levers };
+      });
+    }
+
+    // Causal discovery: directed edges between signal types
+    causalEdges = await executePhase(trace, 'causal-discovery', policySelection.phaseOrder, async () => {
+      try {
+        return runCausalDiscovery(enrichedSignals);
+      } catch {
+        return [];
+      }
+    });
+
     const completedAt = Date.now();
     const run: ForensicsRunMetadata = {
       runId,
@@ -794,12 +910,13 @@ export async function runForensicsShadowPipeline(
       workerMode,
     };
 
-    await executePhase(trace, 'persist-results', policySelection.phaseOrder, async () => {
+    await executePhase(trace, 'persist-results', [...policySelection.phaseOrder, 'causal-discovery'], async () => {
       if (!persist) return;
       await saveForensicsRun({
         run,
         fusedSignals,
         anomalies,
+        causalEdges,
         trace,
         createdAt: completedAt,
       });
@@ -809,6 +926,7 @@ export async function runForensicsShadowPipeline(
       run,
       fusedSignals,
       anomalies,
+      causalEdges,
       trace,
       error: '',
     };
@@ -829,6 +947,7 @@ export async function runForensicsShadowPipeline(
         run,
         fusedSignals,
         anomalies,
+        causalEdges,
         trace,
         createdAt: completedAt,
       });
@@ -838,6 +957,7 @@ export async function runForensicsShadowPipeline(
       run,
       fusedSignals,
       anomalies,
+      causalEdges,
       trace,
       error: error instanceof Error ? error.message : String(error),
     };

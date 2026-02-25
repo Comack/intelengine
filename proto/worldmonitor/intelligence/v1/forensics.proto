@@ -134,6 +134,8 @@ message ForensicsCalibratedAnomaly {
   int64 observed_at = 18 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Associated POLE/evidence objects backing this anomaly.
   repeated string evidence_ids = 19;
+  // Counterfactual levers explaining which signal changes would reduce this anomaly.
+  repeated ForensicsCounterfactualLever counterfactual_levers = 20;
 }
 
 // ForensicsPhaseStatus reports execution status for each orchestrator phase.
@@ -195,6 +197,40 @@ message ForensicsRunSummary {
   double max_fused_score = 5;
   // Minimum p-value observed in this run (0-1). Defaults to 1 when empty.
   double min_p_value = 6;
+  // Number of causal edges discovered in this run.
+  int32 causal_edge_count = 7;
+}
+
+// ForensicsCausalEdge describes a directed causal relationship between two signal types.
+message ForensicsCausalEdge {
+  // Cause signal type.
+  string cause_signal_type = 1;
+  // Effect signal type.
+  string effect_signal_type = 2;
+  // MDL-based causal score (0-1).
+  double causal_score = 3;
+  // Estimated median causal lag in milliseconds.
+  int64 delay_ms = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Number of co-activation instances supporting this edge.
+  int32 support_count = 5;
+  // Conditional lift: P(B|A) / P(B baseline).
+  double conditional_lift = 6;
+}
+
+// ForensicsCounterfactualLever describes how much one signal drives an anomaly.
+message ForensicsCounterfactualLever {
+  // Signal type for this lever.
+  string signal_type = 1;
+  // Current contribution (0-100 scale).
+  double current_contribution = 2;
+  // How much the signal value must change to push the anomaly below threshold.
+  double required_delta = 3;
+  // "increase" or "decrease".
+  string direction = 4;
+  // Learned weight from weak supervision EM.
+  double learned_weight = 5;
+  // Leverage impact (0-1, higher = more leverage).
+  double lever_impact = 6;
 }
 
 // ForensicsPolicyEntry stores one learned policy value (Q-table row).

@@ -14,6 +14,7 @@ export async function runForensicsShadow(
       run: undefined,
       fusedSignals: [],
       anomalies: [],
+      causalEdges: [],
       trace: [],
       error: 'Missing required field: domain',
     };
@@ -23,6 +24,7 @@ export async function runForensicsShadow(
       run: undefined,
       fusedSignals: [],
       anomalies: [],
+      causalEdges: [],
       trace: [],
       error: 'Missing required field: signals',
     };

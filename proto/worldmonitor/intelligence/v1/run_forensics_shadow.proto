@@ -39,4 +39,6 @@ message RunForensicsShadowResponse {
   repeated ForensicsPhaseTrace trace = 4;
   // Error message if the run failed.
   string error = 5;
+  // Discovered causal edges between signal types.
+  repeated ForensicsCausalEdge causal_edges = 6;
 }

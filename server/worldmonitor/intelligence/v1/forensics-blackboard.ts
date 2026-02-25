@@ -1,4 +1,5 @@
 import type {
+  ForensicsCausalEdge,
   ForensicsCalibratedAnomaly,
   ForensicsFusedSignal,
   ForensicsPhaseTrace,
@@ -26,6 +27,7 @@ interface StoredForensicsRun {
   run: ForensicsRunMetadata;
   fusedSignals: ForensicsFusedSignal[];
   anomalies: ForensicsCalibratedAnomaly[];
+  causalEdges: ForensicsCausalEdge[];
   trace: ForensicsPhaseTrace[];
   createdAt: number;
 }
@@ -104,6 +106,9 @@ function parseStoredRun(value: unknown): StoredForensicsRun | null {
     anomalies: Array.isArray(candidate.anomalies)
       ? candidate.anomalies as ForensicsCalibratedAnomaly[]
       : [],
+    causalEdges: Array.isArray(candidate.causalEdges)
+      ? candidate.causalEdges as ForensicsCausalEdge[]
+      : [],
     trace: Array.isArray(candidate.trace)
       ? candidate.trace as ForensicsPhaseTrace[]
       : [],
@@ -126,6 +131,7 @@ function parseRunSummaryList(value: unknown): ForensicsRunSummary[] {
       anomalyFlaggedCount: typeof candidate.anomalyFlaggedCount === 'number' ? candidate.anomalyFlaggedCount : 0,
       maxFusedScore: typeof candidate.maxFusedScore === 'number' ? candidate.maxFusedScore : 0,
       minPValue: typeof candidate.minPValue === 'number' ? candidate.minPValue : 1,
+      causalEdgeCount: typeof candidate.causalEdgeCount === 'number' ? candidate.causalEdgeCount : 0,
     });
   }
   return summaries;
@@ -188,6 +194,7 @@ function toRunSummary(record: StoredForensicsRun): ForensicsRunSummary {
     anomalyFlaggedCount,
     maxFusedScore: Math.round(maxFusedScore * 100) / 100,
     minPValue: Math.round(minPValue * 1_000_000) / 1_000_000,
+    causalEdgeCount: record.causalEdges.length,
   };
 }
 

@@ -252,6 +252,7 @@ describe('Forensics UI integration', () => {
 
 describe('Forensics map overlay integration', () => {
   const appSrc = readSrc('src/App.ts');
+  const builderSrc = readSrc('src/services/forensics-signal-builder.ts');
   const deckSrc = readSrc('src/components/DeckGLMap.ts');
   const popupSrc = readSrc('src/components/MapPopup.ts');
   const mapContainerSrc = readSrc('src/components/MapContainer.ts');
@@ -263,7 +264,7 @@ describe('Forensics map overlay integration', () => {
     assert.match(appSrc, /classifyForensicsMonitor/);
     assert.match(appSrc, /resolveForensicsAnomalyFreshness/);
     assert.match(appSrc, /anomaly\.observedAt/);
-    assert.match(appSrc, /resolveMarketSourceCoordinate/);
+    assert.match(builderSrc, /resolveMarketSourceCoordinate/);
     assert.match(appSrc, /monitorCategory:\s*monitor\.category/);
     assert.match(appSrc, /isNearLive/);
     assert.match(appSrc, /this\.map\?\.setForensicsAnomalies\(overlay\)/);
@@ -298,6 +299,7 @@ describe('Forensics map overlay integration', () => {
 
 describe('Operational signal integration', () => {
   const appSrc = readSrc('src/App.ts');
+  const builderSrc = readSrc('src/services/forensics-signal-builder.ts');
   const aggregatorSrc = readSrc('src/services/signal-aggregator.ts');
   const focalPointSrc = readSrc('src/services/focal-point-detector.ts');
 
@@ -317,8 +319,8 @@ describe('Operational signal integration', () => {
     assert.match(appSrc, /runOperationalForensicsShadow\('intelligence'\)/);
     assert.match(appSrc, /runOperationalForensicsShadow\('market'\)/);
     assert.match(appSrc, /scope === 'market' && SITE_VARIANT !== 'finance' && SITE_VARIANT !== 'tech'/);
-    assert.match(appSrc, /buildIntelligenceForensicsSignals/);
-    assert.match(appSrc, /buildMarketForensicsSignals/);
+    assert.match(builderSrc, /buildIntelligenceSignals/);
+    assert.match(builderSrc, /buildMarketSignals/);
     assert.match(appSrc, /runForensicsShadow\(domain, signals, alpha\)/);
     assert.match(appSrc, /signalAggregator\.ingestTemporalAnomalies\(derivedAnomalies\)/);
     assert.match(appSrc, /buildAisTrajectoryStreams/);
@@ -327,12 +329,12 @@ describe('Operational signal integration', () => {
   it('feeds cyber and AIS data into operational forensics path', () => {
     assert.match(appSrc, /signalAggregator\.ingestCyberThreats\(threats\)/);
     assert.match(appSrc, /signalAggregator\.ingestAisDisruptions\(disruptions\)/);
-    assert.match(appSrc, /classifyAisTrajectorySignal/);
-    assert.match(appSrc, /buildAisTrajectoryForensicsSignals/);
-    assert.match(appSrc, /ais_route_deviation/);
-    assert.match(appSrc, /ais_loitering/);
-    assert.match(appSrc, /ais_silence/);
-    assert.match(appSrc, /sourceId\.match\(\/@/);
+    assert.match(builderSrc, /classifyAisTrajectorySignal/);
+    assert.match(builderSrc, /buildAisTrajectorySignals/);
+    assert.match(builderSrc, /ais_route_deviation/);
+    assert.match(builderSrc, /ais_loitering/);
+    assert.match(builderSrc, /ais_silence/);
+    assert.match(builderSrc, /sourceId\.match\(\/@/);
     assert.match(aggregatorSrc, /e\.observedAt/);
     assert.match(aggregatorSrc, /new Date\(observedAt\)/);
   });
@@ -340,6 +342,7 @@ describe('Operational signal integration', () => {
 
 describe('Forensics signal enrichment from in-app sources', () => {
   const appSrc = readSrc('src/App.ts');
+  const builderSrc = readSrc('src/services/forensics-signal-builder.ts');
   const macroPanelSrc = readSrc('src/components/MacroSignalsPanel.ts');
   const etfPanelSrc = readSrc('src/components/ETFFlowsPanel.ts');
   const stablePanelSrc = readSrc('src/components/StablecoinPanel.ts');
@@ -358,28 +361,28 @@ describe('Forensics signal enrichment from in-app sources', () => {
   });
 
   it('builds tiered enrichment families for intelligence and market scopes', () => {
-    assert.match(appSrc, /buildCountryRiskForensicsSignals/);
-    assert.match(appSrc, /buildMacroForensicsSignals/);
-    assert.match(appSrc, /buildEtfForensicsSignals/);
-    assert.match(appSrc, /buildStablecoinForensicsSignals/);
-    assert.match(appSrc, /buildEconomicForensicsSignals/);
-    assert.match(appSrc, /conflict_event_burst/);
-    assert.match(appSrc, /ucdp_intensity/);
-    assert.match(appSrc, /hapi_political_violence/);
-    assert.match(appSrc, /displacement_outflow/);
-    assert.match(appSrc, /climate_stress/);
-    assert.match(appSrc, /macro_liquidity_extreme/);
-    assert.match(appSrc, /macro_flow_structure_divergence/);
-    assert.match(appSrc, /macro_regime_rotation/);
-    assert.match(appSrc, /macro_technical_dislocation/);
-    assert.match(appSrc, /macro_hashrate_volatility/);
-    assert.match(appSrc, /macro_fear_greed_extremity/);
-    assert.match(appSrc, /etf_flow_pressure/);
-    assert.match(appSrc, /etf_net_flow_pressure/);
-    assert.match(appSrc, /stablecoin_depeg_pressure/);
-    assert.match(appSrc, /stablecoin_systemic_stress/);
-    assert.match(appSrc, /fred_.*_delta_pct/);
-    assert.match(appSrc, /oil_.*_delta_pct/);
+    assert.match(builderSrc, /buildCountryRiskSignals/);
+    assert.match(builderSrc, /buildMacroSignals/);
+    assert.match(builderSrc, /buildEtfSignals/);
+    assert.match(builderSrc, /buildStablecoinSignals/);
+    assert.match(builderSrc, /buildEconomicSignals/);
+    assert.match(builderSrc, /conflict_event_burst/);
+    assert.match(builderSrc, /ucdp_intensity/);
+    assert.match(builderSrc, /hapi_political_violence/);
+    assert.match(builderSrc, /displacement_outflow/);
+    assert.match(builderSrc, /climate_stress/);
+    assert.match(builderSrc, /macro_liquidity_extreme/);
+    assert.match(builderSrc, /macro_flow_structure_divergence/);
+    assert.match(builderSrc, /macro_regime_rotation/);
+    assert.match(builderSrc, /macro_technical_dislocation/);
+    assert.match(builderSrc, /macro_hashrate_volatility/);
+    assert.match(builderSrc, /macro_fear_greed_extremity/);
+    assert.match(builderSrc, /etf_flow_pressure/);
+    assert.match(builderSrc, /etf_net_flow_pressure/);
+    assert.match(builderSrc, /stablecoin_depeg_pressure/);
+    assert.match(builderSrc, /stablecoin_systemic_stress/);
+    assert.match(builderSrc, /fred_.*_delta_pct/);
+    assert.match(builderSrc, /oil_.*_delta_pct/);
   });
 
   it('preserves variant guards and adds observed-time bucketing to shadow state keys', () => {
@@ -438,7 +441,7 @@ describe('Forensics cross-view integrations', () => {
 });
 
 describe('Market/prediction event-time fidelity', () => {
-  const appSrc = readSrc('src/App.ts');
+  const builderSrc = readSrc('src/services/forensics-signal-builder.ts');
   const marketSrc = readSrc('src/services/market/index.ts');
   const predictionSrc = readSrc('src/services/prediction/index.ts');
   const typesSrc = readSrc('src/types/index.ts');
@@ -449,10 +452,10 @@ describe('Market/prediction event-time fidelity', () => {
     assert.match(marketSrc, /observedAt,/);
     assert.match(predictionSrc, /interface PredictionMarket[\s\S]*observedAt\?: number/);
     assert.match(predictionSrc, /resolveObservedAt\(/);
-    assert.match(appSrc, /market\.observedAt/);
-    assert.match(appSrc, /prediction\.observedAt/);
-    assert.match(appSrc, /latestMarketObservedAt/);
-    assert.match(appSrc, /latestPredictionObservedAt/);
+    assert.match(builderSrc, /market\.observedAt/);
+    assert.match(builderSrc, /prediction\.observedAt/);
+    assert.match(builderSrc, /latestMarketObservedAt/);
+    assert.match(builderSrc, /latestPredictionObservedAt/);
   });
 });
 
@@ -485,7 +488,6 @@ describe('Forensics topology map overlay', () => {
   it('builds and applies topology window map overlay in App', () => {
     assert.match(appSrc, /buildTopologyWindowMapOverlay/);
     assert.match(appSrc, /applyTopologyWindowMapOverlay/);
-    assert.match(appSrc, /latestTopologyWindowOverlay/);
     assert.match(appSrc, /this\.map\?\.setTopologyWindowOverlay\(overlay\)/);
     assert.match(appSrc, /this\.applyTopologyWindowMapOverlay\(topologyWindowDrilldowns\)/);
     assert.match(appSrc, /this\.applyTopologyWindowMapOverlay\(\[\]\)/);
@@ -509,6 +511,81 @@ describe('Forensics topology map overlay', () => {
   it('fans out topology window overlay through MapContainer', () => {
     assert.match(mapContainerSrc, /setTopologyWindowOverlay/);
     assert.match(mapContainerSrc, /ForensicsTopologyWindowOverlay/);
+  });
+});
+
+describe('Causal discovery module', () => {
+  const causalSrc = readSrc('server/worldmonitor/intelligence/v1/forensics-causal.ts');
+
+  it('exports runCausalDiscovery with key constants', () => {
+    assert.match(causalSrc, /export function runCausalDiscovery/);
+    assert.match(causalSrc, /BUCKET_MS/);
+    assert.match(causalSrc, /CAUSAL_LOOKBACK_BUCKETS/);
+    assert.match(causalSrc, /MIN_SUPPORT/);
+  });
+
+  it('computes conditionalLift and delayMs', () => {
+    assert.match(causalSrc, /conditionalLift/);
+    assert.match(causalSrc, /delayMs/);
+    assert.match(causalSrc, /mdlGain/);
+  });
+});
+
+describe('Causal discovery proto contracts', () => {
+  const forensicsProto = readSrc('proto/worldmonitor/intelligence/v1/forensics.proto');
+  const shadowProto = readSrc('proto/worldmonitor/intelligence/v1/run_forensics_shadow.proto');
+
+  it('declares ForensicsCausalEdge and ForensicsCounterfactualLever messages', () => {
+    assert.match(forensicsProto, /message ForensicsCausalEdge/);
+    assert.match(forensicsProto, /message ForensicsCounterfactualLever/);
+  });
+
+  it('extends ForensicsCalibratedAnomaly with counterfactual_levers', () => {
+    assert.match(forensicsProto, /counterfactual_levers/);
+  });
+
+  it('extends RunForensicsShadowResponse with causal_edges', () => {
+    assert.match(shadowProto, /causal_edges/);
+  });
+});
+
+describe('Hyperedge topology extension', () => {
+  const topologySrc = readSrc('server/worldmonitor/intelligence/v1/financial-topology.ts');
+
+  it('adds hyperedge detection function and constants', () => {
+    assert.match(topologySrc, /detectCoordinationHyperedges/);
+    assert.match(topologySrc, /HYPEREDGE_MIN_DISTINCT_DOMAINS/);
+  });
+
+  it('emits hyperedge-derived signals', () => {
+    assert.match(topologySrc, /topology_hyperedge_density/);
+    assert.match(topologySrc, /topology_cross_domain_sync/);
+  });
+
+  it('includes hyperedgeCount in diagnostics', () => {
+    assert.match(topologySrc, /hyperedgeCount/);
+  });
+});
+
+describe('Counterfactual lever computation', () => {
+  const orchestratorSrc = readSrc('server/worldmonitor/intelligence/v1/forensics-orchestrator.ts');
+  const serviceSrc = readSrc('src/services/forensics.ts');
+  const panelSrc = readSrc('src/components/ForensicsPanel.ts');
+
+  it('computes counterfactual levers from learned weights', () => {
+    assert.match(orchestratorSrc, /computeCounterfactualLevers/);
+    assert.match(orchestratorSrc, /learnedWeights/);
+  });
+
+  it('adds causal-discovery phase to pipeline', () => {
+    assert.match(orchestratorSrc, /causal-discovery/);
+  });
+
+  it('propagates causalEdges through service and panel', () => {
+    assert.match(serviceSrc, /causalEdges/);
+    assert.match(panelSrc, /buildCausalChainHtml/);
+    assert.match(panelSrc, /buildCounterfactualLeversHtml/);
+    assert.match(panelSrc, /causalEdges/);
   });
 });
 

@@ -161,6 +161,7 @@ export interface RunForensicsShadowResponse {
   anomalies: ForensicsCalibratedAnomaly[];
   trace: ForensicsPhaseTrace[];
   error: string;
+  causalEdges: ForensicsCausalEdge[];
 }
 
 export interface ForensicsRunMetadata {
@@ -211,6 +212,16 @@ export interface ForensicsCalibratedAnomaly {
   intervalMs: number;
   observedAt: number;
   evidenceIds: string[];
+  counterfactualLevers: ForensicsCounterfactualLever[];
+}
+
+export interface ForensicsCounterfactualLever {
+  signalType: string;
+  currentContribution: number;
+  requiredDelta: number;
+  direction: string;
+  learnedWeight: number;
+  leverImpact: number;
 }
 
 export interface ForensicsPhaseTrace {
@@ -221,6 +232,15 @@ export interface ForensicsPhaseTrace {
   elapsedMs: number;
   error: string;
   parentPhases: string[];
+}
+
+export interface ForensicsCausalEdge {
+  causeSignalType: string;
+  effectSignalType: string;
+  causalScore: number;
+  delayMs: number;
+  supportCount: number;
+  conditionalLift: number;
 }
 
 export interface ListFusedSignalsRequest {
@@ -295,6 +315,7 @@ export interface ForensicsRunSummary {
   anomalyFlaggedCount: number;
   maxFusedScore: number;
   minPValue: number;
+  causalEdgeCount: number;
 }
 
 export interface GetForensicsPolicyRequest {

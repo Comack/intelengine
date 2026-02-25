@@ -10,7 +10,7 @@ import {
   MONITORED_AIRPORTS,
   FAA_AIRPORTS,
   DELAY_SEVERITY_THRESHOLDS,
-} from '../../../../src/config/airports';
+} from './_airports';
 
 // ---------- Constants ----------
 

@@ -2,7 +2,7 @@ import type { ServerContext, GetEvidenceRequest, GetEvidenceResponse, Evidence }
 import { getCachedJson } from '../../../_shared/redis';
 
 export async function getEvidence(
-  ctx: ServerContext,
+  _ctx: ServerContext,
   req: GetEvidenceRequest,
 ): Promise<GetEvidenceResponse> {
   const evidence = (await getCachedJson(`evidence:${req.id}`)) as Evidence | null;

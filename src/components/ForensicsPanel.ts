@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import type {
+  ForensicsCausalEdge,
   ForensicsCalibratedAnomaly,
   ForensicsFusedSignal,
   ForensicsPhaseTrace,
@@ -117,6 +118,7 @@ export interface ForensicsPanelSnapshot {
   summary?: ForensicsRunSummary;
   fusedSignals: ForensicsFusedSignal[];
   anomalies: ForensicsCalibratedAnomaly[];
+  causalEdges?: ForensicsCausalEdge[];
   monitorStreams: ForensicsMonitorStream[];
   aisTrajectoryStreams: ForensicsAisTrajectoryStream[];
   topologyAlerts: ForensicsCalibratedAnomaly[];
@@ -291,6 +293,65 @@ function buildProvenanceLinks(anomaly: ForensicsCalibratedAnomaly): ForensicsPro
   return Array.from(deduped.values());
 }
 
+function buildCausalChainHtml(
+  causalEdges: ForensicsCausalEdge[],
+  anomalies: ForensicsCalibratedAnomaly[],
+): string {
+  if (causalEdges.length === 0) return '<div class="forensics-empty">No causal edges discovered yet.</div>';
+
+  const flaggedTypes = new Set(
+    anomalies.filter((a) => a.isAnomaly).map((a) => a.signalType),
+  );
+
+  return causalEdges.slice(0, 10).map((edge) => {
+    const isHot = flaggedTypes.has(edge.causeSignalType) || flaggedTypes.has(edge.effectSignalType);
+    const hotClass = isHot ? ' forensics-causal-hot' : '';
+    const delayLabel = edge.delayMs > 0
+      ? edge.delayMs >= 3600_000
+        ? `${(edge.delayMs / 3600_000).toFixed(1)}h`
+        : `${Math.round(edge.delayMs / 60_000)}m`
+      : '—';
+    return `
+      <div class="forensics-item${hotClass}">
+        <div class="forensics-item-head">
+          <span class="forensics-source">${escapeHtml(edge.causeSignalType)} → ${escapeHtml(edge.effectSignalType)}</span>
+          <span class="forensics-score">${(edge.causalScore * 100).toFixed(1)}%</span>
+        </div>
+        <div class="forensics-item-meta">
+          <span>delay ${escapeHtml(delayLabel)}</span>
+          <span>lift ×${edge.conditionalLift.toFixed(2)}</span>
+          <span>n=${edge.supportCount}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function buildCounterfactualLeversHtml(anomaly: ForensicsCalibratedAnomaly): string {
+  const levers = anomaly.counterfactualLevers;
+  if (!levers || levers.length === 0) return '';
+
+  const rows = levers.map((lever) => {
+    const barWidth = Math.round(lever.leverImpact * 100);
+    return `
+      <div class="forensics-detail-item">
+        <span class="forensics-detail-key">${escapeHtml(lever.signalType)}</span>
+        <span class="forensics-detail-value">
+          ${escapeHtml(lever.direction)} · impact ${(lever.leverImpact * 100).toFixed(1)}%
+          <span class="forensics-lever-bar" style="--bar-width:${barWidth}%"></span>
+        </span>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="forensics-detail-block">
+      <div class="forensics-detail-heading">Counterfactual Levers</div>
+      ${rows}
+    </div>
+  `;
+}
+
 interface ForensicsPhaseNode {
   phase: string;
   displayName: string;
@@ -317,6 +378,7 @@ const PHASE_DISPLAY_NAMES: Record<string, string> = {
   'persist-results': 'Persist Results',
   'normalize': 'Normalize',
   'enrich': 'Enrich',
+  'causal-discovery': 'Causal Discovery',
 };
 
 const SWAPPABLE_PHASES = new Set(['ws-fusion', 'conformal', 'weak-supervision-fusion', 'conformal-anomaly']);
@@ -560,6 +622,7 @@ export class ForensicsPanel extends Panel {
       summary,
       fusedSignals,
       anomalies,
+      causalEdges = [],
       monitorStreams,
       aisTrajectoryStreams,
       topologyAlerts,
@@ -787,6 +850,13 @@ export class ForensicsPanel extends Panel {
         `
       : '';
 
+    const causalChainHtml = `
+      <section class="forensics-section">
+        <h4>Causal Chain</h4>
+        ${buildCausalChainHtml(causalEdges, anomalies)}
+      </section>
+    `;
+
     const summaryHtml = run
       ? `
           <div class="forensics-summary-card">
@@ -973,6 +1043,7 @@ export class ForensicsPanel extends Panel {
                 <div class="forensics-detail-heading">Signal contributors</div>
                 ${contributorHtml}
               </div>
+              ${buildCounterfactualLeversHtml(selectedAnomaly)}
               <div class="forensics-detail-block">
                 <div class="forensics-detail-heading">Provenance links</div>
                 <div class="forensics-provenance-links">
@@ -1004,6 +1075,7 @@ export class ForensicsPanel extends Panel {
         ${topologyWindowHtml}
         ${topologyDriftHtml}
         ${topologyBaselineHtml}
+        ${causalChainHtml}
         <div class="forensics-grid">
           <section class="forensics-section">
             <h4>Fused Signals</h4>

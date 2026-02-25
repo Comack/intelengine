@@ -108,7 +108,7 @@ export async function scrapeUrl(url: string): Promise<ScrapedContent> {
     console.warn(`[scraper] Direct fetch failed for ${url}, attempting relay fallback...`, err instanceof Error ? err.message : String(err));
     
     // 2. Relay fallback attempt (Railway proxy)
-    const relayUrl = process.env.WS_RELAY_URL;
+    const relayUrl = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.WS_RELAY_URL;
     if (relayUrl) {
       try {
         const proxyReqUrl = `${relayUrl.replace(/\/$/, '')}/proxy?url=${encodeURIComponent(url)}`;

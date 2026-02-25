@@ -20,6 +20,7 @@ export interface FinancialTopologyDiagnostics {
   beta1: number;
   tsi: number;
   derivedSignalCount: number;
+  hyperedgeCount: number;
 }
 
 export interface FinancialTopologyDerivation {
@@ -328,17 +329,111 @@ function triangleStrengthByNode(numNodes: number, edges: {a: number, b: number, 
         const wjk = weights.get(`\${j}:\${k}`);
         if (!wik || !wjk) continue;
         const triangleStrength = (wij + wik + wjk) / 3;
-        cycleStrength[i] += triangleStrength;
-        cycleStrength[j] += triangleStrength;
-        cycleStrength[k] += triangleStrength;
-        cycleCount[i] += 1;
-        cycleCount[j] += 1;
-        cycleCount[k] += 1;
+        cycleStrength[i] = (cycleStrength[i] ?? 0) + triangleStrength;
+        cycleStrength[j] = (cycleStrength[j] ?? 0) + triangleStrength;
+        cycleStrength[k] = (cycleStrength[k] ?? 0) + triangleStrength;
+        cycleCount[i] = (cycleCount[i] ?? 0) + 1;
+        cycleCount[j] = (cycleCount[j] ?? 0) + 1;
+        cycleCount[k] = (cycleCount[k] ?? 0) + 1;
       }
     }
   }
 
   return { cycleStrength, cycleCount };
+}
+
+const HYPEREDGE_WINDOW_MS = 4 * 60 * 60 * 1000;
+const HYPEREDGE_MIN_SIMILARITY = 0.6;
+const HYPEREDGE_MIN_DISTINCT_DOMAINS = 3;
+const MAX_HYPEREDGES = 20;
+
+interface Hyperedge {
+  nodeIndices: number[];
+  avgPairwiseSimilarity: number;
+  domains: Set<string>;
+}
+
+function detectCoordinationHyperedges(
+  nodes: TopologyNode[],
+  distanceMatrix: Float64Array[],
+): Hyperedge[] {
+  const numNodes = nodes.length;
+  if (numNodes < HYPEREDGE_MIN_DISTINCT_DOMAINS) return [];
+
+  const hyperedges: Hyperedge[] = [];
+
+  // Enumerate triples
+  for (let i = 0; i < numNodes; i++) {
+    for (let j = i + 1; j < numNodes; j++) {
+      const simIJ = 1 - (distanceMatrix[i]![j] ?? 1);
+      if (simIJ < HYPEREDGE_MIN_SIMILARITY) continue;
+
+      for (let k = j + 1; k < numNodes; k++) {
+        const simIK = 1 - (distanceMatrix[i]![k] ?? 1);
+        const simJK = 1 - (distanceMatrix[j]![k] ?? 1);
+        if (simIK < HYPEREDGE_MIN_SIMILARITY || simJK < HYPEREDGE_MIN_SIMILARITY) continue;
+
+        // Time window check
+        const obs = [nodes[i]!.observedAt, nodes[j]!.observedAt, nodes[k]!.observedAt];
+        const windowSpan = Math.max(...obs) - Math.min(...obs);
+        if (windowSpan > HYPEREDGE_WINDOW_MS) continue;
+
+        const domains = new Set([nodes[i]!.domain, nodes[j]!.domain, nodes[k]!.domain]);
+        if (domains.size < HYPEREDGE_MIN_DISTINCT_DOMAINS) continue;
+
+        const avgSim3 = (simIJ + simIK + simJK) / 3;
+        const triple: Hyperedge = { nodeIndices: [i, j, k], avgPairwiseSimilarity: avgSim3, domains };
+
+        // Attempt to grow to 4-node group
+        for (let l = k + 1; l < numNodes; l++) {
+          const simIL = 1 - (distanceMatrix[i]![l] ?? 1);
+          const simJL = 1 - (distanceMatrix[j]![l] ?? 1);
+          const simKL = 1 - (distanceMatrix[k]![l] ?? 1);
+          if (simIL < HYPEREDGE_MIN_SIMILARITY || simJL < HYPEREDGE_MIN_SIMILARITY || simKL < HYPEREDGE_MIN_SIMILARITY) continue;
+
+          const obsL = nodes[l]!.observedAt;
+          const allObs = [...obs, obsL];
+          if (Math.max(...allObs) - Math.min(...allObs) > HYPEREDGE_WINDOW_MS) continue;
+
+          const domains4 = new Set([...domains, nodes[l]!.domain]);
+          if (domains4.size < HYPEREDGE_MIN_DISTINCT_DOMAINS) continue;
+
+          const avgSim4 = (simIJ + simIK + simJK + simIL + simJL + simKL) / 6;
+          hyperedges.push({ nodeIndices: [i, j, k, l], avgPairwiseSimilarity: avgSim4, domains: domains4 });
+          break; // one 4-node extension per triple
+        }
+
+        // Only add the triple if we didn't already add a 4-node group from it
+        const alreadyExtended = hyperedges.some(
+          (h) => h.nodeIndices.length === 4 && [i, j, k].every((idx) => h.nodeIndices.includes(idx)),
+        );
+        if (!alreadyExtended) {
+          hyperedges.push(triple);
+        }
+
+        if (hyperedges.length >= MAX_HYPEREDGES) break;
+      }
+      if (hyperedges.length >= MAX_HYPEREDGES) break;
+    }
+    if (hyperedges.length >= MAX_HYPEREDGES) break;
+  }
+
+  // Deduplicate: remove subsets
+  const deduped: Hyperedge[] = [];
+  for (const candidate of hyperedges) {
+    const cSet = new Set(candidate.nodeIndices);
+    const isSubset = deduped.some((existing) => {
+      const eSet = new Set(existing.nodeIndices);
+      for (const idx of cSet) {
+        if (!eSet.has(idx)) return false;
+      }
+      return true;
+    });
+    if (!isSubset) deduped.push(candidate);
+    if (deduped.length >= MAX_HYPEREDGES) break;
+  }
+
+  return deduped;
 }
 
 export function deriveFinancialTopologySignals(
@@ -356,6 +451,7 @@ export function deriveFinancialTopologySignals(
         beta1: 0,
         tsi: 0,
         derivedSignalCount: 0,
+        hyperedgeCount: 0,
       },
     };
   }
@@ -373,8 +469,8 @@ export function deriveFinancialTopologySignals(
       const weight = 1 - dist;
       if (weight >= EDGE_THRESHOLD) {
         edgeCount++;
-        degreeStrength[i] += weight;
-        degreeStrength[j] += weight;
+        degreeStrength[i] = (degreeStrength[i] ?? 0) + weight;
+        degreeStrength[j] = (degreeStrength[j] ?? 0) + weight;
         edges.push({ a: i, b: j, weight });
       }
     }
@@ -402,23 +498,25 @@ export function deriveFinancialTopologySignals(
   const derivedSignals: ForensicsSignalInput[] = [];
 
   derivedSignals.push({
-    sourceId: \`topology:tsi:\${domain}\`,
+    sourceId: `topology:tsi:\${domain}`,
     region: 'global',
     domain,
     signalType: 'topology_tsi',
     value: round(tsi, 4),
     confidence: round(baseConfidence, 6),
     observedAt: maxObservedAt,
+    evidenceIds: [],
   });
 
   derivedSignals.push({
-    sourceId: \`topology:beta1:\${domain}\`,
+    sourceId: `topology:beta1:\${domain}`,
     region: 'global',
     domain,
     signalType: 'topology_beta1',
     value: round(totalH1Persistence, 4),
     confidence: round(clamp(baseConfidence - 0.05, 0.45, 0.9), 6),
     observedAt: maxObservedAt,
+    evidenceIds: [],
   });
 
   const nodeOrder = nodes
@@ -443,6 +541,7 @@ export function deriveFinancialTopologySignals(
         value: round(ranked.degreeNorm * 100, 4),
         confidence: nodeConfidence,
         observedAt: ranked.node.observedAt,
+        evidenceIds: [],
       });
     }
 
@@ -455,6 +554,7 @@ export function deriveFinancialTopologySignals(
         value: round(ranked.cycleNorm * 100, 4),
         confidence: nodeConfidence,
         observedAt: ranked.node.observedAt,
+        evidenceIds: [],
       });
     }
   }
@@ -487,19 +587,50 @@ export function deriveFinancialTopologySignals(
   for (const alert of regionAlerts) {
     if (alert.risk < 10) continue;
     derivedSignals.push({
-      sourceId: \`topology:region:\${alert.region.toLowerCase()}\`,
+      sourceId: `topology:region:\${alert.region.toLowerCase()}`,
       region: alert.region,
       domain,
       signalType: 'topology_cycle_risk',
       value: round(alert.risk, 4),
       confidence: round(clamp(baseConfidence + 0.05, 0.5, 0.98), 6),
       observedAt: alert.observedAt,
+      evidenceIds: [],
+    });
+  }
+
+  // Hyperedge coordination detection
+  const hyperedges = detectCoordinationHyperedges(nodes, distanceMatrix);
+  if (hyperedges.length > 0) {
+    const participatingNodeIndices = new Set(hyperedges.flatMap((h) => h.nodeIndices));
+    const hyperedgeDensity = participatingNodeIndices.size / numNodes;
+    const avgSim = hyperedges.reduce((sum, h) => sum + h.avgPairwiseSimilarity, 0) / hyperedges.length;
+
+    derivedSignals.push({
+      sourceId: `topology:hyperedge:\${domain}`,
+      region: 'global',
+      domain,
+      signalType: 'topology_hyperedge_density',
+      value: round(hyperedgeDensity * 100, 4),
+      confidence: round(clamp(baseConfidence - 0.05, 0.45, 0.92), 6),
+      observedAt: maxObservedAt,
+      evidenceIds: [],
+    });
+
+    derivedSignals.push({
+      sourceId: `topology:crossdomain:\${domain}`,
+      region: 'global',
+      domain,
+      signalType: 'topology_cross_domain_sync',
+      value: round(avgSim * 100, 4),
+      confidence: round(clamp(baseConfidence - 0.05, 0.45, 0.92), 6),
+      observedAt: maxObservedAt,
+      evidenceIds: [],
     });
   }
 
   const dedupedByKey = new Map<string, ForensicsSignalInput>();
   for (const signal of derivedSignals) {
-    const key = \`\${signal.sourceId}::\${signal.signalType}::\${signal.region || 'global'}\`;
+    const key = `\${signal.sourceId}::\${signal.signalType}::\${signal.region || 'global'}`;
     const existing = dedupedByKey.get(key);
     if (!existing || signal.value > existing.value) {
       dedupedByKey.set(key, signal);
@@ -519,6 +650,7 @@ export function deriveFinancialTopologySignals(
       beta1,
       tsi: round(tsi, 4),
       derivedSignalCount: outputSignals.length,
+      hyperedgeCount: hyperedges.length,
     },
   };
 }
