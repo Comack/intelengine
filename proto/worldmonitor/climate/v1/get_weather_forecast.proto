@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+// GetWeatherForecastRequest has no required parameters; returns pre-defined strategic locations.
+message GetWeatherForecastRequest {}
+
+// GetWeatherForecastResponse contains 7-day weather forecasts for strategic locations.
+message GetWeatherForecastResponse {
+  repeated WeatherForecastZone zones = 1;
+  // Unix milliseconds when forecasts were fetched.
+  int64 fetched_at = 2;
+}
+
+// WeatherForecastZone represents a 7-day weather forecast for a strategic geographic location.
+message WeatherForecastZone {
+  // Forecast latitude.
+  double lat = 1;
+  // Forecast longitude.
+  double lon = 2;
+  // Human-readable location name.
+  string location_name = 3;
+  // Total predicted precipitation in mm over the 7-day forecast window.
+  double precipitation_mm_7d = 4;
+  // Compound flood risk score (0–100) derived from soil moisture and precipitation forecast.
+  double flood_risk_score = 5;
+  // Maximum forecast wind speed in km/h over the 7-day window.
+  double max_wind_speed_kmh = 6;
+  // Primary extreme event type if applicable: flood | hurricane | drought | none.
+  string extreme_event_type = 7;
+  // Unix milliseconds marking the start of the forecast window.
+  int64 forecast_from = 8;
+  // Unix milliseconds marking the end of the forecast window.
+  int64 forecast_until = 9;
+}

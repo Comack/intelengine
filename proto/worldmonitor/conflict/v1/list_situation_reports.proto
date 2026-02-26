@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+message SituationReport {
+  string id = 1;
+  string title = 2;
+  string body = 3;
+  string source_name = 4;
+  string source_url = 5;
+  string date = 6;
+  repeated string countries = 7;
+  repeated string disaster_types = 8;
+}
+
+message ListSituationReportsRequest {
+  int32 limit = 1; // Default 20
+  string query = 2; // Optional search query
+}
+
+message ListSituationReportsResponse {
+  repeated SituationReport reports = 1;
+}

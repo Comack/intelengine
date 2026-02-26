@@ -2,6 +2,8 @@ import {
   CyberServiceClient,
   type CyberThreat as ProtoCyberThreat,
   type ListCyberThreatsResponse,
+  type ListInfoOpsSignalsResponse,
+  type InfoOpsSignal,
 } from '@/generated/client/worldmonitor/cyber/v1/service_client';
 import type {
   CyberThreat,
@@ -100,4 +102,17 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
   }, emptyFallback);
 
   return resp.threats.map(toCyberThreat);
+}
+
+// ---- Info Ops Signals ----
+const infoOpsBreaker = createCircuitBreaker<ListInfoOpsSignalsResponse>({ name: 'Info Ops Signals' });
+const emptyInfoOpsFallback: ListInfoOpsSignalsResponse = { signals: [], sampledAt: '' };
+
+export type { InfoOpsSignal };
+
+export async function fetchInfoOpsSignals(limit = 50): Promise<InfoOpsSignal[]> {
+  const res = await infoOpsBreaker.execute(async () => {
+    return client.listInfoOpsSignals({ limit });
+  }, emptyInfoOpsFallback);
+  return res.signals;
 }

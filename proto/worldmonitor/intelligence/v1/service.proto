@@ -17,6 +17,7 @@ import "worldmonitor/intelligence/v1/list_forensics_runs.proto";
 import "worldmonitor/intelligence/v1/get_forensics_policy.proto";
 import "worldmonitor/intelligence/v1/get_forensics_topology_summary.proto";
 import "worldmonitor/intelligence/v1/forensics.proto";
+import "worldmonitor/intelligence/v1/search_sanctioned_entities.proto";
 
 // IntelligenceService provides APIs for cross-domain intelligence synthesis including
 // risk scores, PizzINT monitoring, GDELT tension analysis, and AI-powered classification.
@@ -46,6 +47,11 @@ service IntelligenceService {
   // SearchGdeltDocuments searches the GDELT 2.0 Doc API for news articles.
   rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
     option (sebuf.http.config) = {path: "/search-gdelt-documents"};
+  }
+
+  // SearchSanctionedEntities searches OpenSanctions for sanctioned individuals or entities.
+  rpc SearchSanctionedEntities(SearchSanctionedEntitiesRequest) returns (SearchSanctionedEntitiesResponse) {
+    option (sebuf.http.config) = {path: "/search-sanctioned-entities"};
   }
 
   // RunForensicsShadow executes deterministic shadow forensics orchestration.

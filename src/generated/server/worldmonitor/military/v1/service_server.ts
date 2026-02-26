@@ -194,6 +194,33 @@ export interface USNIStrikeGroup {
   escorts: string[];
 }
 
+export interface ListAcarsMessagesRequest {
+  limit: number;
+  milCategory: AcarsMilCategory;
+}
+
+export interface ListAcarsMessagesResponse {
+  messages: AcarsMessage[];
+  sampledAt: string;
+}
+
+export interface AcarsMessage {
+  id: string;
+  tailNumber: string;
+  flightNumber: string;
+  messageText: string;
+  messageType: string;
+  milCategory: AcarsMilCategory;
+  lat: number;
+  lon: number;
+  altitudeFt: number;
+  freqMhz: string;
+  receivedAt: string;
+  station: string;
+}
+
+export type AcarsMilCategory = "ACARS_MIL_CATEGORY_UNSPECIFIED" | "ACARS_MIL_CATEGORY_MEDICAL_EVAC" | "ACARS_MIL_CATEGORY_TACTICAL" | "ACARS_MIL_CATEGORY_LOGISTICS" | "ACARS_MIL_CATEGORY_UNKNOWN";
+
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
 
 export type MilitaryAircraftType = "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED" | "MILITARY_AIRCRAFT_TYPE_FIGHTER" | "MILITARY_AIRCRAFT_TYPE_BOMBER" | "MILITARY_AIRCRAFT_TYPE_TRANSPORT" | "MILITARY_AIRCRAFT_TYPE_TANKER" | "MILITARY_AIRCRAFT_TYPE_AWACS" | "MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE" | "MILITARY_AIRCRAFT_TYPE_HELICOPTER" | "MILITARY_AIRCRAFT_TYPE_DRONE" | "MILITARY_AIRCRAFT_TYPE_PATROL" | "MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS" | "MILITARY_AIRCRAFT_TYPE_VIP" | "MILITARY_AIRCRAFT_TYPE_UNKNOWN";
@@ -253,6 +280,7 @@ export interface MilitaryServiceHandler {
   getAircraftDetailsBatch(ctx: ServerContext, req: GetAircraftDetailsBatchRequest): Promise<GetAircraftDetailsBatchResponse>;
   getWingbitsStatus(ctx: ServerContext, req: GetWingbitsStatusRequest): Promise<GetWingbitsStatusResponse>;
   getUSNIFleetReport(ctx: ServerContext, req: GetUSNIFleetReportRequest): Promise<GetUSNIFleetReportResponse>;
+  listAcarsMessages(ctx: ServerContext, req: ListAcarsMessagesRequest): Promise<ListAcarsMessagesResponse>;
 }
 
 export function createMilitaryServiceRoutes(
@@ -497,6 +525,49 @@ export function createMilitaryServiceRoutes(
 
           const result = await handler.getUSNIFleetReport(ctx, body);
           return new Response(JSON.stringify(result as GetUSNIFleetReportResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/military/v1/list-acars-messages",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListAcarsMessagesRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listAcarsMessages", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listAcarsMessages(ctx, body);
+          return new Response(JSON.stringify(result as ListAcarsMessagesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

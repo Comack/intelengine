@@ -15,6 +15,7 @@ import { getForensicsPolicy } from './get-forensics-policy';
 import { getForensicsTopologySummary } from './get-forensics-topology-summary';
 import { submitForensicsFeedback } from './submit-forensics-feedback';
 import { explainAnomaly } from './explain-anomaly';
+import { searchSanctionedEntities } from './search-sanctioned-entities';
 
 export const intelligenceHandler: IntelligenceServiceHandler = {
   getRiskScores,
@@ -32,4 +33,5 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   getForensicsTopologySummary,
   submitForensicsFeedback,
   explainAnomaly,
+  searchSanctionedEntities,
 };

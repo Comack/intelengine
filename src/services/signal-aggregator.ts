@@ -23,6 +23,18 @@ export type SignalType =
   | 'cyber_threat'
   | 'satellite_fire'        // NASA FIRMS thermal anomalies
   | 'temporal_anomaly'      // Baseline deviation alerts
+  | 'bgp_hijack'
+  | 'bgp_leak'
+  | 'sar_dark_ship'
+  | 'port_congestion'
+  | 'space_weather_storm'
+  | 'air_quality_spike'
+  | 'so2_industrial'
+  | 'grid_stress'
+  | 'whale_transfer'
+  | 'info_ops_edit_war'
+  | 'sec_material_event'
+  | 'safe_haven_rotation'
 
 export interface GeoSignal {
   type: SignalType;
@@ -370,6 +382,156 @@ class SignalAggregator {
     this.pruneOld();
   }
 
+  ingestRoutingAnomalies(anomalies: Array<{
+    type: string;
+    lat: number;
+    lon: number;
+    severity: number;
+    country: string;
+    description: string;
+    detectedAt: number;
+  }>): void {
+    this.clearSignalType('bgp_hijack');
+    this.clearSignalType('bgp_leak');
+    for (const a of anomalies) {
+      const code = a.country?.length === 2 ? a.country : this.coordsToCountry(a.lat, a.lon);
+      const signalType: SignalType = a.type.includes('LEAK') ? 'bgp_leak' : 'bgp_hijack';
+      this.signals.push({
+        type: signalType,
+        country: code,
+        countryName: getCountryName(code),
+        lat: a.lat,
+        lon: a.lon,
+        severity: a.severity >= 7 ? 'high' : a.severity >= 4 ? 'medium' : 'low',
+        title: a.description || `BGP ${signalType === 'bgp_leak' ? 'leak' : 'hijack'} detected`,
+        timestamp: new Date(a.detectedAt || Date.now()),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestSarDetections(detections: Array<{
+    lat: number;
+    lon: number;
+    lengthM: number;
+    confidence: number;
+    detectedAt: number;
+  }>): void {
+    this.clearSignalType('sar_dark_ship');
+    for (const d of detections) {
+      const code = this.coordsToCountry(d.lat, d.lon);
+      this.signals.push({
+        type: 'sar_dark_ship',
+        country: code,
+        countryName: getCountryName(code),
+        lat: d.lat,
+        lon: d.lon,
+        severity: d.confidence > 0.8 ? 'high' : d.confidence > 0.5 ? 'medium' : 'low',
+        title: `Dark vessel detected (${Math.round(d.lengthM)}m)`,
+        timestamp: new Date(d.detectedAt || Date.now()),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestSpaceWeather(status: {
+    kpIndex: number;
+    alerts: Array<{ severity: string }>;
+  } | null): void {
+    this.clearSignalType('space_weather_storm');
+    if (!status) return;
+    if (status.kpIndex >= 5 || status.alerts.some(a => a.severity === 'warning' || a.severity === 'watch')) {
+      this.signals.push({
+        type: 'space_weather_storm',
+        country: 'XX',
+        countryName: 'Global',
+        lat: 65,
+        lon: 0,
+        severity: status.kpIndex >= 7 ? 'high' : status.kpIndex >= 5 ? 'medium' : 'low',
+        title: `Geomagnetic storm Kp=${status.kpIndex}`,
+        timestamp: new Date(),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestAirQuality(readings: Array<{
+    lat: number;
+    lon: number;
+    aqi: number;
+    city: string;
+    observedAt: number;
+  }>): void {
+    this.clearSignalType('air_quality_spike');
+    for (const r of readings) {
+      if (r.aqi < 150) continue;
+      const code = this.coordsToCountry(r.lat, r.lon);
+      this.signals.push({
+        type: 'air_quality_spike',
+        country: code,
+        countryName: r.city || getCountryName(code),
+        lat: r.lat,
+        lon: r.lon,
+        severity: r.aqi >= 300 ? 'high' : r.aqi >= 200 ? 'medium' : 'low',
+        title: `AQI spike: ${r.aqi} in ${r.city}`,
+        timestamp: new Date(r.observedAt || Date.now()),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestWhaleTransfers(transfers: Array<{
+    type: string;
+    amountUsd: number;
+    lat: number;
+    lon: number;
+    detectedAt: number;
+  }>): void {
+    this.clearSignalType('whale_transfer');
+    for (const t of transfers) {
+      if (t.amountUsd < 10_000_000) continue;
+      const code = this.coordsToCountry(t.lat, t.lon);
+      const usdM = (t.amountUsd / 1_000_000).toFixed(0);
+      this.signals.push({
+        type: 'whale_transfer',
+        country: code,
+        countryName: getCountryName(code),
+        lat: t.lat,
+        lon: t.lon,
+        severity: t.amountUsd >= 100_000_000 ? 'high' : t.amountUsd >= 50_000_000 ? 'medium' : 'low',
+        title: `$${usdM}M whale transfer (${t.type.replace('WHALE_TRANSFER_TYPE_', '').toLowerCase().replace(/_/g, ' ')})`,
+        timestamp: new Date(t.detectedAt || Date.now()),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestGridStatus(zones: Array<{
+    zoneName: string;
+    lat: number;
+    lon: number;
+    stressLevel: string;
+    observedAt: number;
+  }>): void {
+    this.clearSignalType('grid_stress');
+    for (const z of zones) {
+      if (z.stressLevel === 'GRID_STRESS_NORMAL' || z.stressLevel === 'GRID_STRESS_UNSPECIFIED') continue;
+      const code = this.coordsToCountry(z.lat, z.lon);
+      this.signals.push({
+        type: 'grid_stress',
+        country: code,
+        countryName: z.zoneName || getCountryName(code),
+        lat: z.lat,
+        lon: z.lon,
+        severity: z.stressLevel === 'GRID_STRESS_CRITICAL' ? 'high'
+          : z.stressLevel === 'GRID_STRESS_HIGH' ? 'medium' : 'low',
+        title: `Grid stress: ${z.zoneName} (${z.stressLevel.replace('GRID_STRESS_', '').toLowerCase()})`,
+        timestamp: new Date(z.observedAt || Date.now()),
+      });
+    }
+    this.pruneOld();
+  }
+
   private coordsToCountry(lat: number, lon: number): string {
     if (lat >= 25 && lat <= 40 && lon >= 44 && lon <= 63) return 'IR';
     if (lat >= 29 && lat <= 33 && lon >= 34 && lon <= 36) return 'IL';
@@ -448,6 +610,18 @@ class SignalAggregator {
           cyber_threat: 'cyber threat activity',
           satellite_fire: 'thermal anomalies',
           temporal_anomaly: 'baseline anomalies',
+          bgp_hijack: 'BGP hijack events',
+          bgp_leak: 'BGP route leaks',
+          sar_dark_ship: 'dark vessel detections',
+          port_congestion: 'port congestion',
+          space_weather_storm: 'geomagnetic storms',
+          air_quality_spike: 'air quality spikes',
+          so2_industrial: 'SO₂ industrial emissions',
+          grid_stress: 'power grid stress',
+          whale_transfer: 'crypto whale transfers',
+          info_ops_edit_war: 'information operations',
+          sec_material_event: 'SEC material events',
+          safe_haven_rotation: 'safe-haven rotation',
         };
 
         const typeDescriptions = [...allTypes].map(t => typeLabels[t]).join(', ');
@@ -504,6 +678,18 @@ class SignalAggregator {
       cyber_threat: 0,
       satellite_fire: 0,
       temporal_anomaly: 0,
+      bgp_hijack: 0,
+      bgp_leak: 0,
+      sar_dark_ship: 0,
+      port_congestion: 0,
+      space_weather_storm: 0,
+      air_quality_spike: 0,
+      so2_industrial: 0,
+      grid_stress: 0,
+      whale_transfer: 0,
+      info_ops_edit_war: 0,
+      sec_material_event: 0,
+      safe_haven_rotation: 0,
     };
 
     for (const s of this.signals) {

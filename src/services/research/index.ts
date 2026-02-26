@@ -3,6 +3,10 @@ import {
   type ArxivPaper,
   type GithubRepo,
   type HackernewsItem,
+  type ListSocialTrendsResponse,
+  type SocialTrend,
+  type GetRepoMomentumResponse,
+  type RepoMomentum,
 } from '@/generated/client/worldmonitor/research/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 
@@ -56,4 +60,28 @@ export async function fetchHackernewsItems(
     });
     return resp.items;
   }, []);
+}
+
+// ---- Social Trends ----
+const socialBreaker = createCircuitBreaker<ListSocialTrendsResponse>({ name: 'Social Trends' });
+const emptySocialFallback: ListSocialTrendsResponse = { trends: [], sampledAt: '' };
+
+export type { SocialTrend, RepoMomentum };
+
+export async function fetchSocialTrends(platform = '', limit = 30): Promise<SocialTrend[]> {
+  const res = await socialBreaker.execute(async () => {
+    return client.listSocialTrends({ platform, limit });
+  }, emptySocialFallback);
+  return res.trends;
+}
+
+// ---- Repo Momentum ----
+const momentumBreaker = createCircuitBreaker<GetRepoMomentumResponse>({ name: 'Repo Momentum' });
+const emptyMomentumFallback: GetRepoMomentumResponse = { repos: [], computedAt: '' };
+
+export async function fetchRepoMomentum(): Promise<RepoMomentum[]> {
+  const res = await momentumBreaker.execute(async () => {
+    return client.getRepoMomentum({});
+  }, emptyMomentumFallback);
+  return res.repos;
 }

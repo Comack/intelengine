@@ -4,6 +4,10 @@ package worldmonitor.climate.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/climate/v1/list_climate_anomalies.proto";
+import "worldmonitor/climate/v1/list_air_quality_readings.proto";
+import "worldmonitor/climate/v1/get_pollution_grid.proto";
+import "worldmonitor/climate/v1/get_weather_forecast.proto";
+import "worldmonitor/climate/v1/list_deforestation_alerts.proto";
 
 // ClimateService provides APIs for climate anomaly data sourced from Open-Meteo.
 service ClimateService {
@@ -12,5 +16,25 @@ service ClimateService {
   // ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
   rpc ListClimateAnomalies(ListClimateAnomaliesRequest) returns (ListClimateAnomaliesResponse) {
     option (sebuf.http.config) = {path: "/list-climate-anomalies"};
+  }
+
+  // ListAirQualityReadings retrieves real-time AQI readings from WAQI monitoring stations globally.
+  rpc ListAirQualityReadings(ListAirQualityReadingsRequest) returns (ListAirQualityReadingsResponse) {
+    option (sebuf.http.config) = {path: "/list-air-quality-readings"};
+  }
+
+  // GetPollutionGrid retrieves Sentinel-5P derived NO2/SO2 column density for a bounding box.
+  rpc GetPollutionGrid(GetPollutionGridRequest) returns (GetPollutionGridResponse) {
+    option (sebuf.http.config) = {path: "/get-pollution-grid"};
+  }
+
+  // GetWeatherForecast retrieves 7-day weather forecasts for strategic global locations.
+  rpc GetWeatherForecast(GetWeatherForecastRequest) returns (GetWeatherForecastResponse) {
+    option (sebuf.http.config) = {path: "/get-weather-forecast"};
+  }
+
+  // ListDeforestationAlerts retrieves GFW integrated forest loss alerts near strategic sites.
+  rpc ListDeforestationAlerts(ListDeforestationAlertsRequest) returns (ListDeforestationAlertsResponse) {
+    option (sebuf.http.config) = {path: "/list-deforestation-alerts"};
   }
 }

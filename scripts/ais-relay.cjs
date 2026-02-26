@@ -1368,11 +1368,329 @@ const server = http.createServer(async (req, res) => {
     handleWorldBankRequest(req, res);
   } else if (req.url.startsWith('/polymarket')) {
     handlePolymarketRequest(req, res);
+  } else if (req.url.startsWith('/info-ops/recent')) {
+    handleInfoOpsRequest(req, res);
+  } else if (req.url.startsWith('/acars/recent')) {
+    handleAcarsRequest(req, res);
+  } else if (req.url.startsWith('/social/trends')) {
+    handleSocialTrendsRequest(req, res);
+  } else if (req.url.startsWith('/bgp/events')) {
+    handleBgpEventsRequest(req, res);
   } else {
     res.writeHead(404);
     res.end();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Info-Ops: Wikimedia SSE rolling buffer
+// ---------------------------------------------------------------------------
+const INFO_OPS_BUFFER_SIZE = 100;
+const INFO_OPS_EDIT_RATE = new Map(); // pageTitle → { count, editors: Set, firstSeen }
+const infoOpsBuffer = [];
+
+// Geopolitical entity registry for relevance scoring
+const GEO_ENTITIES = [
+  'Ukraine', 'Russia', 'China', 'Taiwan', 'Israel', 'Gaza', 'Palestine',
+  'Iran', 'North Korea', 'South Korea', 'United States', 'NATO', 'EU',
+  'Syria', 'Yemen', 'Sudan', 'Somalia', 'Afghanistan', 'Pakistan',
+  'India', 'Kashmir', 'Tibet', 'Xinjiang', 'Hong Kong', 'Crimea',
+  'Belarus', 'Poland', 'Baltic', 'Moldova', 'Georgia', 'Armenia', 'Azerbaijan',
+  'Hezbollah', 'Hamas', 'ISIS', 'Wagner', 'AI regulation', 'sanctions',
+];
+
+function scoreGeopoliticalRelevance(title) {
+  const lower = title.toLowerCase();
+  for (const entity of GEO_ENTITIES) {
+    if (lower.includes(entity.toLowerCase())) return { score: 0.8 + Math.random() * 0.2, entity };
+  }
+  return { score: 0, entity: '' };
+}
+
+let wikimediaSSE = null;
+
+function connectWikimediaSSE() {
+  if (wikimediaSSE) return;
+  const https = require('https');
+  console.log('[Relay] Connecting to Wikimedia SSE stream...');
+  const req = https.get('https://stream.wikimedia.org/v2/stream/recentchange', {
+    headers: { Accept: 'text/event-stream' },
+    timeout: 30000,
+  }, (res) => {
+    let buf = '';
+    res.on('data', (chunk) => {
+      buf += chunk.toString();
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        try {
+          const ev = JSON.parse(line.slice(5).trim());
+          if (ev.type !== 'edit' && ev.type !== 'new') continue;
+          const title = ev.title || '';
+          const wiki = ev.wiki || 'enwiki';
+          const { score, entity } = scoreGeopoliticalRelevance(title);
+          if (score === 0) continue;
+
+          const key = `${wiki}:${title}`;
+          const now = Date.now();
+          let entry = INFO_OPS_EDIT_RATE.get(key);
+          if (!entry || now - entry.firstSeen > 3600000) {
+            entry = { count: 0, editors: new Set(), firstSeen: now, wiki, title };
+            INFO_OPS_EDIT_RATE.set(key, entry);
+          }
+          entry.count++;
+          entry.editors.add(ev.user || 'anon');
+
+          if (entry.count >= 20 && entry.editors.size >= 5) {
+            const signal = {
+              id: `io-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              pageTitle: title,
+              wiki,
+              editType: 'edit_war',
+              editCount1h: entry.count,
+              uniqueEditors1h: entry.editors.size,
+              botTraffic: (ev.bot === true),
+              geopoliticalRelevance: score,
+              matchedEntity: entity,
+              detectedAt: now,
+            };
+            infoOpsBuffer.unshift(signal);
+            if (infoOpsBuffer.length > INFO_OPS_BUFFER_SIZE) infoOpsBuffer.pop();
+          }
+        } catch { /* ignore malformed events */ }
+      }
+    });
+    res.on('end', () => {
+      wikimediaSSE = null;
+      console.log('[Relay] Wikimedia SSE disconnected, reconnecting in 10s...');
+      setTimeout(connectWikimediaSSE, 10000);
+    });
+    res.on('error', () => {
+      wikimediaSSE = null;
+      setTimeout(connectWikimediaSSE, 15000);
+    });
+  });
+  req.on('error', () => {
+    wikimediaSSE = null;
+    console.log('[Relay] Wikimedia SSE error, retry in 15s');
+    setTimeout(connectWikimediaSSE, 15000);
+  });
+  wikimediaSSE = req;
+}
+
+// Start Wikimedia SSE in background (non-blocking; relay still works without it)
+setTimeout(connectWikimediaSSE, 5000);
+
+async function handleInfoOpsRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '100', 10), 100);
+  const data = JSON.stringify(infoOpsBuffer.slice(0, limit));
+  sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, data);
+}
+
+// ---------------------------------------------------------------------------
+// ACARS: Airframes.io rolling buffer
+// ---------------------------------------------------------------------------
+const ACARS_BUFFER_SIZE = 500;
+const acarsBuffer = [];
+const ACARS_API_KEY = process.env.AIRFRAMES_API_KEY;
+
+const ACARS_MIL_RE = {
+  medivac: /MEDIVAC|EVAC|DUSTOFF/i,
+  tactical: /STRIKE|WEAPON|LOAD|TARGET/i,
+  logistics: /CARGO|PALLETS|AIRLIFT|REACH\d+/i,
+};
+
+function classifyAcarsMessage(text) {
+  if (ACARS_MIL_RE.medivac.test(text)) return 'ACARS_MIL_CATEGORY_MEDICAL_EVAC';
+  if (ACARS_MIL_RE.tactical.test(text)) return 'ACARS_MIL_CATEGORY_TACTICAL';
+  if (ACARS_MIL_RE.logistics.test(text)) return 'ACARS_MIL_CATEGORY_LOGISTICS';
+  return 'ACARS_MIL_CATEGORY_UNKNOWN';
+}
+
+let airframesWs = null;
+
+function connectAirframesWS() {
+  if (!ACARS_API_KEY) return;
+  if (airframesWs) return;
+  console.log('[Relay] Connecting to Airframes.io ACARS stream...');
+  const ws = new WebSocket('wss://feed.airframes.io/acars', {
+    headers: { 'x-api-key': ACARS_API_KEY },
+  });
+  airframesWs = ws;
+
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      const entry = {
+        id: `acars-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        tailNumber: msg.tail || '',
+        flightNumber: msg.flight || '',
+        messageText: msg.text || '',
+        messageType: msg.label || 'FREEFMT',
+        milCategory: classifyAcarsMessage(msg.text || ''),
+        lat: msg.position?.lat || 0,
+        lon: msg.position?.lon || 0,
+        altitudeFt: msg.altitude || 0,
+        freqMhz: msg.freq || '',
+        receivedAt: Date.now(),
+        station: msg.station_id || '',
+      };
+      acarsBuffer.unshift(entry);
+      if (acarsBuffer.length > ACARS_BUFFER_SIZE) acarsBuffer.pop();
+    } catch { /* ignore */ }
+  });
+
+  ws.on('close', () => {
+    airframesWs = null;
+    console.log('[Relay] Airframes WS disconnected, retry in 30s');
+    setTimeout(connectAirframesWS, 30000);
+  });
+  ws.on('error', (err) => {
+    console.error('[Relay] Airframes WS error:', err.message);
+  });
+}
+
+if (ACARS_API_KEY) setTimeout(connectAirframesWS, 3000);
+
+async function handleAcarsRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '100', 10), 500);
+  const category = url.searchParams.get('category') || '';
+  let results = acarsBuffer.slice(0, limit);
+  if (category && category !== 'ACARS_MIL_CATEGORY_UNSPECIFIED') {
+    results = results.filter((m) => m.milCategory === category);
+  }
+  const data = JSON.stringify({ messages: results, sampledAt: Date.now() });
+  sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, data);
+}
+
+// ---------------------------------------------------------------------------
+// Social: Bluesky AT Protocol firehose — rolling keyword trend window
+// ---------------------------------------------------------------------------
+const SOCIAL_WINDOW_MS = 5 * 60 * 1000; // 5-minute sliding window
+const socialMentions = new Map(); // entity → [{ ts, snippet }]
+let blueskyWs = null;
+
+const SOCIAL_ENTITIES = [
+  'OpenAI', 'Anthropic', 'Google', 'Microsoft', 'Meta', 'Apple', 'Nvidia',
+  'Bitcoin', 'Ethereum', 'crypto', 'AI', 'ChatGPT', 'Claude', 'Gemini',
+  'Ukraine', 'Russia', 'Taiwan', 'China', 'Iran', 'Gaza', 'Israel',
+  'Fed', 'interest rates', 'inflation', 'recession', 'SPY', 'QQQ',
+  'earthquake', 'hurricane', 'flood', 'wildfire', 'tsunami',
+];
+
+function connectBlueskeyFirehose() {
+  if (blueskyWs) return;
+  // Use the public Bluesky Jetstream (simpler than AT Protocol DAG-CBOR)
+  const ws = new WebSocket('wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=app.bsky.feed.post');
+  blueskyWs = ws;
+
+  ws.on('message', (data) => {
+    try {
+      const ev = JSON.parse(data.toString());
+      if (ev.kind !== 'commit' || !ev.commit?.record?.text) return;
+      const text = ev.commit.record.text;
+      const now = Date.now();
+      for (const entity of SOCIAL_ENTITIES) {
+        if (text.toLowerCase().includes(entity.toLowerCase())) {
+          const list = socialMentions.get(entity) || [];
+          list.push({ ts: now, snippet: text.slice(0, 120) });
+          // Keep only last 5-min window
+          const cutoff = now - SOCIAL_WINDOW_MS;
+          const trimmed = list.filter((m) => m.ts > cutoff);
+          socialMentions.set(entity, trimmed.slice(-200)); // cap to 200 entries
+          break; // only count first matching entity per post
+        }
+      }
+    } catch { /* ignore */ }
+  });
+
+  ws.on('close', () => {
+    blueskyWs = null;
+    console.log('[Relay] Bluesky Jetstream disconnected, retry in 20s');
+    setTimeout(connectBlueskeyFirehose, 20000);
+  });
+  ws.on('error', () => {
+    blueskyWs = null;
+    setTimeout(connectBlueskeyFirehose, 30000);
+  });
+}
+
+// Start Bluesky firehose consumer (non-blocking)
+setTimeout(connectBlueskeyFirehose, 8000);
+
+async function handleSocialTrendsRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 50);
+  const platform = url.searchParams.get('platform') || '';
+
+  const now = Date.now();
+  const cutoff = now - SOCIAL_WINDOW_MS;
+
+  const trends = [];
+  for (const [entity, mentions] of socialMentions.entries()) {
+    const recent = mentions.filter((m) => m.ts > cutoff);
+    if (recent.length === 0) continue;
+    const velocity = recent.length / (SOCIAL_WINDOW_MS / 60000); // mentions/min
+    trends.push({
+      topic: entity,
+      platform: 'bluesky',
+      mentionCount1h: recent.length * 12, // extrapolate 5-min to 1-hr
+      velocity: Math.round(velocity * 100) / 100,
+      topPosts: recent.slice(-3).map((m) => m.snippet),
+      matchedEntities: [entity],
+      observedAt: now,
+    });
+  }
+
+  // Sort by velocity descending
+  trends.sort((a, b) => b.velocity - a.velocity);
+
+  let results = trends.slice(0, limit);
+  if (platform && platform !== 'bluesky') results = [];
+
+  const data = JSON.stringify({ trends: results, sampledAt: now });
+  sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, data);
+}
+
+// ---------------------------------------------------------------------------
+// BGP Events: Cache-proxied BGPStream CAIDA API
+// ---------------------------------------------------------------------------
+let bgpCache = null;
+let bgpCacheAt = 0;
+const BGP_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+async function handleBgpEventsRequest(req, res) {
+  const now = Date.now();
+  if (bgpCache && now - bgpCacheAt < BGP_CACHE_TTL_MS) {
+    sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=180' }, bgpCache);
+    return;
+  }
+  try {
+    const https = require('https');
+    const data = await new Promise((resolve, reject) => {
+      const r = https.get(
+        'https://bgpstream.caida.org/api/v2/events?type=hijack,leak&limit=50',
+        { timeout: 10000 },
+        (response) => {
+          let body = '';
+          response.on('data', (c) => body += c);
+          response.on('end', () => resolve(body));
+        }
+      );
+      r.on('error', reject);
+      r.on('timeout', () => { r.destroy(); reject(new Error('BGP timeout')); });
+    });
+    bgpCache = data;
+    bgpCacheAt = now;
+    sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=180' }, data);
+  } catch (err) {
+    const empty = JSON.stringify({ data: { events: [] } });
+    sendCompressed(req, res, 200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }, empty);
+  }
+}
 
 function connectUpstream() {
   // Skip if already connected or connecting

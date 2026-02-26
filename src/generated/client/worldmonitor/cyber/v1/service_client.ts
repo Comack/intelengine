@@ -49,6 +49,48 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListExploitedVulnerabilitiesRequest {
+  limit: number;
+}
+
+export interface ListExploitedVulnerabilitiesResponse {
+  vulnerabilities: ExploitedVulnerability[];
+}
+
+export interface ExploitedVulnerability {
+  cveId: string;
+  vendorProject: string;
+  product: string;
+  vulnerabilityName: string;
+  dateAdded: string;
+  shortDescription: string;
+  requiredAction: string;
+  dueDate: string;
+  notes: string;
+}
+
+export interface ListInfoOpsSignalsRequest {
+  limit: number;
+}
+
+export interface ListInfoOpsSignalsResponse {
+  signals: InfoOpsSignal[];
+  sampledAt: string;
+}
+
+export interface InfoOpsSignal {
+  id: string;
+  pageTitle: string;
+  wiki: string;
+  editType: string;
+  editCount1h: number;
+  uniqueEditors1h: number;
+  botTraffic: boolean;
+  geopoliticalRelevance: number;
+  matchedEntity: string;
+  detectedAt: string;
+}
+
 export type CriticalityLevel = "CRITICALITY_LEVEL_UNSPECIFIED" | "CRITICALITY_LEVEL_LOW" | "CRITICALITY_LEVEL_MEDIUM" | "CRITICALITY_LEVEL_HIGH" | "CRITICALITY_LEVEL_CRITICAL";
 
 export type CyberThreatIndicatorType = "CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED" | "CYBER_THREAT_INDICATOR_TYPE_IP" | "CYBER_THREAT_INDICATOR_TYPE_DOMAIN" | "CYBER_THREAT_INDICATOR_TYPE_URL";
@@ -127,6 +169,54 @@ export class CyberServiceClient {
     }
 
     return await resp.json() as ListCyberThreatsResponse;
+  }
+
+  async listExploitedVulnerabilities(req: ListExploitedVulnerabilitiesRequest, options?: CyberServiceCallOptions): Promise<ListExploitedVulnerabilitiesResponse> {
+    let path = "/api/cyber/v1/list-exploited-vulnerabilities";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListExploitedVulnerabilitiesResponse;
+  }
+
+  async listInfoOpsSignals(req: ListInfoOpsSignalsRequest, options?: CyberServiceCallOptions): Promise<ListInfoOpsSignalsResponse> {
+    let path = "/api/cyber/v1/list-info-ops-signals";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListInfoOpsSignalsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

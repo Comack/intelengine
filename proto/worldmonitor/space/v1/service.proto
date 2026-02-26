@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.space.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/space/v1/list_satellites.proto";
+import "worldmonitor/space/v1/get_space_weather.proto";
+
+// SpaceService provides APIs for orbital object tracking and space weather monitoring.
+// Data sources: CelesTrak TLE catalog, NOAA Space Weather Prediction Center (SWPC).
+service SpaceService {
+  option (sebuf.http.service_config) = {base_path: "/api/space/v1"};
+
+  // ListSatellites retrieves tracked orbital objects with SGP4-propagated current positions.
+  rpc ListSatellites(ListSatellitesRequest) returns (ListSatellitesResponse) {
+    option (sebuf.http.config) = {path: "/list-satellites"};
+  }
+
+  // GetSpaceWeather retrieves current geomagnetic storm conditions and solar flux from NOAA SWPC.
+  rpc GetSpaceWeather(GetSpaceWeatherRequest) returns (GetSpaceWeatherResponse) {
+    option (sebuf.http.config) = {path: "/get-space-weather"};
+  }
+}

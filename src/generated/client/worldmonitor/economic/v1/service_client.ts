@@ -92,6 +92,7 @@ export interface MacroSignals {
   hashRate?: HashRateSignal;
   miningCost?: MiningCostSignal;
   fearGreed?: FearGreedSignal;
+  balticDryIndex?: BalticDryIndexSignal;
 }
 
 export interface LiquiditySignal {
@@ -142,8 +143,37 @@ export interface FearGreedHistoryEntry {
   date: string;
 }
 
+export interface BalticDryIndexSignal {
+  value: number;
+  change7dPct: number;
+  trend: string;
+  updatedAt: string;
+}
+
 export interface MacroMeta {
   qqqSparkline: number[];
+}
+
+export interface ListRegulatoryFilingsRequest {
+  limit: number;
+  formType: string;
+}
+
+export interface ListRegulatoryFilingsResponse {
+  filings: RegulatoryFiling[];
+  fetchedAt: string;
+}
+
+export interface RegulatoryFiling {
+  id: string;
+  formType: string;
+  companyName: string;
+  ticker: string;
+  cik: string;
+  filingDescription: string;
+  url: string;
+  marketImpactScore: number;
+  filedAt: string;
 }
 
 export interface FieldViolation {
@@ -288,6 +318,30 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetMacroSignalsResponse;
+  }
+
+  async listRegulatoryFilings(req: ListRegulatoryFilingsRequest, options?: EconomicServiceCallOptions): Promise<ListRegulatoryFilingsResponse> {
+    let path = "/api/economic/v1/list-regulatory-filings";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListRegulatoryFilingsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

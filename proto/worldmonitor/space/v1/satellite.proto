@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.space.v1;
+
+// Satellite represents a tracked orbital object with propagated position.
+message Satellite {
+  // NORAD catalog number (unique identifier).
+  string id = 1;
+  // Common name, e.g. "STARLINK-1234".
+  string name = 2;
+  // Mission category.
+  SatelliteCategory category = 3;
+  // ISO 3166-1 alpha-2 code of the owning country/operator.
+  string country = 4;
+  // Propagated current latitude (degrees, -90 to 90).
+  double lat = 5;
+  // Propagated current longitude (degrees, -180 to 180).
+  double lon = 6;
+  // Altitude above WGS84 ellipsoid in kilometres.
+  double altitude_km = 7;
+  // Orbital inclination in degrees.
+  double inclination_deg = 8;
+  // TLE epoch as Unix milliseconds.
+  int64 epoch_ms = 9;
+  // Raw TLE line 1.
+  string tle_line1 = 10;
+  // Raw TLE line 2.
+  string tle_line2 = 11;
+}
+
+// SatelliteCategory classifies the primary mission of an orbital object.
+enum SatelliteCategory {
+  SATELLITE_CATEGORY_UNSPECIFIED = 0;
+  SATELLITE_CATEGORY_MILITARY = 1;
+  SATELLITE_CATEGORY_RECONNAISSANCE = 2;
+  SATELLITE_CATEGORY_COMMUNICATIONS = 3;
+  SATELLITE_CATEGORY_NAVIGATION = 4;
+  SATELLITE_CATEGORY_WEATHER = 5;
+  SATELLITE_CATEGORY_STARLINK = 6;
+  SATELLITE_CATEGORY_ISS = 7;
+}

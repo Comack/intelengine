@@ -195,6 +195,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/military/v1/list-acars-messages:
+        post:
+            tags:
+                - MilitaryService
+            summary: ListAcarsMessages
+            description: ListAcarsMessages retrieves recent ACARS datalink messages with military classification.
+            operationId: ListAcarsMessages
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListAcarsMessagesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAcarsMessagesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -832,3 +864,82 @@ components:
                         type: string
                         description: Escort vessels in the strike group.
             description: USNIStrikeGroup represents a carrier strike group parsed from the article.
+        ListAcarsMessagesRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum messages to return (default 100, max 500).
+                milCategory:
+                    type: string
+                    enum:
+                        - ACARS_MIL_CATEGORY_UNSPECIFIED
+                        - ACARS_MIL_CATEGORY_MEDICAL_EVAC
+                        - ACARS_MIL_CATEGORY_TACTICAL
+                        - ACARS_MIL_CATEGORY_LOGISTICS
+                        - ACARS_MIL_CATEGORY_UNKNOWN
+                    description: AcarsMilCategory classifies the likely military mission from ACARS message content.
+            description: ListAcarsMessagesRequest filters ACARS message queries.
+        ListAcarsMessagesResponse:
+            type: object
+            properties:
+                messages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AcarsMessage'
+                sampledAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when buffer was sampled.
+            description: ListAcarsMessagesResponse contains recent ACARS messages with military classification.
+        AcarsMessage:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique message identifier.
+                tailNumber:
+                    type: string
+                    description: Aircraft registration (tail number).
+                flightNumber:
+                    type: string
+                    description: IATA/ICAO flight number if known.
+                messageText:
+                    type: string
+                    description: Decoded message text.
+                messageType:
+                    type: string
+                    description: 'ACARS message label type: OOOI | METAR | FREEFMT | ADS | CPDLC.'
+                milCategory:
+                    type: string
+                    enum:
+                        - ACARS_MIL_CATEGORY_UNSPECIFIED
+                        - ACARS_MIL_CATEGORY_MEDICAL_EVAC
+                        - ACARS_MIL_CATEGORY_TACTICAL
+                        - ACARS_MIL_CATEGORY_LOGISTICS
+                        - ACARS_MIL_CATEGORY_UNKNOWN
+                    description: AcarsMilCategory classifies the likely military mission from ACARS message content.
+                lat:
+                    type: number
+                    format: double
+                    description: Aircraft latitude at time of message (if available from ADS-C).
+                lon:
+                    type: number
+                    format: double
+                    description: Aircraft longitude at time of message (if available from ADS-C).
+                altitudeFt:
+                    type: number
+                    format: double
+                    description: Aircraft altitude in feet.
+                freqMhz:
+                    type: string
+                    description: VHF frequency in MHz on which the message was received.
+                receivedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when the message was received by the ground station.
+                station:
+                    type: string
+                    description: Ground station identifier that received the message.
+            description: AcarsMessage represents a decoded ACARS datalink message with military classification.

@@ -131,6 +131,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/economic/v1/list-regulatory-filings:
+        post:
+            tags:
+                - EconomicService
+            summary: ListRegulatoryFilings
+            description: ListRegulatoryFilings retrieves recent SEC EDGAR 8-K filings for tracked companies.
+            operationId: ListRegulatoryFilings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListRegulatoryFilingsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListRegulatoryFilingsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -390,7 +422,9 @@ components:
                     $ref: '#/components/schemas/MiningCostSignal'
                 fearGreed:
                     $ref: '#/components/schemas/FearGreedSignal'
-            description: MacroSignals contains all 7 individual signal computations.
+                balticDryIndex:
+                    $ref: '#/components/schemas/BalticDryIndexSignal'
+            description: MacroSignals contains all 7 individual signal computations plus BDI.
         LiquiditySignal:
             type: object
             properties:
@@ -517,6 +551,25 @@ components:
                     type: string
                     description: Date string (YYYY-MM-DD).
             description: FearGreedHistoryEntry is a single day's Fear & Greed index reading.
+        BalticDryIndexSignal:
+            type: object
+            properties:
+                value:
+                    type: number
+                    format: double
+                    description: Raw BDI value (published once per business day).
+                change7dPct:
+                    type: number
+                    format: double
+                    description: 7-day percentage change.
+                trend:
+                    type: string
+                    description: 'Trend direction: rising | falling | stable.'
+                updatedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the latest BDI publication.
+            description: BalticDryIndexSignal tracks the Baltic Dry Index shipping cost indicator.
         MacroMeta:
             type: object
             properties:
@@ -527,3 +580,59 @@ components:
                         format: double
                         description: Last 30 QQQ close prices for sparkline.
             description: MacroMeta contains supplementary chart data.
+        ListRegulatoryFilingsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum filings to return (default 40, max 100).
+                formType:
+                    type: string
+                    description: Optional form type filter, e.g. "8-K". Returns all types when empty.
+            description: ListRegulatoryFilingsRequest filters SEC EDGAR filing queries.
+        ListRegulatoryFilingsResponse:
+            type: object
+            properties:
+                filings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RegulatoryFiling'
+                fetchedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was fetched.
+            description: ListRegulatoryFilingsResponse contains recent SEC EDGAR filings for tracked companies.
+        RegulatoryFiling:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique filing identifier.
+                formType:
+                    type: string
+                    description: SEC form type, e.g. "8-K", "10-Q", "13F", "S-1".
+                companyName:
+                    type: string
+                    description: Company name.
+                ticker:
+                    type: string
+                    description: Exchange ticker symbol, e.g. "NVDA".
+                cik:
+                    type: string
+                    description: SEC Central Index Key.
+                filingDescription:
+                    type: string
+                    description: Filing description, e.g. "Entry into a Material Definitive Agreement".
+                url:
+                    type: string
+                    description: Direct URL to the SEC EDGAR filing page.
+                marketImpactScore:
+                    type: number
+                    format: double
+                    description: Market impact score (0–100) based on form type and company size.
+                filedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when the filing was submitted to EDGAR.
+            description: RegulatoryFiling represents a single SEC EDGAR filing for a tracked company.

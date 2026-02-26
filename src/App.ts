@@ -14,7 +14,8 @@ import {
   LAYER_TO_SOURCE,
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
-import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchCableHealth, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, fetchUSNIFleetReport, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals, listForensicsRuns, listFusedSignals, listCalibratedAnomalies, getForensicsTopologySummary, getForensicsTrace, getForensicsPolicy, runForensicsShadow } from '@/services';
+import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchCableHealth, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, fetchUSNIFleetReport, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals, listForensicsRuns, listFusedSignals, listCalibratedAnomalies, getForensicsTopologySummary, getForensicsTrace, getForensicsPolicy, runForensicsShadow, fetchRoutingAnomalies, fetchGridStatus, fetchSarDetections, fetchPortCongestion, fetchWhaleTransfers, fetchAirQualityReadings, getSpaceWeather } from '@/services';
+import { fetchAcarsMessages } from '@/services/military';
 import { fetchCountryMarkets } from '@/services/prediction';
 import type { FredSeries, OilAnalytics } from '@/services/economic';
 import { mlWorker } from '@/services/ml-worker';
@@ -235,6 +236,22 @@ export class App {
   private latestHapiFetchedAt = 0;
   private latestDisplacementFetchedAt = 0;
   private latestClimateFetchedAt = 0;
+  private latestRoutingAnomalies: any[] = [];
+  private latestGridZones: any[] = [];
+  private latestSarDetections: any[] = [];
+  private latestPortCongestion: any[] = [];
+  private latestAcarsMessages: any[] = [];
+  private latestWhaleTransfers: any[] = [];
+  private latestAirQualityReadings: any[] = [];
+  private latestSpaceWeather: any = null;
+  private latestRoutingFetchedAt = 0;
+  private latestGridFetchedAt = 0;
+  private latestSarFetchedAt = 0;
+  private latestPortFetchedAt = 0;
+  private latestAcarsFetchedAt = 0;
+  private latestWhaleFetchedAt = 0;
+  private latestAqiFetchedAt = 0;
+  private latestSpaceFetchedAt = 0;
   private forensicsShadowInFlight: Set<'intelligence' | 'market'> = new Set();
   private forensicsShadowLastRunAt: Record<'intelligence' | 'market', number> = {
     intelligence: 0,
@@ -4425,6 +4442,7 @@ export class App {
         supportCount,
         lat: coordinate.lat,
         lon: coordinate.lon,
+        evidenceIds: anomaly.evidenceIds || [],
       });
     });
 
@@ -4709,6 +4727,22 @@ export class App {
       stablecoinFetchedAt: this.latestStablecoinFetchedAt,
       fredFetchedAt: this.latestFredFetchedAt,
       oilFetchedAt: this.latestOilFetchedAt,
+      routingAnomalies: this.latestRoutingAnomalies,
+      gridZones: this.latestGridZones,
+      sarDetections: this.latestSarDetections,
+      portCongestion: this.latestPortCongestion,
+      acarsMessages: this.latestAcarsMessages,
+      whaleTransfers: this.latestWhaleTransfers,
+      airQualityReadings: this.latestAirQualityReadings,
+      spaceWeather: this.latestSpaceWeather,
+      routingFetchedAt: this.latestRoutingFetchedAt,
+      gridFetchedAt: this.latestGridFetchedAt,
+      sarFetchedAt: this.latestSarFetchedAt,
+      portFetchedAt: this.latestPortFetchedAt,
+      acarsFetchedAt: this.latestAcarsFetchedAt,
+      whaleFetchedAt: this.latestWhaleFetchedAt,
+      aqiFetchedAt: this.latestAqiFetchedAt,
+      spaceFetchedAt: this.latestSpaceFetchedAt,
     };
   }
 
@@ -5903,5 +5937,57 @@ export class App {
       this.cyberThreatsCache = null;
       return this.loadCyberThreats();
     }, 10 * 60 * 1000, () => CYBER_LAYER_ENABLED && this.mapLayers.cyberThreats);
+
+    // Signal-expansion data (routing anomalies, grid status, SAR, port congestion, ACARS, whales, AQI, space weather)
+    this.scheduleRefresh('signalExpansion', () => this.refreshSignalExpansionData(), 5 * 60 * 1000);
+  }
+
+  private async refreshSignalExpansionData(): Promise<void> {
+    try {
+      const [routing, grid, sar, ports, acars, whales, aqi, spaceWx] = await Promise.allSettled([
+        fetchRoutingAnomalies(),
+        fetchGridStatus(),
+        fetchSarDetections(),
+        fetchPortCongestion(),
+        fetchAcarsMessages(),
+        fetchWhaleTransfers(),
+        fetchAirQualityReadings(),
+        getSpaceWeather(),
+      ]);
+      const now = Date.now();
+      if (routing.status === 'fulfilled') { this.latestRoutingAnomalies = routing.value; this.latestRoutingFetchedAt = now; }
+      if (grid.status === 'fulfilled') { this.latestGridZones = grid.value; this.latestGridFetchedAt = now; }
+      if (sar.status === 'fulfilled') { this.latestSarDetections = sar.value; this.latestSarFetchedAt = now; }
+      if (ports.status === 'fulfilled') { this.latestPortCongestion = ports.value; this.latestPortFetchedAt = now; }
+      if (acars.status === 'fulfilled') { this.latestAcarsMessages = acars.value; this.latestAcarsFetchedAt = now; }
+      if (whales.status === 'fulfilled') { this.latestWhaleTransfers = whales.value; this.latestWhaleFetchedAt = now; }
+      if (aqi.status === 'fulfilled') { this.latestAirQualityReadings = aqi.value; this.latestAqiFetchedAt = now; }
+      if (spaceWx.status === 'fulfilled') { this.latestSpaceWeather = spaceWx.value?.status ?? null; this.latestSpaceFetchedAt = now; }
+
+      // Feed into signal aggregator
+      signalAggregator.ingestRoutingAnomalies(this.latestRoutingAnomalies.map((a: any) => ({
+        type: a.type, lat: a.lat, lon: a.lon, severity: Number(a.severity) || 5,
+        country: a.country, description: a.description, detectedAt: Number(a.detectedAt) || now,
+      })));
+      signalAggregator.ingestSarDetections(this.latestSarDetections.map((d: any) => ({
+        lat: d.lat, lon: d.lon, lengthM: d.lengthM, confidence: d.confidence,
+        detectedAt: Number(d.detectedAt) || now,
+      })));
+      signalAggregator.ingestSpaceWeather(this.latestSpaceWeather);
+      signalAggregator.ingestAirQuality(this.latestAirQualityReadings.map((r: any) => ({
+        lat: r.lat, lon: r.lon, aqi: r.aqi, city: r.city,
+        observedAt: Number(r.observedAt) || now,
+      })));
+      signalAggregator.ingestWhaleTransfers(this.latestWhaleTransfers.map((t: any) => ({
+        type: t.transferType, amountUsd: t.amountUsd, lat: t.lat, lon: t.lon,
+        detectedAt: Number(t.occurredAt) || now,
+      })));
+      signalAggregator.ingestGridStatus(this.latestGridZones.map((z: any) => ({
+        zoneName: z.zoneName, lat: z.lat, lon: z.lon, stressLevel: z.stressLevel,
+        observedAt: Number(z.observedAt) || now,
+      })));
+    } catch (err) {
+      console.warn('[App] Signal expansion refresh failed:', err);
+    }
   }
 }

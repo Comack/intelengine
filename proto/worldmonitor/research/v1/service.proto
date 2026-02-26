@@ -7,6 +7,8 @@ import "worldmonitor/research/v1/list_arxiv_papers.proto";
 import "worldmonitor/research/v1/list_trending_repos.proto";
 import "worldmonitor/research/v1/list_hackernews_items.proto";
 import "worldmonitor/research/v1/list_tech_events.proto";
+import "worldmonitor/research/v1/list_social_trends.proto";
+import "worldmonitor/research/v1/get_repo_momentum.proto";
 
 // ResearchService provides APIs for academic papers, trending repos, and tech news.
 service ResearchService {
@@ -30,5 +32,15 @@ service ResearchService {
   // ListTechEvents retrieves tech events from Techmeme ICS, dev.events RSS, and curated sources.
   rpc ListTechEvents(ListTechEventsRequest) returns (ListTechEventsResponse) {
     option (sebuf.http.config) = {path: "/list-tech-events"};
+  }
+
+  // ListSocialTrends retrieves trending entities from the Bluesky AT Protocol firehose.
+  rpc ListSocialTrends(ListSocialTrendsRequest) returns (ListSocialTrendsResponse) {
+    option (sebuf.http.config) = {path: "/list-social-trends"};
+  }
+
+  // GetRepoMomentum retrieves momentum scores for tracked strategic GitHub repositories.
+  rpc GetRepoMomentum(GetRepoMomentumRequest) returns (GetRepoMomentumResponse) {
+    option (sebuf.http.config) = {path: "/get-repo-momentum"};
   }
 }

@@ -25,7 +25,7 @@ message GetMacroSignalsResponse {
   bool unavailable = 7;
 }
 
-// MacroSignals contains all 7 individual signal computations.
+// MacroSignals contains all 7 individual signal computations plus BDI.
 message MacroSignals {
   // JPY-based liquidity squeeze detection.
   LiquiditySignal liquidity = 1;
@@ -41,6 +41,8 @@ message MacroSignals {
   MiningCostSignal mining_cost = 6;
   // Crypto Fear & Greed index.
   FearGreedSignal fear_greed = 7;
+  // Baltic Dry Index shipping cost indicator.
+  BalticDryIndexSignal baltic_dry_index = 8;
 }
 
 // LiquiditySignal tracks JPY 30d rate of change as a liquidity proxy.
@@ -130,4 +132,16 @@ message FearGreedSignal {
 message MacroMeta {
   // Last 30 QQQ close prices for sparkline.
   repeated double qqq_sparkline = 1;
+}
+
+// BalticDryIndexSignal tracks the Baltic Dry Index shipping cost indicator.
+message BalticDryIndexSignal {
+  // Raw BDI value (published once per business day).
+  double value = 1;
+  // 7-day percentage change.
+  double change_7d_pct = 2;
+  // Trend direction: rising | falling | stable.
+  string trend = 3;
+  // Unix milliseconds of the latest BDI publication.
+  int64 updated_at = 4;
 }

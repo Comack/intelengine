@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+// ListRoutingAnomaliesRequest filters BGP routing anomaly queries.
+message ListRoutingAnomaliesRequest {
+  // Maximum events to return (default 50, max 200).
+  int32 limit = 1;
+}
+
+// ListRoutingAnomaliesResponse contains detected BGP routing events.
+message ListRoutingAnomaliesResponse {
+  repeated RoutingAnomaly anomalies = 1;
+}
+
+// RoutingAnomaly represents a detected BGP hijack, leak, or route flap event.
+message RoutingAnomaly {
+  // Unique event identifier.
+  string id = 1;
+  // Event classification.
+  RoutingAnomalyType type = 2;
+  // Affected IP prefix, e.g. "8.8.8.0/24".
+  string prefix = 3;
+  // ASN of the legitimate prefix owner.
+  string victim_asn = 4;
+  // ASN of the offending network (empty for route flaps).
+  string attacker_asn = 5;
+  // Human-readable name of the victim AS.
+  string victim_name = 6;
+  // Human-readable name of the attacker AS.
+  string attacker_name = 7;
+  // ISO 3166-1 alpha-2 country of the victim network.
+  string country = 8;
+  // Approximate latitude of the victim network's country centroid.
+  double lat = 9;
+  // Approximate longitude of the victim network's country centroid.
+  double lon = 10;
+  // Qualitative severity: low | medium | high | critical.
+  string severity = 11;
+  // Unix milliseconds when the event was first detected.
+  int64 detected_at = 12;
+  // Human-readable event description.
+  string description = 13;
+}
+
+// RoutingAnomalyType classifies the BGP routing event.
+enum RoutingAnomalyType {
+  ROUTING_ANOMALY_TYPE_UNSPECIFIED = 0;
+  ROUTING_ANOMALY_TYPE_BGP_HIJACK = 1;
+  ROUTING_ANOMALY_TYPE_BGP_LEAK = 2;
+  ROUTING_ANOMALY_TYPE_ROUTE_FLAP = 3;
+}

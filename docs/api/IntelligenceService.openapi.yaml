@@ -163,6 +163,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/search-sanctioned-entities:
+        post:
+            tags:
+                - IntelligenceService
+            summary: SearchSanctionedEntities
+            description: SearchSanctionedEntities searches OpenSanctions for sanctioned individuals or entities.
+            operationId: SearchSanctionedEntities
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SearchSanctionedEntitiesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SearchSanctionedEntitiesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/intelligence/v1/run-forensics-shadow:
         post:
             tags:
@@ -941,6 +973,46 @@ components:
                     format: double
                     description: GDELT tone score (negative = negative tone, positive = positive tone).
             description: GdeltArticle represents a single article from the GDELT document API.
+        SearchSanctionedEntitiesRequest:
+            type: object
+            properties:
+                query:
+                    type: string
+                limit:
+                    type: integer
+                    format: int32
+        SearchSanctionedEntitiesResponse:
+            type: object
+            properties:
+                entities:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SanctionedEntity'
+        SanctionedEntity:
+            type: object
+            properties:
+                id:
+                    type: string
+                schema:
+                    type: string
+                name:
+                    type: string
+                aliases:
+                    type: array
+                    items:
+                        type: string
+                countries:
+                    type: array
+                    items:
+                        type: string
+                datasets:
+                    type: array
+                    items:
+                        type: string
+                firstSeen:
+                    type: string
+                lastSeen:
+                    type: string
         RunForensicsShadowRequest:
             type: object
             properties:

@@ -67,6 +67,70 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/maritime/v1/list-sar-detections:
+        post:
+            tags:
+                - MaritimeService
+            summary: ListSarDetections
+            description: ListSarDetections retrieves SAR-detected dark ships from Global Fishing Watch.
+            operationId: ListSarDetections
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListSarDetectionsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSarDetectionsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/maritime/v1/get-port-congestion:
+        post:
+            tags:
+                - MaritimeService
+            summary: GetPortCongestion
+            description: GetPortCongestion retrieves congestion indices for major global ports.
+            operationId: GetPortCongestion
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetPortCongestionRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetPortCongestionResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -312,3 +376,125 @@ components:
                     format: int32
                     description: Total count of items matching the query, if known. Zero if the total is unknown.
             description: PaginationResponse contains pagination metadata returned alongside list results.
+        ListSarDetectionsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum detections to return (default 100, max 500).
+            description: ListSarDetectionsRequest filters SAR dark ship queries.
+        ListSarDetectionsResponse:
+            type: object
+            properties:
+                detections:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SarDarkShip'
+                fetchedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was fetched.
+            description: ListSarDetectionsResponse contains SAR-detected vessels with no AIS correlation.
+        SarDarkShip:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique detection identifier.
+                lat:
+                    type: number
+                    format: double
+                    description: Detection latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Detection longitude.
+                lengthM:
+                    type: number
+                    format: double
+                    description: Estimated vessel length from SAR pixel size in metres.
+                course:
+                    type: number
+                    format: double
+                    description: Estimated course over ground in degrees (0–360).
+                speedKnots:
+                    type: number
+                    format: double
+                    description: Estimated speed in knots.
+                aisMatched:
+                    type: boolean
+                    description: Whether the detection was correlated with a known AIS vessel.
+                nearestAisVessel:
+                    type: string
+                    description: Name of the matched AIS vessel, if correlated.
+                region:
+                    type: string
+                    description: Geographic region of the detection, e.g. "South China Sea".
+                vesselClassHint:
+                    type: string
+                    description: 'Heuristic vessel class: tanker | cargo | fishing | unknown.'
+                detectedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the SAR pass.
+                confidence:
+                    type: number
+                    format: double
+                    description: Detection confidence score (0–1).
+            description: SarDarkShip represents a vessel detected by synthetic aperture radar with no AIS match.
+        GetPortCongestionRequest:
+            type: object
+            description: GetPortCongestionRequest has no required parameters.
+        GetPortCongestionResponse:
+            type: object
+            properties:
+                ports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PortCongestionStatus'
+                computedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was computed.
+            description: GetPortCongestionResponse contains congestion indices for major global ports.
+        PortCongestionStatus:
+            type: object
+            properties:
+                portCode:
+                    type: string
+                    description: UN/LOCODE port code, e.g. "SGSIN".
+                portName:
+                    type: string
+                    description: Human-readable port name, e.g. "Port of Singapore".
+                lat:
+                    type: number
+                    format: double
+                    description: Port latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Port longitude.
+                congestionIndex:
+                    type: number
+                    format: double
+                    description: Congestion index from 0 (clear) to 100 (severely congested).
+                avgWaitHours:
+                    type: number
+                    format: double
+                    description: Average vessel wait time at anchor in hours.
+                vesselsAtAnchor:
+                    type: integer
+                    format: int32
+                    description: Number of vessels currently at anchor in the port approaches.
+                trend:
+                    type: string
+                    description: 'Congestion trend: increasing | stable | decreasing.'
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                updatedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the latest data point.
+            description: PortCongestionStatus represents the congestion level at a major port.

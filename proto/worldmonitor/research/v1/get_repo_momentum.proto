@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package worldmonitor.research.v1;
+
+// GetRepoMomentumRequest has no required parameters; returns all tracked strategic repos.
+message GetRepoMomentumRequest {}
+
+// GetRepoMomentumResponse contains momentum scores for tracked strategic repositories.
+message GetRepoMomentumResponse {
+  repeated RepoMomentum repos = 1;
+  // Unix milliseconds when data was computed.
+  int64 computed_at = 2;
+}
+
+// RepoMomentum tracks activity velocity for a strategically important GitHub repository.
+message RepoMomentum {
+  // GitHub repository path, e.g. "openai/openai-python".
+  string repo = 1;
+  // Organisation or entity that owns the repository.
+  string owner_entity = 2;
+  // New stars in the last 24 hours.
+  int32 stars_1d = 3;
+  // New forks in the last 24 hours.
+  int32 forks_1d = 4;
+  // Pull requests opened in the last 24 hours.
+  int32 pr_opens_1d = 5;
+  // Composite momentum score (0–100) weighting stars, forks, and PR activity.
+  double momentum_score = 6;
+  // Unix milliseconds when the score was computed.
+  int64 computed_at = 7;
+}

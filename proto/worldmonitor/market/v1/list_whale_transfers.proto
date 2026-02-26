@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+// ListWhaleTransfersRequest filters large cryptocurrency transfer queries.
+message ListWhaleTransfersRequest {
+  // Minimum transfer value in USD (default 50,000,000).
+  double min_value_usd = 1;
+  // Maximum transfers to return (default 20, max 50).
+  int32 limit = 2;
+}
+
+// ListWhaleTransfersResponse contains large on-chain cryptocurrency transfers.
+message ListWhaleTransfersResponse {
+  repeated WhaleTransfer transfers = 1;
+  // Unix milliseconds when data was fetched.
+  int64 fetched_at = 2;
+}
+
+// WhaleTransfer represents a large cryptocurrency on-chain transfer from Whale Alert.
+message WhaleTransfer {
+  // Unique transfer identifier.
+  string id = 1;
+  // Blockchain network: bitcoin | ethereum | tron | ripple | solana.
+  string blockchain = 2;
+  // Transfer value in USD.
+  double amount_usd = 3;
+  // Human-readable label for the sending address, e.g. "Binance 1" or "Unknown Wallet".
+  string from_label = 4;
+  // Human-readable label for the receiving address.
+  string to_label = 5;
+  // Transfer type classification.
+  WhaleTransferType transfer_type = 6;
+  // Approximate latitude of the sending exchange (if known).
+  double lat = 7;
+  // Approximate longitude of the sending exchange (if known).
+  double lon = 8;
+  // Unix milliseconds when the on-chain transaction was confirmed.
+  int64 occurred_at = 9;
+  // Transaction hash.
+  string tx_hash = 10;
+}
+
+// WhaleTransferType classifies the economic implication of a large transfer.
+enum WhaleTransferType {
+  WHALE_TRANSFER_TYPE_UNSPECIFIED = 0;
+  // Funds moving onto an exchange (typically bearish — sell pressure).
+  WHALE_TRANSFER_TYPE_EXCHANGE_INFLOW = 1;
+  // Funds moving off an exchange (typically bullish — accumulation).
+  WHALE_TRANSFER_TYPE_EXCHANGE_OUTFLOW = 2;
+  // Wallet-to-wallet transfer (OTC or cold storage).
+  WHALE_TRANSFER_TYPE_WALLET_TO_WALLET = 3;
+  // Government-linked wallet movement (enforcement action or seizure).
+  WHALE_TRANSFER_TYPE_GOVERNMENT_SEIZURE = 4;
+}

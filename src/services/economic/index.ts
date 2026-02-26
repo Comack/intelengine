@@ -14,6 +14,8 @@ import {
   type WorldBankCountryData as ProtoWorldBankCountryData,
   type GetEnergyPricesResponse,
   type EnergyPrice as ProtoEnergyPrice,
+  type ListRegulatoryFilingsResponse,
+  type RegulatoryFiling,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
@@ -491,4 +493,17 @@ export async function getCountryComparison(
   countryCodes: string[],
 ): Promise<WorldBankResponse> {
   return getIndicatorData(indicator, { countries: countryCodes, years: 10 });
+}
+
+// ---- Regulatory Filings ----
+const regulatoryBreaker = createCircuitBreaker<ListRegulatoryFilingsResponse>({ name: 'Regulatory Filings' });
+const emptyRegulatoryFallback: ListRegulatoryFilingsResponse = { filings: [], fetchedAt: '' };
+
+export type { RegulatoryFiling };
+
+export async function fetchRegulatoryFilings(limit = 30): Promise<RegulatoryFiling[]> {
+  const res = await regulatoryBreaker.execute(async () => {
+    return client.listRegulatoryFilings({ limit, formType: '' });
+  }, emptyRegulatoryFallback);
+  return res.filings;
 }

@@ -131,6 +131,70 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/research/v1/list-social-trends:
+        post:
+            tags:
+                - ResearchService
+            summary: ListSocialTrends
+            description: ListSocialTrends retrieves trending entities from the Bluesky AT Protocol firehose.
+            operationId: ListSocialTrends
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListSocialTrendsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSocialTrendsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/research/v1/get-repo-momentum:
+        post:
+            tags:
+                - ResearchService
+            summary: GetRepoMomentum
+            description: GetRepoMomentum retrieves momentum scores for tracked strategic GitHub repositories.
+            operationId: GetRepoMomentum
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetRepoMomentumRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRepoMomentumResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -455,3 +519,103 @@ components:
                     type: boolean
                     description: Whether this is a virtual/online event.
             description: TechEventCoords contains geocoded location data for a tech event.
+        ListSocialTrendsRequest:
+            type: object
+            properties:
+                platform:
+                    type: string
+                    description: 'Platform filter: "bluesky" | "github" | empty for all.'
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum trends to return (default 20).
+            description: ListSocialTrendsRequest filters social signal queries.
+        ListSocialTrendsResponse:
+            type: object
+            properties:
+                trends:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SocialTrend'
+                sampledAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when the relay buffer was sampled.
+            description: ListSocialTrendsResponse contains trending topics and entities from social platforms.
+        SocialTrend:
+            type: object
+            properties:
+                topic:
+                    type: string
+                    description: Trending topic or entity name.
+                platform:
+                    type: string
+                    description: 'Platform of origin: bluesky | github.'
+                mentionCount1h:
+                    type: integer
+                    format: int32
+                    description: Number of mentions in the last hour.
+                velocity:
+                    type: number
+                    format: double
+                    description: Velocity in mentions per minute.
+                topPosts:
+                    type: array
+                    items:
+                        type: string
+                        description: Sample of top post snippets (max 3).
+                matchedEntities:
+                    type: array
+                    items:
+                        type: string
+                        description: Entities from the registry that triggered this trend.
+                observedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the observation window end.
+            description: SocialTrend represents a trending entity or topic on a social platform.
+        GetRepoMomentumRequest:
+            type: object
+            description: GetRepoMomentumRequest has no required parameters; returns all tracked strategic repos.
+        GetRepoMomentumResponse:
+            type: object
+            properties:
+                repos:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RepoMomentum'
+                computedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was computed.
+            description: GetRepoMomentumResponse contains momentum scores for tracked strategic repositories.
+        RepoMomentum:
+            type: object
+            properties:
+                repo:
+                    type: string
+                    description: GitHub repository path, e.g. "openai/openai-python".
+                ownerEntity:
+                    type: string
+                    description: Organisation or entity that owns the repository.
+                stars1d:
+                    type: integer
+                    format: int32
+                    description: New stars in the last 24 hours.
+                forks1d:
+                    type: integer
+                    format: int32
+                    description: New forks in the last 24 hours.
+                prOpens1d:
+                    type: integer
+                    format: int32
+                    description: Pull requests opened in the last 24 hours.
+                momentumScore:
+                    type: number
+                    format: double
+                    description: Composite momentum score (0–100) weighting stars, forks, and PR activity.
+                computedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when the score was computed.
+            description: RepoMomentum tracks activity velocity for a strategically important GitHub repository.

@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+// GetPollutionGridRequest specifies the bounding box for Sentinel-5P pollution data.
+message GetPollutionGridRequest {
+  // Southern latitude boundary in degrees.
+  double lat_min = 1;
+  // Northern latitude boundary in degrees.
+  double lat_max = 2;
+  // Western longitude boundary in degrees.
+  double lon_min = 3;
+  // Eastern longitude boundary in degrees.
+  double lon_max = 4;
+}
+
+// GetPollutionGridResponse contains Sentinel-5P derived pollution tiles for the requested area.
+message GetPollutionGridResponse {
+  repeated PollutionGridTile tiles = 1;
+  // Unix milliseconds when the latest Sentinel-5P overpass was processed.
+  int64 acquired_at = 2;
+}
+
+// PollutionGridTile represents a single 0.1° × 0.1° pollution measurement cell.
+message PollutionGridTile {
+  // Tile centre latitude.
+  double lat = 1;
+  // Tile centre longitude.
+  double lon = 2;
+  // Tropospheric NO2 total vertical column density in mol/m².
+  double no2_mol_per_m2 = 3;
+  // Total SO2 vertical column density in mol/m².
+  double so2_mol_per_m2 = 4;
+  // Aerosol optical depth (dimensionless, proxy for particulate load).
+  double aod = 5;
+  // Unix milliseconds of the Sentinel-5P overpass.
+  int64 acquired_at = 6;
+  // Cloud coverage percentage (0–100); high values reduce measurement quality.
+  int32 cloud_coverage_pct = 7;
+}

@@ -144,6 +144,31 @@ export interface GetCountryStockIndexResponse {
   fetchedAt: string;
 }
 
+export interface ListWhaleTransfersRequest {
+  minValueUsd: number;
+  limit: number;
+}
+
+export interface ListWhaleTransfersResponse {
+  transfers: WhaleTransfer[];
+  fetchedAt: string;
+}
+
+export interface WhaleTransfer {
+  id: string;
+  blockchain: string;
+  amountUsd: number;
+  fromLabel: string;
+  toLabel: string;
+  transferType: WhaleTransferType;
+  lat: number;
+  lon: number;
+  occurredAt: string;
+  txHash: string;
+}
+
+export type WhaleTransferType = "WHALE_TRANSFER_TYPE_UNSPECIFIED" | "WHALE_TRANSFER_TYPE_EXCHANGE_INFLOW" | "WHALE_TRANSFER_TYPE_EXCHANGE_OUTFLOW" | "WHALE_TRANSFER_TYPE_WALLET_TO_WALLET" | "WHALE_TRANSFER_TYPE_GOVERNMENT_SEIZURE";
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -196,6 +221,7 @@ export interface MarketServiceHandler {
   listStablecoinMarkets(ctx: ServerContext, req: ListStablecoinMarketsRequest): Promise<ListStablecoinMarketsResponse>;
   listEtfFlows(ctx: ServerContext, req: ListEtfFlowsRequest): Promise<ListEtfFlowsResponse>;
   getCountryStockIndex(ctx: ServerContext, req: GetCountryStockIndexRequest): Promise<GetCountryStockIndexResponse>;
+  listWhaleTransfers(ctx: ServerContext, req: ListWhaleTransfersRequest): Promise<ListWhaleTransfersResponse>;
 }
 
 export function createMarketServiceRoutes(
@@ -483,6 +509,49 @@ export function createMarketServiceRoutes(
 
           const result = await handler.getCountryStockIndex(ctx, body);
           return new Response(JSON.stringify(result as GetCountryStockIndexResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/market/v1/list-whale-transfers",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListWhaleTransfersRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listWhaleTransfers", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listWhaleTransfers(ctx, body);
+          return new Response(JSON.stringify(result as ListWhaleTransfersResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

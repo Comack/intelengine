@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package worldmonitor.military.v1;
+
+// ListAcarsMessagesRequest filters ACARS message queries.
+message ListAcarsMessagesRequest {
+  // Maximum messages to return (default 100, max 500).
+  int32 limit = 1;
+  // Optional military category filter.
+  AcarsMilCategory mil_category = 2;
+}
+
+// ListAcarsMessagesResponse contains recent ACARS messages with military classification.
+message ListAcarsMessagesResponse {
+  repeated AcarsMessage messages = 1;
+  // Unix milliseconds when buffer was sampled.
+  int64 sampled_at = 2;
+}
+
+// AcarsMessage represents a decoded ACARS datalink message with military classification.
+message AcarsMessage {
+  // Unique message identifier.
+  string id = 1;
+  // Aircraft registration (tail number).
+  string tail_number = 2;
+  // IATA/ICAO flight number if known.
+  string flight_number = 3;
+  // Decoded message text.
+  string message_text = 4;
+  // ACARS message label type: OOOI | METAR | FREEFMT | ADS | CPDLC.
+  string message_type = 5;
+  // Military mission category derived from message content analysis.
+  AcarsMilCategory mil_category = 6;
+  // Aircraft latitude at time of message (if available from ADS-C).
+  double lat = 7;
+  // Aircraft longitude at time of message (if available from ADS-C).
+  double lon = 8;
+  // Aircraft altitude in feet.
+  double altitude_ft = 9;
+  // VHF frequency in MHz on which the message was received.
+  string freq_mhz = 10;
+  // Unix milliseconds when the message was received by the ground station.
+  int64 received_at = 11;
+  // Ground station identifier that received the message.
+  string station = 12;
+}
+
+// AcarsMilCategory classifies the likely military mission from ACARS message content.
+enum AcarsMilCategory {
+  ACARS_MIL_CATEGORY_UNSPECIFIED = 0;
+  ACARS_MIL_CATEGORY_MEDICAL_EVAC = 1;
+  ACARS_MIL_CATEGORY_TACTICAL = 2;
+  ACARS_MIL_CATEGORY_LOGISTICS = 3;
+  ACARS_MIL_CATEGORY_UNKNOWN = 4;
+}

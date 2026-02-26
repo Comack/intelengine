@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+// ListAirQualityReadingsRequest filters WAQI station queries.
+message ListAirQualityReadingsRequest {
+  // Maximum stations to return (default 200).
+  int32 limit = 1;
+}
+
+// ListAirQualityReadingsResponse contains air quality readings from WAQI monitoring stations.
+message ListAirQualityReadingsResponse {
+  repeated AirQualityReading readings = 1;
+  // Unix milliseconds when data was fetched.
+  int64 fetched_at = 2;
+}
+
+// AirQualityReading represents an air quality observation from a WAQI monitoring station.
+message AirQualityReading {
+  // WAQI station identifier.
+  string station_id = 1;
+  // Station name.
+  string station_name = 2;
+  // City of the station.
+  string city = 3;
+  // ISO 3166-1 alpha-2 country code.
+  string country = 4;
+  // Station latitude.
+  double lat = 5;
+  // Station longitude.
+  double lon = 6;
+  // US AQI value (0–500+).
+  int32 aqi = 7;
+  // AQI health level classification.
+  AqiLevel level = 8;
+  // Dominant pollutant: pm25 | o3 | no2 | so2 | co | pm10.
+  string dominant_pollutant = 9;
+  // PM2.5 concentration in μg/m³.
+  double pm25 = 10;
+  // PM10 concentration in μg/m³.
+  double pm10 = 11;
+  // SO2 concentration in μg/m³ (spike indicates industrial/volcanic event).
+  double so2 = 12;
+  // NO2 concentration in μg/m³.
+  double no2 = 13;
+  // Unix milliseconds of the observation.
+  int64 observed_at = 14;
+}
+
+// AqiLevel classifies the health impact of the US AQI value.
+enum AqiLevel {
+  AQI_LEVEL_UNSPECIFIED = 0;
+  AQI_LEVEL_GOOD = 1;
+  AQI_LEVEL_MODERATE = 2;
+  AQI_LEVEL_UNHEALTHY_SENSITIVE = 3;
+  AQI_LEVEL_UNHEALTHY = 4;
+  AQI_LEVEL_VERY_UNHEALTHY = 5;
+  AQI_LEVEL_HAZARDOUS = 6;
+}

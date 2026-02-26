@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+// ListDeforestationAlertsRequest filters Global Forest Watch alert queries.
+message ListDeforestationAlertsRequest {
+  // Maximum alerts to return (default 100, max 500).
+  int32 limit = 1;
+  // Only return alerts near strategic infrastructure (military bases, pipelines, cables).
+  bool strategic_only = 2;
+}
+
+// ListDeforestationAlertsResponse contains GFW integrated deforestation alerts.
+message ListDeforestationAlertsResponse {
+  repeated DeforestationAlert alerts = 1;
+  // Unix milliseconds when data was fetched.
+  int64 fetched_at = 2;
+}
+
+// DeforestationAlert represents a forest cover loss event from the GFW integrated alert system.
+message DeforestationAlert {
+  // Unique alert identifier.
+  string id = 1;
+  // Alert centroid latitude.
+  double lat = 2;
+  // Alert centroid longitude.
+  double lon = 3;
+  // Estimated area of forest loss in hectares.
+  double area_ha = 4;
+  // Alert system that detected the loss: GLAD-L | GLAD-S2 | RADD.
+  string alert_type = 5;
+  // ISO 3166-1 alpha-2 country code.
+  string country = 6;
+  // Administrative region or province.
+  string region = 7;
+  // Detection confidence score (0–1).
+  double confidence = 8;
+  // Whether the alert falls within 50 km of a military base, mine, or pipeline.
+  bool near_strategic_site = 9;
+  // Unix milliseconds of the first detection.
+  int64 detected_at = 10;
+}

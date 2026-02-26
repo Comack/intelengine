@@ -4,6 +4,12 @@ import type { MarketData } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
 import type { FredSeries, OilAnalytics } from '@/services/economic';
 import type { MacroSignalData, ETFFlowsResult, StablecoinResult } from '@/components';
+import type { RoutingAnomaly, GridZone } from '@/services/infrastructure';
+import type { SarDarkShip, PortCongestionStatus } from '@/services/maritime';
+import type { AcarsMessage } from '@/services/military';
+import type { WhaleTransfer } from '@/services/market';
+import type { AirQualityReading } from '@/services/climate';
+import type { SpaceWeatherStatus } from '@/generated/client/worldmonitor/space/v1/service_client';
 import { SITE_VARIANT } from '@/config';
 import { FINANCIAL_CENTERS, COMMODITY_HUBS, STOCK_EXCHANGES } from '@/config/finance-geo';
 import { signalAggregator } from '@/services/signal-aggregator';
@@ -42,6 +48,22 @@ export interface ForensicsSignalContext {
   stablecoinFetchedAt: number;
   fredFetchedAt: number;
   oilFetchedAt: number;
+  routingAnomalies: RoutingAnomaly[];
+  gridZones: GridZone[];
+  sarDetections: SarDarkShip[];
+  portCongestion: PortCongestionStatus[];
+  acarsMessages: AcarsMessage[];
+  whaleTransfers: WhaleTransfer[];
+  airQualityReadings: AirQualityReading[];
+  spaceWeather: SpaceWeatherStatus | null;
+  routingFetchedAt: number;
+  gridFetchedAt: number;
+  sarFetchedAt: number;
+  portFetchedAt: number;
+  acarsFetchedAt: number;
+  whaleFetchedAt: number;
+  aqiFetchedAt: number;
+  spaceFetchedAt: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -619,6 +641,18 @@ export class ForensicsSignalBuilder {
       cyber_threat: 'cyber',
       satellite_fire: 'climate',
       temporal_anomaly: 'infrastructure',
+      bgp_hijack: 'infrastructure',
+      bgp_leak: 'infrastructure',
+      sar_dark_ship: 'maritime',
+      port_congestion: 'maritime',
+      space_weather_storm: 'space',
+      air_quality_spike: 'climate',
+      so2_industrial: 'climate',
+      grid_stress: 'infrastructure',
+      whale_transfer: 'market',
+      info_ops_edit_war: 'cyber',
+      sec_material_event: 'economic',
+      safe_haven_rotation: 'market',
     };
     const severityWeight: Record<'low' | 'medium' | 'high', number> = {
       low: 1,
@@ -707,8 +741,13 @@ export class ForensicsSignalBuilder {
       .sort((a, b) => b.value - a.value);
     const countryRiskSignals = this.buildCountryRiskSignals(now)
       .sort((a, b) => b.value - a.value);
+    const spaceSignals = this.buildSpaceWeatherSignals(now).sort((a, b) => b.value - a.value);
+    const routingSignals = this.buildRoutingAnomalySignals(now).sort((a, b) => b.value - a.value);
+    const sarSignals = this.buildSarDarkShipSignals(now).sort((a, b) => b.value - a.value);
+    const gridSignals = this.buildGridStatusSignals(now).sort((a, b) => b.value - a.value);
+    const aqiSignals = this.buildAirQualitySignals(now).sort((a, b) => b.value - a.value);
     const merged = new Map<string, ForensicsSignalInput>();
-    for (const signal of [...baseSignals, ...countryRiskSignals, ...trajectorySignals]) {
+    for (const signal of [...baseSignals, ...countryRiskSignals, ...trajectorySignals, ...spaceSignals, ...routingSignals, ...sarSignals, ...gridSignals, ...aqiSignals]) {
       const key = `${signal.sourceId}:${signal.signalType}`;
       const existing = merged.get(key);
       if (!existing || signal.value > existing.value) {
@@ -998,6 +1037,197 @@ export class ForensicsSignalBuilder {
       .sort((a, b) => b.value - a.value);
   }
 
+  buildSpaceWeatherSignals(now = Date.now()): ForensicsSignalInput[] {
+    const sw = this.ctx.spaceWeather;
+    if (!sw) return [];
+    const observedAt = this.ctx.spaceFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    if (sw.kpIndex >= 5) {
+      signals.push({
+        sourceId: 'space:kp_storm',
+        region: 'global',
+        domain: 'space',
+        signalType: 'geomagnetic_storm',
+        value: Math.round(sw.kpIndex * 12 * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.7, Math.min(0.2, (sw.kpIndex - 4) * 0.06), freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    if (sw.alerts && sw.alerts.length > 0) {
+      signals.push({
+        sourceId: 'space:alert_count',
+        region: 'global',
+        domain: 'space',
+        signalType: 'space_weather_alert',
+        value: Math.round(sw.alerts.length * 15 * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.55, Math.min(0.15, sw.alerts.length * 0.04), freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals.sort((a, b) => b.value - a.value);
+  }
+
+  buildRoutingAnomalySignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.routingAnomalies.length === 0) return [];
+    const observedAt = this.ctx.routingFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    for (const a of this.ctx.routingAnomalies.slice(0, 20)) {
+      const severity = Number(a.severity) || 5;
+      signals.push({
+        sourceId: `bgp:${a.id || a.prefix}`,
+        region: a.country || 'global',
+        domain: 'infrastructure',
+        signalType: a.type.includes('LEAK') ? 'bgp_leak' : 'bgp_hijack',
+        value: Math.round(severity * 10 * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.6, Math.min(0.2, severity * 0.025), freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals.sort((a, b) => b.value - a.value);
+  }
+
+  buildWhaleTransferSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.whaleTransfers.length === 0) return [];
+    const observedAt = this.ctx.whaleFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    for (const t of this.ctx.whaleTransfers.slice(0, 15)) {
+      if (t.amountUsd < 5_000_000) continue;
+      const usdM = t.amountUsd / 1_000_000;
+      signals.push({
+        sourceId: `whale:${t.id || t.txHash}`,
+        region: 'global',
+        domain: 'market',
+        signalType: 'whale_transfer',
+        value: Math.round(logScale1p(usdM) * 20 * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.55, Math.min(0.2, usdM * 0.001), freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals.sort((a, b) => b.value - a.value);
+  }
+
+  buildAirQualitySignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.airQualityReadings.length === 0) return [];
+    const observedAt = this.ctx.aqiFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    for (const r of this.ctx.airQualityReadings) {
+      if (r.aqi < 150) continue;
+      signals.push({
+        sourceId: `aqi:${r.stationId || r.city}`,
+        region: r.country || 'global',
+        domain: 'climate',
+        signalType: 'aqi_spike',
+        value: Math.round(Math.min(100, (r.aqi / 5)) * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.6, Math.min(0.15, (r.aqi - 150) * 0.001), freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals.sort((a, b) => b.value - a.value);
+  }
+
+  buildSarDarkShipSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.sarDetections.length === 0) return [];
+    const observedAt = this.ctx.sarFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, SLOW_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    for (const d of this.ctx.sarDetections.slice(0, 20)) {
+      signals.push({
+        sourceId: `sar:${d.id}`,
+        region: d.region || 'global',
+        domain: 'maritime',
+        signalType: 'sar_dark_vessel',
+        value: Math.round(d.confidence * 50 * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.5, Math.min(0.2, d.confidence * 0.15), freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals.sort((a, b) => b.value - a.value);
+  }
+
+  buildGridStatusSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.gridZones.length === 0) return [];
+    const observedAt = this.ctx.gridFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    for (const z of this.ctx.gridZones) {
+      if (z.stressLevel === 'GRID_STRESS_NORMAL' || z.stressLevel === 'GRID_STRESS_UNSPECIFIED') continue;
+      const stressValue = z.stressLevel === 'GRID_STRESS_CRITICAL' ? 80
+        : z.stressLevel === 'GRID_STRESS_HIGH' ? 55
+        : 30;
+      signals.push({
+        sourceId: `grid:${z.zoneId}`,
+        region: z.zoneName || 'global',
+        domain: 'infrastructure',
+        signalType: 'grid_stress',
+        value: stressValue,
+        confidence: this.confidenceWithFreshness(0.6, Math.min(0.15, stressValue * 0.002), freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals.sort((a, b) => b.value - a.value);
+  }
+
+  buildPreciousMetalsSignals(_now = Date.now()): ForensicsSignalInput[] {
+    // Precious metals signals are already handled via buildMarketSignals commodity quotes
+    return [];
+  }
+
+  buildShippingIndexSignals(now = Date.now()): ForensicsSignalInput[] {
+    const macro = this.ctx.macroSignals;
+    if (!macro?.signals?.balticDryIndex) return [];
+    const bdi = macro.signals.balticDryIndex;
+    if (!bdi || typeof bdi.value !== 'number') return [];
+    const observedAt = this.ctx.macroFetchedAt;
+    if (observedAt <= 0) return [];
+    const freshness = computeFreshnessPenalty(observedAt, SLOW_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+
+    const signals: ForensicsSignalInput[] = [];
+    const changePct = Math.abs(bdi.change7dPct ?? 0);
+    if (changePct > 5) {
+      signals.push({
+        sourceId: 'macro:bdi',
+        region: 'global',
+        domain: 'economic',
+        signalType: 'shipping_index_move',
+        value: Math.round(changePct * 4 * 100) / 100,
+        confidence: this.confidenceWithFreshness(0.55, Math.min(0.15, changePct * 0.008), freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals.sort((a, b) => b.value - a.value);
+  }
+
   buildMarketSignals(): ForensicsSignalInput[] {
     const now = Date.now();
     const marketSignals: ForensicsSignalInput[] = [];
@@ -1108,6 +1338,8 @@ export class ForensicsSignalBuilder {
       ...this.buildEtfSignals(now),
       ...this.buildStablecoinSignals(now),
       ...this.buildEconomicSignals(now),
+      ...this.buildWhaleTransferSignals(now),
+      ...this.buildShippingIndexSignals(now),
     ];
 
     return cappedSignals

@@ -3,6 +3,10 @@ import {
   type AisDensityZone as ProtoDensityZone,
   type AisDisruption as ProtoDisruption,
   type GetVesselSnapshotResponse,
+  type ListSarDetectionsResponse,
+  type SarDarkShip,
+  type GetPortCongestionResponse,
+  type PortCongestionStatus,
 } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import type { AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
@@ -401,4 +405,30 @@ export async function fetchAisSignals(): Promise<{ disruptions: AisDisruptionEve
     disruptions: latestDisruptions,
     density: latestDensity,
   };
+}
+
+// ---- SAR Detections ----
+const sarBreaker = createCircuitBreaker<ListSarDetectionsResponse>({ name: 'SAR Detections' });
+const emptySarFallback: ListSarDetectionsResponse = { detections: [], fetchedAt: '' };
+
+export type { SarDarkShip };
+
+export async function fetchSarDetections(limit = 50): Promise<SarDarkShip[]> {
+  const res = await sarBreaker.execute(async () => {
+    return client.listSarDetections({ limit });
+  }, emptySarFallback);
+  return res.detections;
+}
+
+// ---- Port Congestion ----
+const portBreaker = createCircuitBreaker<GetPortCongestionResponse>({ name: 'Port Congestion' });
+const emptyPortFallback: GetPortCongestionResponse = { ports: [], computedAt: '' };
+
+export type { PortCongestionStatus };
+
+export async function fetchPortCongestion(): Promise<PortCongestionStatus[]> {
+  const res = await portBreaker.execute(async () => {
+    return client.getPortCongestion({});
+  }, emptyPortFallback);
+  return res.ports;
 }

@@ -89,6 +89,47 @@ export interface HumanitarianCountrySummary {
   updatedAt: number;
 }
 
+export interface ListConflictIncidentsRequest {
+  limit: number;
+  region: string;
+}
+
+export interface ListConflictIncidentsResponse {
+  incidents: ConflictIncident[];
+}
+
+export interface ConflictIncident {
+  id: string;
+  title: string;
+  description: string;
+  sourceUrl: string;
+  lat: number;
+  lon: number;
+  incidentType: string;
+  createdAt: string;
+  region: string;
+}
+
+export interface ListSituationReportsRequest {
+  limit: number;
+  query: string;
+}
+
+export interface ListSituationReportsResponse {
+  reports: SituationReport[];
+}
+
+export interface SituationReport {
+  id: string;
+  title: string;
+  body: string;
+  sourceName: string;
+  sourceUrl: string;
+  date: string;
+  countries: string[];
+  disasterTypes: string[];
+}
+
 export type UcdpViolenceType = "UCDP_VIOLENCE_TYPE_UNSPECIFIED" | "UCDP_VIOLENCE_TYPE_STATE_BASED" | "UCDP_VIOLENCE_TYPE_NON_STATE" | "UCDP_VIOLENCE_TYPE_ONE_SIDED";
 
 export interface FieldViolation {
@@ -139,6 +180,8 @@ export interface ConflictServiceHandler {
   listAcledEvents(ctx: ServerContext, req: ListAcledEventsRequest): Promise<ListAcledEventsResponse>;
   listUcdpEvents(ctx: ServerContext, req: ListUcdpEventsRequest): Promise<ListUcdpEventsResponse>;
   getHumanitarianSummary(ctx: ServerContext, req: GetHumanitarianSummaryRequest): Promise<GetHumanitarianSummaryResponse>;
+  listConflictIncidents(ctx: ServerContext, req: ListConflictIncidentsRequest): Promise<ListConflictIncidentsResponse>;
+  listSituationReports(ctx: ServerContext, req: ListSituationReportsRequest): Promise<ListSituationReportsResponse>;
 }
 
 export function createConflictServiceRoutes(
@@ -254,6 +297,92 @@ export function createConflictServiceRoutes(
 
           const result = await handler.getHumanitarianSummary(ctx, body);
           return new Response(JSON.stringify(result as GetHumanitarianSummaryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/conflict/v1/list-conflict-incidents",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListConflictIncidentsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listConflictIncidents", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listConflictIncidents(ctx, body);
+          return new Response(JSON.stringify(result as ListConflictIncidentsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/conflict/v1/list-situation-reports",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListSituationReportsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSituationReports", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSituationReports(ctx, body);
+          return new Response(JSON.stringify(result as ListSituationReportsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

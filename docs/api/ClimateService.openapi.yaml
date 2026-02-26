@@ -35,6 +35,134 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/climate/v1/list-air-quality-readings:
+        post:
+            tags:
+                - ClimateService
+            summary: ListAirQualityReadings
+            description: ListAirQualityReadings retrieves real-time AQI readings from WAQI monitoring stations globally.
+            operationId: ListAirQualityReadings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListAirQualityReadingsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAirQualityReadingsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/climate/v1/get-pollution-grid:
+        post:
+            tags:
+                - ClimateService
+            summary: GetPollutionGrid
+            description: GetPollutionGrid retrieves Sentinel-5P derived NO2/SO2 column density for a bounding box.
+            operationId: GetPollutionGrid
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetPollutionGridRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetPollutionGridResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/climate/v1/get-weather-forecast:
+        post:
+            tags:
+                - ClimateService
+            summary: GetWeatherForecast
+            description: GetWeatherForecast retrieves 7-day weather forecasts for strategic global locations.
+            operationId: GetWeatherForecast
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetWeatherForecastRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetWeatherForecastResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/climate/v1/list-deforestation-alerts:
+        post:
+            tags:
+                - ClimateService
+            summary: ListDeforestationAlerts
+            description: ListDeforestationAlerts retrieves GFW integrated forest loss alerts near strategic sites.
+            operationId: ListDeforestationAlerts
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListDeforestationAlertsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDeforestationAlertsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -183,3 +311,264 @@ components:
                     format: int32
                     description: Total count of items matching the query, if known. Zero if the total is unknown.
             description: PaginationResponse contains pagination metadata returned alongside list results.
+        ListAirQualityReadingsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum stations to return (default 200).
+            description: ListAirQualityReadingsRequest filters WAQI station queries.
+        ListAirQualityReadingsResponse:
+            type: object
+            properties:
+                readings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AirQualityReading'
+                fetchedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was fetched.
+            description: ListAirQualityReadingsResponse contains air quality readings from WAQI monitoring stations.
+        AirQualityReading:
+            type: object
+            properties:
+                stationId:
+                    type: string
+                    description: WAQI station identifier.
+                stationName:
+                    type: string
+                    description: Station name.
+                city:
+                    type: string
+                    description: City of the station.
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                lat:
+                    type: number
+                    format: double
+                    description: Station latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Station longitude.
+                aqi:
+                    type: integer
+                    format: int32
+                    description: US AQI value (0–500+).
+                level:
+                    type: string
+                    enum:
+                        - AQI_LEVEL_UNSPECIFIED
+                        - AQI_LEVEL_GOOD
+                        - AQI_LEVEL_MODERATE
+                        - AQI_LEVEL_UNHEALTHY_SENSITIVE
+                        - AQI_LEVEL_UNHEALTHY
+                        - AQI_LEVEL_VERY_UNHEALTHY
+                        - AQI_LEVEL_HAZARDOUS
+                    description: AqiLevel classifies the health impact of the US AQI value.
+                dominantPollutant:
+                    type: string
+                    description: 'Dominant pollutant: pm25 | o3 | no2 | so2 | co | pm10.'
+                pm25:
+                    type: number
+                    format: double
+                    description: PM2.5 concentration in μg/m³.
+                pm10:
+                    type: number
+                    format: double
+                    description: PM10 concentration in μg/m³.
+                so2:
+                    type: number
+                    format: double
+                    description: SO2 concentration in μg/m³ (spike indicates industrial/volcanic event).
+                no2:
+                    type: number
+                    format: double
+                    description: NO2 concentration in μg/m³.
+                observedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the observation.
+            description: AirQualityReading represents an air quality observation from a WAQI monitoring station.
+        GetPollutionGridRequest:
+            type: object
+            properties:
+                latMin:
+                    type: number
+                    format: double
+                    description: Southern latitude boundary in degrees.
+                latMax:
+                    type: number
+                    format: double
+                    description: Northern latitude boundary in degrees.
+                lonMin:
+                    type: number
+                    format: double
+                    description: Western longitude boundary in degrees.
+                lonMax:
+                    type: number
+                    format: double
+                    description: Eastern longitude boundary in degrees.
+            description: GetPollutionGridRequest specifies the bounding box for Sentinel-5P pollution data.
+        GetPollutionGridResponse:
+            type: object
+            properties:
+                tiles:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PollutionGridTile'
+                acquiredAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when the latest Sentinel-5P overpass was processed.
+            description: GetPollutionGridResponse contains Sentinel-5P derived pollution tiles for the requested area.
+        PollutionGridTile:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                    description: Tile centre latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Tile centre longitude.
+                no2MolPerM2:
+                    type: number
+                    format: double
+                    description: Tropospheric NO2 total vertical column density in mol/m².
+                so2MolPerM2:
+                    type: number
+                    format: double
+                    description: Total SO2 vertical column density in mol/m².
+                aod:
+                    type: number
+                    format: double
+                    description: Aerosol optical depth (dimensionless, proxy for particulate load).
+                acquiredAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the Sentinel-5P overpass.
+                cloudCoveragePct:
+                    type: integer
+                    format: int32
+                    description: Cloud coverage percentage (0–100); high values reduce measurement quality.
+            description: PollutionGridTile represents a single 0.1° × 0.1° pollution measurement cell.
+        GetWeatherForecastRequest:
+            type: object
+            description: GetWeatherForecastRequest has no required parameters; returns pre-defined strategic locations.
+        GetWeatherForecastResponse:
+            type: object
+            properties:
+                zones:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WeatherForecastZone'
+                fetchedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when forecasts were fetched.
+            description: GetWeatherForecastResponse contains 7-day weather forecasts for strategic locations.
+        WeatherForecastZone:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                    description: Forecast latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Forecast longitude.
+                locationName:
+                    type: string
+                    description: Human-readable location name.
+                precipitationMm7d:
+                    type: number
+                    format: double
+                    description: Total predicted precipitation in mm over the 7-day forecast window.
+                floodRiskScore:
+                    type: number
+                    format: double
+                    description: Compound flood risk score (0–100) derived from soil moisture and precipitation forecast.
+                maxWindSpeedKmh:
+                    type: number
+                    format: double
+                    description: Maximum forecast wind speed in km/h over the 7-day window.
+                extremeEventType:
+                    type: string
+                    description: 'Primary extreme event type if applicable: flood | hurricane | drought | none.'
+                forecastFrom:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds marking the start of the forecast window.
+                forecastUntil:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds marking the end of the forecast window.
+            description: WeatherForecastZone represents a 7-day weather forecast for a strategic geographic location.
+        ListDeforestationAlertsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum alerts to return (default 100, max 500).
+                strategicOnly:
+                    type: boolean
+                    description: Only return alerts near strategic infrastructure (military bases, pipelines, cables).
+            description: ListDeforestationAlertsRequest filters Global Forest Watch alert queries.
+        ListDeforestationAlertsResponse:
+            type: object
+            properties:
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DeforestationAlert'
+                fetchedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was fetched.
+            description: ListDeforestationAlertsResponse contains GFW integrated deforestation alerts.
+        DeforestationAlert:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique alert identifier.
+                lat:
+                    type: number
+                    format: double
+                    description: Alert centroid latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Alert centroid longitude.
+                areaHa:
+                    type: number
+                    format: double
+                    description: Estimated area of forest loss in hectares.
+                alertType:
+                    type: string
+                    description: 'Alert system that detected the loss: GLAD-L | GLAD-S2 | RADD.'
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                region:
+                    type: string
+                    description: Administrative region or province.
+                confidence:
+                    type: number
+                    format: double
+                    description: Detection confidence score (0–1).
+                nearStrategicSite:
+                    type: boolean
+                    description: Whether the alert falls within 50 km of a military base, mine, or pipeline.
+                detectedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the first detection.
+            description: DeforestationAlert represents a forest cover loss event from the GFW integrated alert system.

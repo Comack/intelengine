@@ -130,9 +130,57 @@ export interface CableHealthEvidence {
   ts: number;
 }
 
+export interface ListRoutingAnomaliesRequest {
+  limit: number;
+}
+
+export interface ListRoutingAnomaliesResponse {
+  anomalies: RoutingAnomaly[];
+}
+
+export interface RoutingAnomaly {
+  id: string;
+  type: RoutingAnomalyType;
+  prefix: string;
+  victimAsn: string;
+  attackerAsn: string;
+  victimName: string;
+  attackerName: string;
+  country: string;
+  lat: number;
+  lon: number;
+  severity: string;
+  detectedAt: string;
+  description: string;
+}
+
+export interface GetGridStatusRequest {
+}
+
+export interface GetGridStatusResponse {
+  zones: GridZone[];
+  fetchedAt: string;
+}
+
+export interface GridZone {
+  zoneId: string;
+  zoneName: string;
+  lat: number;
+  lon: number;
+  carbonIntensity: number;
+  renewablePct: number;
+  stressLevel: GridStressLevel;
+  powerImportExportMw: number;
+  observedAt: string;
+}
+
 export type CableHealthStatus = "CABLE_HEALTH_STATUS_UNSPECIFIED" | "CABLE_HEALTH_STATUS_OK" | "CABLE_HEALTH_STATUS_DEGRADED" | "CABLE_HEALTH_STATUS_FAULT";
 
+export type GridStressLevel = "GRID_STRESS_UNSPECIFIED" | "GRID_STRESS_NORMAL" | "GRID_STRESS_ELEVATED" | "GRID_STRESS_HIGH" | "GRID_STRESS_CRITICAL";
+
 export type OutageSeverity = "OUTAGE_SEVERITY_UNSPECIFIED" | "OUTAGE_SEVERITY_PARTIAL" | "OUTAGE_SEVERITY_MAJOR" | "OUTAGE_SEVERITY_TOTAL";
+
+export type RoutingAnomalyType = "ROUTING_ANOMALY_TYPE_UNSPECIFIED" | "ROUTING_ANOMALY_TYPE_BGP_HIJACK" | "ROUTING_ANOMALY_TYPE_BGP_LEAK" | "ROUTING_ANOMALY_TYPE_ROUTE_FLAP";
 
 export type ServiceOperationalStatus = "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED" | "SERVICE_OPERATIONAL_STATUS_OPERATIONAL" | "SERVICE_OPERATIONAL_STATUS_DEGRADED" | "SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAINTENANCE";
 
@@ -302,6 +350,54 @@ export class InfrastructureServiceClient {
     }
 
     return await resp.json() as GetCableHealthResponse;
+  }
+
+  async listRoutingAnomalies(req: ListRoutingAnomaliesRequest, options?: InfrastructureServiceCallOptions): Promise<ListRoutingAnomaliesResponse> {
+    let path = "/api/infrastructure/v1/list-routing-anomalies";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListRoutingAnomaliesResponse;
+  }
+
+  async getGridStatus(req: GetGridStatusRequest, options?: InfrastructureServiceCallOptions): Promise<GetGridStatusResponse> {
+    let path = "/api/infrastructure/v1/get-grid-status";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetGridStatusResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

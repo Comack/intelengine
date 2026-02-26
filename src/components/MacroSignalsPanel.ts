@@ -17,6 +17,7 @@ export interface MacroSignalData {
     hashRate: { status: string; change30d: number | null };
     miningCost: { status: string };
     fearGreed: { status: string; value: number | null; history: Array<{ value: number; date: string }> };
+    balticDryIndex?: { value: number; change7dPct: number; trend: string; updatedAt: string } | null;
   };
   meta: { qqqSparkline: number[] };
   unavailable?: boolean;
@@ -69,6 +70,12 @@ function mapProtoToData(r: GetMacroSignalsResponse): MacroSignalData {
         value: s?.fearGreed?.value ?? null,
         history: s?.fearGreed?.history ?? [],
       },
+      balticDryIndex: s?.balticDryIndex ? {
+        value: s.balticDryIndex.value,
+        change7dPct: s.balticDryIndex.change7dPct,
+        trend: s.balticDryIndex.trend,
+        updatedAt: s.balticDryIndex.updatedAt,
+      } : null,
     },
     meta: { qqqSparkline: r.meta?.qqqSparkline ?? [] },
     unavailable: r.unavailable,

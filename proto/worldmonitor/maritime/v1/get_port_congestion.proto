@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package worldmonitor.maritime.v1;
+
+// GetPortCongestionRequest has no required parameters.
+message GetPortCongestionRequest {}
+
+// GetPortCongestionResponse contains congestion indices for major global ports.
+message GetPortCongestionResponse {
+  repeated PortCongestionStatus ports = 1;
+  // Unix milliseconds when data was computed.
+  int64 computed_at = 2;
+}
+
+// PortCongestionStatus represents the congestion level at a major port.
+message PortCongestionStatus {
+  // UN/LOCODE port code, e.g. "SGSIN".
+  string port_code = 1;
+  // Human-readable port name, e.g. "Port of Singapore".
+  string port_name = 2;
+  // Port latitude.
+  double lat = 3;
+  // Port longitude.
+  double lon = 4;
+  // Congestion index from 0 (clear) to 100 (severely congested).
+  double congestion_index = 5;
+  // Average vessel wait time at anchor in hours.
+  double avg_wait_hours = 6;
+  // Number of vessels currently at anchor in the port approaches.
+  int32 vessels_at_anchor = 7;
+  // Congestion trend: increasing | stable | decreasing.
+  string trend = 8;
+  // ISO 3166-1 alpha-2 country code.
+  string country = 9;
+  // Unix milliseconds of the latest data point.
+  int64 updated_at = 10;
+}

@@ -111,6 +111,44 @@ export interface TechEventCoords {
   virtual: boolean;
 }
 
+export interface ListSocialTrendsRequest {
+  platform: string;
+  limit: number;
+}
+
+export interface ListSocialTrendsResponse {
+  trends: SocialTrend[];
+  sampledAt: string;
+}
+
+export interface SocialTrend {
+  topic: string;
+  platform: string;
+  mentionCount1h: number;
+  velocity: number;
+  topPosts: string[];
+  matchedEntities: string[];
+  observedAt: string;
+}
+
+export interface GetRepoMomentumRequest {
+}
+
+export interface GetRepoMomentumResponse {
+  repos: RepoMomentum[];
+  computedAt: string;
+}
+
+export interface RepoMomentum {
+  repo: string;
+  ownerEntity: string;
+  stars1d: number;
+  forks1d: number;
+  prOpens1d: number;
+  momentumScore: number;
+  computedAt: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -253,6 +291,54 @@ export class ResearchServiceClient {
     }
 
     return await resp.json() as ListTechEventsResponse;
+  }
+
+  async listSocialTrends(req: ListSocialTrendsRequest, options?: ResearchServiceCallOptions): Promise<ListSocialTrendsResponse> {
+    let path = "/api/research/v1/list-social-trends";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSocialTrendsResponse;
+  }
+
+  async getRepoMomentum(req: GetRepoMomentumRequest, options?: ResearchServiceCallOptions): Promise<GetRepoMomentumResponse> {
+    let path = "/api/research/v1/get-repo-momentum";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetRepoMomentumResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

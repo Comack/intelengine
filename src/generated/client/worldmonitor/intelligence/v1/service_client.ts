@@ -136,6 +136,26 @@ export interface GdeltArticle {
   tone: number;
 }
 
+export interface SearchSanctionedEntitiesRequest {
+  query: string;
+  limit: number;
+}
+
+export interface SearchSanctionedEntitiesResponse {
+  entities: SanctionedEntity[];
+}
+
+export interface SanctionedEntity {
+  id: string;
+  schema: string;
+  name: string;
+  aliases: string[];
+  countries: string[];
+  datasets: string[];
+  firstSeen: string;
+  lastSeen: string;
+}
+
 export interface RunForensicsShadowRequest {
   domain: string;
   signals: ForensicsSignalInput[];
@@ -577,6 +597,30 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as SearchGdeltDocumentsResponse;
+  }
+
+  async searchSanctionedEntities(req: SearchSanctionedEntitiesRequest, options?: IntelligenceServiceCallOptions): Promise<SearchSanctionedEntitiesResponse> {
+    let path = "/api/intelligence/v1/search-sanctioned-entities";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SearchSanctionedEntitiesResponse;
   }
 
   async runForensicsShadow(req: RunForensicsShadowRequest, options?: IntelligenceServiceCallOptions): Promise<RunForensicsShadowResponse> {

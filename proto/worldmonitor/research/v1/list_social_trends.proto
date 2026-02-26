@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package worldmonitor.research.v1;
+
+// ListSocialTrendsRequest filters social signal queries.
+message ListSocialTrendsRequest {
+  // Platform filter: "bluesky" | "github" | empty for all.
+  string platform = 1;
+  // Maximum trends to return (default 20).
+  int32 limit = 2;
+}
+
+// ListSocialTrendsResponse contains trending topics and entities from social platforms.
+message ListSocialTrendsResponse {
+  repeated SocialTrend trends = 1;
+  // Unix milliseconds when the relay buffer was sampled.
+  int64 sampled_at = 2;
+}
+
+// SocialTrend represents a trending entity or topic on a social platform.
+message SocialTrend {
+  // Trending topic or entity name.
+  string topic = 1;
+  // Platform of origin: bluesky | github.
+  string platform = 2;
+  // Number of mentions in the last hour.
+  int32 mention_count_1h = 3;
+  // Velocity in mentions per minute.
+  double velocity = 4;
+  // Sample of top post snippets (max 3).
+  repeated string top_posts = 5;
+  // Entities from the registry that triggered this trend.
+  repeated string matched_entities = 6;
+  // Unix milliseconds of the observation window end.
+  int64 observed_at = 7;
+}

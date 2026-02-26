@@ -227,6 +227,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/market/v1/list-whale-transfers:
+        post:
+            tags:
+                - MarketService
+            summary: ListWhaleTransfers
+            description: ListWhaleTransfers retrieves large on-chain cryptocurrency transfers from Whale Alert.
+            operationId: ListWhaleTransfers
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListWhaleTransfersRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListWhaleTransfersResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -653,3 +685,71 @@ components:
                     type: string
                     description: When the data was fetched (ISO 8601).
             description: GetCountryStockIndexResponse contains the country's primary stock index data.
+        ListWhaleTransfersRequest:
+            type: object
+            properties:
+                minValueUsd:
+                    type: number
+                    format: double
+                    description: Minimum transfer value in USD (default 50,000,000).
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum transfers to return (default 20, max 50).
+            description: ListWhaleTransfersRequest filters large cryptocurrency transfer queries.
+        ListWhaleTransfersResponse:
+            type: object
+            properties:
+                transfers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/WhaleTransfer'
+                fetchedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was fetched.
+            description: ListWhaleTransfersResponse contains large on-chain cryptocurrency transfers.
+        WhaleTransfer:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique transfer identifier.
+                blockchain:
+                    type: string
+                    description: 'Blockchain network: bitcoin | ethereum | tron | ripple | solana.'
+                amountUsd:
+                    type: number
+                    format: double
+                    description: Transfer value in USD.
+                fromLabel:
+                    type: string
+                    description: Human-readable label for the sending address, e.g. "Binance 1" or "Unknown Wallet".
+                toLabel:
+                    type: string
+                    description: Human-readable label for the receiving address.
+                transferType:
+                    type: string
+                    enum:
+                        - WHALE_TRANSFER_TYPE_UNSPECIFIED
+                        - WHALE_TRANSFER_TYPE_EXCHANGE_INFLOW
+                        - WHALE_TRANSFER_TYPE_EXCHANGE_OUTFLOW
+                        - WHALE_TRANSFER_TYPE_WALLET_TO_WALLET
+                        - WHALE_TRANSFER_TYPE_GOVERNMENT_SEIZURE
+                    description: WhaleTransferType classifies the economic implication of a large transfer.
+                lat:
+                    type: number
+                    format: double
+                    description: Approximate latitude of the sending exchange (if known).
+                lon:
+                    type: number
+                    format: double
+                    description: Approximate longitude of the sending exchange (if known).
+                occurredAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when the on-chain transaction was confirmed.
+                txHash:
+                    type: string
+                    description: Transaction hash.
+            description: WhaleTransfer represents a large cryptocurrency on-chain transfer from Whale Alert.

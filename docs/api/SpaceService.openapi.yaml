@@ -1,0 +1,241 @@
+openapi: 3.1.0
+info:
+    title: SpaceService API
+    version: 1.0.0
+paths:
+    /api/space/v1/list-satellites:
+        post:
+            tags:
+                - SpaceService
+            summary: ListSatellites
+            description: ListSatellites retrieves tracked orbital objects with SGP4-propagated current positions.
+            operationId: ListSatellites
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListSatellitesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSatellitesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/space/v1/get-space-weather:
+        post:
+            tags:
+                - SpaceService
+            summary: GetSpaceWeather
+            description: GetSpaceWeather retrieves current geomagnetic storm conditions and solar flux from NOAA SWPC.
+            operationId: GetSpaceWeather
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GetSpaceWeatherRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSpaceWeatherResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        ListSatellitesRequest:
+            type: object
+            properties:
+                category:
+                    type: string
+                    enum:
+                        - SATELLITE_CATEGORY_UNSPECIFIED
+                        - SATELLITE_CATEGORY_MILITARY
+                        - SATELLITE_CATEGORY_RECONNAISSANCE
+                        - SATELLITE_CATEGORY_COMMUNICATIONS
+                        - SATELLITE_CATEGORY_NAVIGATION
+                        - SATELLITE_CATEGORY_WEATHER
+                        - SATELLITE_CATEGORY_STARLINK
+                        - SATELLITE_CATEGORY_ISS
+                    description: SatelliteCategory classifies the primary mission of an orbital object.
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of satellites to return (default 500, max 2000).
+            description: ListSatellitesRequest filters the satellite catalog query.
+        ListSatellitesResponse:
+            type: object
+            properties:
+                satellites:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Satellite'
+                propagatedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds at which positions were propagated.
+            description: ListSatellitesResponse contains tracked orbital objects with propagated positions.
+        Satellite:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: NORAD catalog number (unique identifier).
+                name:
+                    type: string
+                    description: Common name, e.g. "STARLINK-1234".
+                category:
+                    type: string
+                    enum:
+                        - SATELLITE_CATEGORY_UNSPECIFIED
+                        - SATELLITE_CATEGORY_MILITARY
+                        - SATELLITE_CATEGORY_RECONNAISSANCE
+                        - SATELLITE_CATEGORY_COMMUNICATIONS
+                        - SATELLITE_CATEGORY_NAVIGATION
+                        - SATELLITE_CATEGORY_WEATHER
+                        - SATELLITE_CATEGORY_STARLINK
+                        - SATELLITE_CATEGORY_ISS
+                    description: SatelliteCategory classifies the primary mission of an orbital object.
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 code of the owning country/operator.
+                lat:
+                    type: number
+                    format: double
+                    description: Propagated current latitude (degrees, -90 to 90).
+                lon:
+                    type: number
+                    format: double
+                    description: Propagated current longitude (degrees, -180 to 180).
+                altitudeKm:
+                    type: number
+                    format: double
+                    description: Altitude above WGS84 ellipsoid in kilometres.
+                inclinationDeg:
+                    type: number
+                    format: double
+                    description: Orbital inclination in degrees.
+                epochMs:
+                    type: string
+                    format: int64
+                    description: TLE epoch as Unix milliseconds.
+                tleLine1:
+                    type: string
+                    description: Raw TLE line 1.
+                tleLine2:
+                    type: string
+                    description: Raw TLE line 2.
+            description: Satellite represents a tracked orbital object with propagated position.
+        GetSpaceWeatherRequest:
+            type: object
+            description: GetSpaceWeatherRequest has no required parameters.
+        GetSpaceWeatherResponse:
+            type: object
+            properties:
+                status:
+                    $ref: '#/components/schemas/SpaceWeatherStatus'
+            description: GetSpaceWeatherResponse contains current space environment conditions.
+        SpaceWeatherStatus:
+            type: object
+            properties:
+                kpIndex:
+                    type: number
+                    format: double
+                    description: Kp index (0–9 scale, planetary geomagnetic activity).
+                kpLevel:
+                    type: string
+                    description: 'Human-readable Kp level: quiet | unsettled | active | minor_storm | moderate_storm | strong_storm | severe | extreme.'
+                xrayClass:
+                    type: string
+                    description: GOES X-ray flux class (A/B/C/M/X).
+                xrayFlux:
+                    type: number
+                    format: double
+                    description: Raw X-ray flux in W/m².
+                auroraLatNorth:
+                    type: integer
+                    format: int32
+                    description: Southernmost latitude (°N) at which aurora is visible in the northern hemisphere.
+                auroraLatSouth:
+                    type: integer
+                    format: int32
+                    description: Southernmost latitude (°S) at which aurora is visible in the southern hemisphere.
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SpaceWeatherAlert'
+                observedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the observation.
+            description: SpaceWeatherStatus describes the current geomagnetic and solar environment.
+        SpaceWeatherAlert:
+            type: object
+            properties:
+                type:
+                    type: string
+                    description: 'Alert category: geomagnetic_storm | solar_flare | radio_blackout | particle_event.'
+                severity:
+                    type: string
+                    description: 'Severity level: watch | warning | alert.'
+                message:
+                    type: string
+                    description: Full alert message text.
+            description: SpaceWeatherAlert represents a NOAA SWPC issued alert, watch, or warning.

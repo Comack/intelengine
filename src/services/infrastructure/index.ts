@@ -12,6 +12,10 @@ import {
   type ListServiceStatusesResponse,
   type InternetOutage as ProtoOutage,
   type ServiceStatus as ProtoServiceStatus,
+  type ListRoutingAnomaliesResponse,
+  type RoutingAnomaly,
+  type GetGridStatusResponse,
+  type GridZone,
 } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { InternetOutage } from '@/types';
 import { createCircuitBreaker } from '@/utils';
@@ -170,4 +174,30 @@ export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
     summary,
     services,
   };
+}
+
+// ---- Routing Anomalies ----
+const routingBreaker = createCircuitBreaker<ListRoutingAnomaliesResponse>({ name: 'Routing Anomalies' });
+const emptyRoutingFallback: ListRoutingAnomaliesResponse = { anomalies: [] };
+
+export type { RoutingAnomaly };
+
+export async function fetchRoutingAnomalies(limit = 50): Promise<RoutingAnomaly[]> {
+  const res = await routingBreaker.execute(async () => {
+    return client.listRoutingAnomalies({ limit });
+  }, emptyRoutingFallback);
+  return res.anomalies;
+}
+
+// ---- Grid Status ----
+const gridBreaker = createCircuitBreaker<GetGridStatusResponse>({ name: 'Grid Status' });
+const emptyGridFallback: GetGridStatusResponse = { zones: [], fetchedAt: '' };
+
+export type { GridZone };
+
+export async function fetchGridStatus(): Promise<GridZone[]> {
+  const res = await gridBreaker.execute(async () => {
+    return client.getGridStatus({});
+  }, emptyGridFallback);
+  return res.zones;
 }

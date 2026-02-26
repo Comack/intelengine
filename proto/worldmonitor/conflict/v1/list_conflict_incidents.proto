@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.conflict.v1;
+
+message ConflictIncident {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string source_url = 4;
+  double lat = 5;
+  double lon = 6;
+  string incident_type = 7;
+  string created_at = 8;
+  string region = 9;
+}
+
+message ListConflictIncidentsRequest {
+  int32 limit = 1; // Default 100
+  string region = 2; // Optional region filter
+}
+
+message ListConflictIncidentsResponse {
+  repeated ConflictIncident incidents = 1;
+}

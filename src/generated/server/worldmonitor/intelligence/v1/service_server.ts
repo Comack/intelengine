@@ -136,6 +136,26 @@ export interface GdeltArticle {
   tone: number;
 }
 
+export interface SearchSanctionedEntitiesRequest {
+  query: string;
+  limit: number;
+}
+
+export interface SearchSanctionedEntitiesResponse {
+  entities: SanctionedEntity[];
+}
+
+export interface SanctionedEntity {
+  id: string;
+  schema: string;
+  name: string;
+  aliases: string[];
+  countries: string[];
+  datasets: string[];
+  firstSeen: string;
+  lastSeen: string;
+}
+
 export interface RunForensicsShadowRequest {
   domain: string;
   signals: ForensicsSignalInput[];
@@ -461,6 +481,7 @@ export interface IntelligenceServiceHandler {
   classifyEvent(ctx: ServerContext, req: ClassifyEventRequest): Promise<ClassifyEventResponse>;
   getCountryIntelBrief(ctx: ServerContext, req: GetCountryIntelBriefRequest): Promise<GetCountryIntelBriefResponse>;
   searchGdeltDocuments(ctx: ServerContext, req: SearchGdeltDocumentsRequest): Promise<SearchGdeltDocumentsResponse>;
+  searchSanctionedEntities(ctx: ServerContext, req: SearchSanctionedEntitiesRequest): Promise<SearchSanctionedEntitiesResponse>;
   runForensicsShadow(ctx: ServerContext, req: RunForensicsShadowRequest): Promise<RunForensicsShadowResponse>;
   listFusedSignals(ctx: ServerContext, req: ListFusedSignalsRequest): Promise<ListFusedSignalsResponse>;
   listCalibratedAnomalies(ctx: ServerContext, req: ListCalibratedAnomaliesRequest): Promise<ListCalibratedAnomaliesResponse>;
@@ -672,6 +693,49 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.searchGdeltDocuments(ctx, body);
           return new Response(JSON.stringify(result as SearchGdeltDocumentsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/search-sanctioned-entities",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as SearchSanctionedEntitiesRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("searchSanctionedEntities", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.searchSanctionedEntities(ctx, body);
+          return new Response(JSON.stringify(result as SearchSanctionedEntitiesResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

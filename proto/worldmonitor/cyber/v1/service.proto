@@ -4,6 +4,8 @@ package worldmonitor.cyber.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/cyber/v1/list_cyber_threats.proto";
+import "worldmonitor/cyber/v1/list_exploited_vulnerabilities.proto";
+import "worldmonitor/cyber/v1/list_info_ops_signals.proto";
 
 // CyberService provides APIs for cyber threat intelligence aggregated from
 // Feodo, URLhaus, OTX, AbuseIPDB, and C2Intel.
@@ -13,5 +15,15 @@ service CyberService {
   // ListCyberThreats retrieves threat indicators from multiple intelligence sources.
   rpc ListCyberThreats(ListCyberThreatsRequest) returns (ListCyberThreatsResponse) {
     option (sebuf.http.config) = {path: "/list-cyber-threats"};
+  }
+
+  // ListExploitedVulnerabilities retrieves the CISA KEV catalog.
+  rpc ListExploitedVulnerabilities(ListExploitedVulnerabilitiesRequest) returns (ListExploitedVulnerabilitiesResponse) {
+    option (sebuf.http.config) = {path: "/list-exploited-vulnerabilities"};
+  }
+
+  // ListInfoOpsSignals detects Wikipedia editing anomalies on geopolitically relevant pages.
+  rpc ListInfoOpsSignals(ListInfoOpsSignalsRequest) returns (ListInfoOpsSignalsResponse) {
+    option (sebuf.http.config) = {path: "/list-info-ops-signals"};
   }
 }

@@ -17,3 +17,24 @@ export * from '../cached-theater-posture';
 
 // Military surge analysis (client-side posture computation)
 export * from '../military-surge';
+
+// ---- ACARS Messages (direct RPC) ----
+import {
+  MilitaryServiceClient,
+  type ListAcarsMessagesResponse,
+  type AcarsMessage,
+} from '@/generated/client/worldmonitor/military/v1/service_client';
+import { createCircuitBreaker } from '@/utils';
+
+const militaryClient = new MilitaryServiceClient('', { fetch: fetch.bind(globalThis) });
+const acarsBreaker = createCircuitBreaker<ListAcarsMessagesResponse>({ name: 'ACARS Messages' });
+const emptyAcarsFallback: ListAcarsMessagesResponse = { messages: [], sampledAt: '' };
+
+export type { AcarsMessage };
+
+export async function fetchAcarsMessages(limit = 100): Promise<AcarsMessage[]> {
+  const res = await acarsBreaker.execute(async () => {
+    return militaryClient.listAcarsMessages({ limit, milCategory: 'ACARS_MIL_CATEGORY_UNSPECIFIED' });
+  }, emptyAcarsFallback);
+  return res.messages;
+}

@@ -5,6 +5,8 @@ package worldmonitor.maritime.v1;
 import "sebuf/http/annotations.proto";
 import "worldmonitor/maritime/v1/get_vessel_snapshot.proto";
 import "worldmonitor/maritime/v1/list_navigational_warnings.proto";
+import "worldmonitor/maritime/v1/list_sar_detections.proto";
+import "worldmonitor/maritime/v1/get_port_congestion.proto";
 
 // MaritimeService provides APIs for civilian AIS vessel data and NGA navigational warnings.
 service MaritimeService {
@@ -18,5 +20,15 @@ service MaritimeService {
   // ListNavigationalWarnings retrieves active maritime safety warnings from NGA.
   rpc ListNavigationalWarnings(ListNavigationalWarningsRequest) returns (ListNavigationalWarningsResponse) {
     option (sebuf.http.config) = {path: "/list-navigational-warnings"};
+  }
+
+  // ListSarDetections retrieves SAR-detected dark ships from Global Fishing Watch.
+  rpc ListSarDetections(ListSarDetectionsRequest) returns (ListSarDetectionsResponse) {
+    option (sebuf.http.config) = {path: "/list-sar-detections"};
+  }
+
+  // GetPortCongestion retrieves congestion indices for major global ports.
+  rpc GetPortCongestion(GetPortCongestionRequest) returns (GetPortCongestionResponse) {
+    option (sebuf.http.config) = {path: "/get-port-congestion"};
   }
 }

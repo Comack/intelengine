@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+// ListRegulatoryFilingsRequest filters SEC EDGAR filing queries.
+message ListRegulatoryFilingsRequest {
+  // Maximum filings to return (default 40, max 100).
+  int32 limit = 1;
+  // Optional form type filter, e.g. "8-K". Returns all types when empty.
+  string form_type = 2;
+}
+
+// ListRegulatoryFilingsResponse contains recent SEC EDGAR filings for tracked companies.
+message ListRegulatoryFilingsResponse {
+  repeated RegulatoryFiling filings = 1;
+  // Unix milliseconds when data was fetched.
+  int64 fetched_at = 2;
+}
+
+// RegulatoryFiling represents a single SEC EDGAR filing for a tracked company.
+message RegulatoryFiling {
+  // Unique filing identifier.
+  string id = 1;
+  // SEC form type, e.g. "8-K", "10-Q", "13F", "S-1".
+  string form_type = 2;
+  // Company name.
+  string company_name = 3;
+  // Exchange ticker symbol, e.g. "NVDA".
+  string ticker = 4;
+  // SEC Central Index Key.
+  string cik = 5;
+  // Filing description, e.g. "Entry into a Material Definitive Agreement".
+  string filing_description = 6;
+  // Direct URL to the SEC EDGAR filing page.
+  string url = 7;
+  // Market impact score (0–100) based on form type and company size.
+  double market_impact_score = 8;
+  // Unix milliseconds when the filing was submitted to EDGAR.
+  int64 filed_at = 9;
+}

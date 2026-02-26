@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package worldmonitor.cyber.v1;
+
+// ListInfoOpsSignalsRequest filters information operations signal queries.
+message ListInfoOpsSignalsRequest {
+  // Maximum signals to return (default 100).
+  int32 limit = 1;
+}
+
+// ListInfoOpsSignalsResponse contains detected Wikipedia editing anomalies.
+message ListInfoOpsSignalsResponse {
+  repeated InfoOpsSignal signals = 1;
+  // Unix milliseconds when the relay buffer was sampled.
+  int64 sampled_at = 2;
+}
+
+// InfoOpsSignal represents a detected Wikipedia editing anomaly on a geopolitically relevant page.
+message InfoOpsSignal {
+  // Unique signal identifier.
+  string id = 1;
+  // Wikipedia article title triggering the signal.
+  string page_title = 2;
+  // Wikipedia language edition, e.g. "enwiki" or "ruwiki".
+  string wiki = 3;
+  // Detected editing pattern: rapid_revert | edit_war | mass_delete | new_article.
+  string edit_type = 4;
+  // Number of edits to this article in the last hour.
+  int32 edit_count_1h = 5;
+  // Number of unique editors in the last hour.
+  int32 unique_editors_1h = 6;
+  // Whether bot accounts are among the top editors.
+  bool bot_traffic = 7;
+  // Geopolitical relevance score (0–1) based on entity registry matching.
+  double geopolitical_relevance = 8;
+  // Entity from the registry that matched the page title.
+  string matched_entity = 9;
+  // Unix milliseconds when the anomaly was detected.
+  int64 detected_at = 10;
+}

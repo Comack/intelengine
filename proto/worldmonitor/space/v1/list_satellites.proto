@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package worldmonitor.space.v1;
+
+import "worldmonitor/space/v1/satellite.proto";
+
+// ListSatellitesRequest filters the satellite catalog query.
+message ListSatellitesRequest {
+  // Optional category filter. Returns all categories when UNSPECIFIED.
+  SatelliteCategory category = 1;
+  // Maximum number of satellites to return (default 500, max 2000).
+  int32 limit = 2;
+}
+
+// ListSatellitesResponse contains tracked orbital objects with propagated positions.
+message ListSatellitesResponse {
+  // Satellites with current lat/lon propagated from TLE data.
+  repeated Satellite satellites = 1;
+  // Unix milliseconds at which positions were propagated.
+  int64 propagated_at = 2;
+}

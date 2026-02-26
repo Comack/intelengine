@@ -244,6 +244,7 @@ export interface ForensicsAnomalyOverlay {
   supportCount: number;
   lat: number;
   lon: number;
+  evidenceIds: string[];
 }
 
 export interface ForensicsTopologyWindowOverlay {

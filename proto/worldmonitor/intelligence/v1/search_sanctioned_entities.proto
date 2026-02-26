@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+message SanctionedEntity {
+  string id = 1;
+  string schema = 2; // e.g., "Person", "Company"
+  string name = 3;
+  repeated string aliases = 4;
+  repeated string countries = 5;
+  repeated string datasets = 6; // e.g., "us_ofac_sdn"
+  string first_seen = 7;
+  string last_seen = 8;
+}
+
+message SearchSanctionedEntitiesRequest {
+  string query = 1; // Name of person or entity
+  int32 limit = 2; // Default 10
+}
+
+message SearchSanctionedEntitiesResponse {
+  repeated SanctionedEntity entities = 1;
+}

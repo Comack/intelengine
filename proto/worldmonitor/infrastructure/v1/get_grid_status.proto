@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+// GetGridStatusRequest has no required parameters.
+message GetGridStatusRequest {}
+
+// GetGridStatusResponse contains electricity grid health data for strategic zones.
+message GetGridStatusResponse {
+  repeated GridZone zones = 1;
+  // Unix milliseconds when data was fetched.
+  int64 fetched_at = 2;
+}
+
+// GridZone represents the energy grid health for a specific balancing authority or region.
+message GridZone {
+  // Electricity Maps zone identifier, e.g. "US-CAL-CISO".
+  string zone_id = 1;
+  // Human-readable zone name, e.g. "California ISO".
+  string zone_name = 2;
+  // Approximate latitude of the zone centroid.
+  double lat = 3;
+  // Approximate longitude of the zone centroid.
+  double lon = 4;
+  // Grid carbon intensity in gCO2eq/kWh.
+  double carbon_intensity = 5;
+  // Renewable energy share, 0–100%.
+  double renewable_pct = 6;
+  // Current operational stress level.
+  GridStressLevel stress_level = 7;
+  // Net power flow in MW (positive = importing, negative = exporting).
+  double power_import_export_mw = 8;
+  // Unix milliseconds of the observation.
+  int64 observed_at = 9;
+}
+
+// GridStressLevel classifies the operational stress of a power grid zone.
+enum GridStressLevel {
+  GRID_STRESS_UNSPECIFIED = 0;
+  GRID_STRESS_NORMAL = 1;
+  GRID_STRESS_ELEVATED = 2;
+  GRID_STRESS_HIGH = 3;
+  GRID_STRESS_CRITICAL = 4;
+}

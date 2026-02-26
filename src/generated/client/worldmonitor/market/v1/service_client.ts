@@ -144,6 +144,31 @@ export interface GetCountryStockIndexResponse {
   fetchedAt: string;
 }
 
+export interface ListWhaleTransfersRequest {
+  minValueUsd: number;
+  limit: number;
+}
+
+export interface ListWhaleTransfersResponse {
+  transfers: WhaleTransfer[];
+  fetchedAt: string;
+}
+
+export interface WhaleTransfer {
+  id: string;
+  blockchain: string;
+  amountUsd: number;
+  fromLabel: string;
+  toLabel: string;
+  transferType: WhaleTransferType;
+  lat: number;
+  lon: number;
+  occurredAt: string;
+  txHash: string;
+}
+
+export type WhaleTransferType = "WHALE_TRANSFER_TYPE_UNSPECIFIED" | "WHALE_TRANSFER_TYPE_EXCHANGE_INFLOW" | "WHALE_TRANSFER_TYPE_EXCHANGE_OUTFLOW" | "WHALE_TRANSFER_TYPE_WALLET_TO_WALLET" | "WHALE_TRANSFER_TYPE_GOVERNMENT_SEIZURE";
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -358,6 +383,30 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as GetCountryStockIndexResponse;
+  }
+
+  async listWhaleTransfers(req: ListWhaleTransfersRequest, options?: MarketServiceCallOptions): Promise<ListWhaleTransfersResponse> {
+    let path = "/api/market/v1/list-whale-transfers";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListWhaleTransfersResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

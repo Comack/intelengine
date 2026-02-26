@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package worldmonitor.maritime.v1;
+
+// ListSarDetectionsRequest filters SAR dark ship queries.
+message ListSarDetectionsRequest {
+  // Maximum detections to return (default 100, max 500).
+  int32 limit = 1;
+}
+
+// ListSarDetectionsResponse contains SAR-detected vessels with no AIS correlation.
+message ListSarDetectionsResponse {
+  repeated SarDarkShip detections = 1;
+  // Unix milliseconds when data was fetched.
+  int64 fetched_at = 2;
+}
+
+// SarDarkShip represents a vessel detected by synthetic aperture radar with no AIS match.
+message SarDarkShip {
+  // Unique detection identifier.
+  string id = 1;
+  // Detection latitude.
+  double lat = 2;
+  // Detection longitude.
+  double lon = 3;
+  // Estimated vessel length from SAR pixel size in metres.
+  double length_m = 4;
+  // Estimated course over ground in degrees (0–360).
+  double course = 5;
+  // Estimated speed in knots.
+  double speed_knots = 6;
+  // Whether the detection was correlated with a known AIS vessel.
+  bool ais_matched = 7;
+  // Name of the matched AIS vessel, if correlated.
+  string nearest_ais_vessel = 8;
+  // Geographic region of the detection, e.g. "South China Sea".
+  string region = 9;
+  // Heuristic vessel class: tanker | cargo | fishing | unknown.
+  string vessel_class_hint = 10;
+  // Unix milliseconds of the SAR pass.
+  int64 detected_at = 11;
+  // Detection confidence score (0–1).
+  double confidence = 12;
+}

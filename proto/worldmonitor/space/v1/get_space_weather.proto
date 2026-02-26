@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.space.v1;
+
+// GetSpaceWeatherRequest has no required parameters.
+message GetSpaceWeatherRequest {}
+
+// GetSpaceWeatherResponse contains current space environment conditions.
+message GetSpaceWeatherResponse {
+  SpaceWeatherStatus status = 1;
+}
+
+// SpaceWeatherStatus describes the current geomagnetic and solar environment.
+message SpaceWeatherStatus {
+  // Kp index (0–9 scale, planetary geomagnetic activity).
+  double kp_index = 1;
+  // Human-readable Kp level: quiet | unsettled | active | minor_storm | moderate_storm | strong_storm | severe | extreme.
+  string kp_level = 2;
+  // GOES X-ray flux class (A/B/C/M/X).
+  string xray_class = 3;
+  // Raw X-ray flux in W/m².
+  double xray_flux = 4;
+  // Southernmost latitude (°N) at which aurora is visible in the northern hemisphere.
+  int32 aurora_lat_north = 5;
+  // Southernmost latitude (°S) at which aurora is visible in the southern hemisphere.
+  int32 aurora_lat_south = 6;
+  // Active space weather alerts from NOAA SWPC.
+  repeated SpaceWeatherAlert alerts = 7;
+  // Unix milliseconds of the observation.
+  int64 observed_at = 8;
+}
+
+// SpaceWeatherAlert represents a NOAA SWPC issued alert, watch, or warning.
+message SpaceWeatherAlert {
+  // Alert category: geomagnetic_storm | solar_flare | radio_blackout | particle_event.
+  string type = 1;
+  // Severity level: watch | warning | alert.
+  string severity = 2;
+  // Full alert message text.
+  string message = 3;
+}

@@ -35,6 +35,70 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/cyber/v1/list-exploited-vulnerabilities:
+        post:
+            tags:
+                - CyberService
+            summary: ListExploitedVulnerabilities
+            description: ListExploitedVulnerabilities retrieves the CISA KEV catalog.
+            operationId: ListExploitedVulnerabilities
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListExploitedVulnerabilitiesRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListExploitedVulnerabilitiesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/cyber/v1/list-info-ops-signals:
+        post:
+            tags:
+                - CyberService
+            summary: ListInfoOpsSignals
+            description: ListInfoOpsSignals detects Wikipedia editing anomalies on geopolitically relevant pages.
+            operationId: ListInfoOpsSignals
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListInfoOpsSignalsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListInfoOpsSignalsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -254,3 +318,95 @@ components:
                     format: int32
                     description: Total count of items matching the query, if known. Zero if the total is unknown.
             description: PaginationResponse contains pagination metadata returned alongside list results.
+        ListExploitedVulnerabilitiesRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+        ListExploitedVulnerabilitiesResponse:
+            type: object
+            properties:
+                vulnerabilities:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ExploitedVulnerability'
+        ExploitedVulnerability:
+            type: object
+            properties:
+                cveId:
+                    type: string
+                vendorProject:
+                    type: string
+                product:
+                    type: string
+                vulnerabilityName:
+                    type: string
+                dateAdded:
+                    type: string
+                shortDescription:
+                    type: string
+                requiredAction:
+                    type: string
+                dueDate:
+                    type: string
+                notes:
+                    type: string
+        ListInfoOpsSignalsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum signals to return (default 100).
+            description: ListInfoOpsSignalsRequest filters information operations signal queries.
+        ListInfoOpsSignalsResponse:
+            type: object
+            properties:
+                signals:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InfoOpsSignal'
+                sampledAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when the relay buffer was sampled.
+            description: ListInfoOpsSignalsResponse contains detected Wikipedia editing anomalies.
+        InfoOpsSignal:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique signal identifier.
+                pageTitle:
+                    type: string
+                    description: Wikipedia article title triggering the signal.
+                wiki:
+                    type: string
+                    description: Wikipedia language edition, e.g. "enwiki" or "ruwiki".
+                editType:
+                    type: string
+                    description: 'Detected editing pattern: rapid_revert | edit_war | mass_delete | new_article.'
+                editCount1h:
+                    type: integer
+                    format: int32
+                    description: Number of edits to this article in the last hour.
+                uniqueEditors1h:
+                    type: integer
+                    format: int32
+                    description: Number of unique editors in the last hour.
+                botTraffic:
+                    type: boolean
+                    description: Whether bot accounts are among the top editors.
+                geopoliticalRelevance:
+                    type: number
+                    format: double
+                    description: Geopolitical relevance score (0–1) based on entity registry matching.
+                matchedEntity:
+                    type: string
+                    description: Entity from the registry that matched the page title.
+                detectedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when the anomaly was detected.
+            description: InfoOpsSignal represents a detected Wikipedia editing anomaly on a geopolitically relevant page.

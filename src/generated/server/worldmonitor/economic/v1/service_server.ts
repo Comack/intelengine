@@ -92,6 +92,7 @@ export interface MacroSignals {
   hashRate?: HashRateSignal;
   miningCost?: MiningCostSignal;
   fearGreed?: FearGreedSignal;
+  balticDryIndex?: BalticDryIndexSignal;
 }
 
 export interface LiquiditySignal {
@@ -142,8 +143,37 @@ export interface FearGreedHistoryEntry {
   date: string;
 }
 
+export interface BalticDryIndexSignal {
+  value: number;
+  change7dPct: number;
+  trend: string;
+  updatedAt: string;
+}
+
 export interface MacroMeta {
   qqqSparkline: number[];
+}
+
+export interface ListRegulatoryFilingsRequest {
+  limit: number;
+  formType: string;
+}
+
+export interface ListRegulatoryFilingsResponse {
+  filings: RegulatoryFiling[];
+  fetchedAt: string;
+}
+
+export interface RegulatoryFiling {
+  id: string;
+  formType: string;
+  companyName: string;
+  ticker: string;
+  cik: string;
+  filingDescription: string;
+  url: string;
+  marketImpactScore: number;
+  filedAt: string;
 }
 
 export interface FieldViolation {
@@ -195,6 +225,7 @@ export interface EconomicServiceHandler {
   listWorldBankIndicators(ctx: ServerContext, req: ListWorldBankIndicatorsRequest): Promise<ListWorldBankIndicatorsResponse>;
   getEnergyPrices(ctx: ServerContext, req: GetEnergyPricesRequest): Promise<GetEnergyPricesResponse>;
   getMacroSignals(ctx: ServerContext, req: GetMacroSignalsRequest): Promise<GetMacroSignalsResponse>;
+  listRegulatoryFilings(ctx: ServerContext, req: ListRegulatoryFilingsRequest): Promise<ListRegulatoryFilingsResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -353,6 +384,49 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getMacroSignals(ctx, body);
           return new Response(JSON.stringify(result as GetMacroSignalsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/economic/v1/list-regulatory-filings",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListRegulatoryFilingsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listRegulatoryFilings", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listRegulatoryFilings(ctx, body);
+          return new Response(JSON.stringify(result as ListRegulatoryFilingsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

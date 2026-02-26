@@ -49,6 +49,48 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListExploitedVulnerabilitiesRequest {
+  limit: number;
+}
+
+export interface ListExploitedVulnerabilitiesResponse {
+  vulnerabilities: ExploitedVulnerability[];
+}
+
+export interface ExploitedVulnerability {
+  cveId: string;
+  vendorProject: string;
+  product: string;
+  vulnerabilityName: string;
+  dateAdded: string;
+  shortDescription: string;
+  requiredAction: string;
+  dueDate: string;
+  notes: string;
+}
+
+export interface ListInfoOpsSignalsRequest {
+  limit: number;
+}
+
+export interface ListInfoOpsSignalsResponse {
+  signals: InfoOpsSignal[];
+  sampledAt: string;
+}
+
+export interface InfoOpsSignal {
+  id: string;
+  pageTitle: string;
+  wiki: string;
+  editType: string;
+  editCount1h: number;
+  uniqueEditors1h: number;
+  botTraffic: boolean;
+  geopoliticalRelevance: number;
+  matchedEntity: string;
+  detectedAt: string;
+}
+
 export type CriticalityLevel = "CRITICALITY_LEVEL_UNSPECIFIED" | "CRITICALITY_LEVEL_LOW" | "CRITICALITY_LEVEL_MEDIUM" | "CRITICALITY_LEVEL_HIGH" | "CRITICALITY_LEVEL_CRITICAL";
 
 export type CyberThreatIndicatorType = "CYBER_THREAT_INDICATOR_TYPE_UNSPECIFIED" | "CYBER_THREAT_INDICATOR_TYPE_IP" | "CYBER_THREAT_INDICATOR_TYPE_DOMAIN" | "CYBER_THREAT_INDICATOR_TYPE_URL";
@@ -103,6 +145,8 @@ export interface RouteDescriptor {
 
 export interface CyberServiceHandler {
   listCyberThreats(ctx: ServerContext, req: ListCyberThreatsRequest): Promise<ListCyberThreatsResponse>;
+  listExploitedVulnerabilities(ctx: ServerContext, req: ListExploitedVulnerabilitiesRequest): Promise<ListExploitedVulnerabilitiesResponse>;
+  listInfoOpsSignals(ctx: ServerContext, req: ListInfoOpsSignalsRequest): Promise<ListInfoOpsSignalsResponse>;
 }
 
 export function createCyberServiceRoutes(
@@ -132,6 +176,92 @@ export function createCyberServiceRoutes(
 
           const result = await handler.listCyberThreats(ctx, body);
           return new Response(JSON.stringify(result as ListCyberThreatsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/cyber/v1/list-exploited-vulnerabilities",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListExploitedVulnerabilitiesRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listExploitedVulnerabilities", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listExploitedVulnerabilities(ctx, body);
+          return new Response(JSON.stringify(result as ListExploitedVulnerabilitiesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/cyber/v1/list-info-ops-signals",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListInfoOpsSignalsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listInfoOpsSignals", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listInfoOpsSignals(ctx, body);
+          return new Response(JSON.stringify(result as ListInfoOpsSignalsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

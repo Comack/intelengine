@@ -6,6 +6,8 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/conflict/v1/list_acled_events.proto";
 import "worldmonitor/conflict/v1/list_ucdp_events.proto";
 import "worldmonitor/conflict/v1/get_humanitarian_summary.proto";
+import "worldmonitor/conflict/v1/list_conflict_incidents.proto";
+import "worldmonitor/conflict/v1/list_situation_reports.proto";
 
 // ConflictService provides APIs for armed conflict data from ACLED, UCDP, and HAPI/HDX.
 service ConflictService {
@@ -24,5 +26,15 @@ service ConflictService {
   // GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
   rpc GetHumanitarianSummary(GetHumanitarianSummaryRequest) returns (GetHumanitarianSummaryResponse) {
     option (sebuf.http.config) = {path: "/get-humanitarian-summary"};
+  }
+
+  // ListConflictIncidents retrieves verified conflict incidents from Liveuamap.
+  rpc ListConflictIncidents(ListConflictIncidentsRequest) returns (ListConflictIncidentsResponse) {
+    option (sebuf.http.config) = {path: "/list-conflict-incidents"};
+  }
+
+  // ListSituationReports retrieves situation reports from UN OCHA ReliefWeb.
+  rpc ListSituationReports(ListSituationReportsRequest) returns (ListSituationReportsResponse) {
+    option (sebuf.http.config) = {path: "/list-situation-reports"};
   }
 }
