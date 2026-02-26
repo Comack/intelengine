@@ -42,6 +42,26 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListTsunamiWarningsRequest {
+}
+
+export interface ListTsunamiWarningsResponse {
+  warnings: TsunamiWarning[];
+}
+
+export interface TsunamiWarning {
+  id: string;
+  headline: string;
+  severity: string;
+  urgency: string;
+  areaDesc: string;
+  onset: number;
+  expires: number;
+  description: string;
+  sender: string;
+  event: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -88,6 +108,7 @@ export interface RouteDescriptor {
 
 export interface SeismologyServiceHandler {
   listEarthquakes(ctx: ServerContext, req: ListEarthquakesRequest): Promise<ListEarthquakesResponse>;
+  listTsunamiWarnings(ctx: ServerContext, req: ListTsunamiWarningsRequest): Promise<ListTsunamiWarningsResponse>;
 }
 
 export function createSeismologyServiceRoutes(
@@ -117,6 +138,49 @@ export function createSeismologyServiceRoutes(
 
           const result = await handler.listEarthquakes(ctx, body);
           return new Response(JSON.stringify(result as ListEarthquakesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/seismology/v1/list-tsunami-warnings",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListTsunamiWarningsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listTsunamiWarnings", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listTsunamiWarnings(ctx, body);
+          return new Response(JSON.stringify(result as ListTsunamiWarningsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

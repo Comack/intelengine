@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package worldmonitor.seismology.v1;
+
+import "worldmonitor/seismology/v1/tsunami_warning.proto";
+
+// Request to list active tsunami warnings.
+message ListTsunamiWarningsRequest {
+}
+
+// Response containing active tsunami warnings.
+message ListTsunamiWarningsResponse {
+  // Active tsunami warnings.
+  repeated TsunamiWarning warnings = 1;
+}

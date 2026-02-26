@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package worldmonitor.seismology.v1;
+
+import "sebuf/http/annotations.proto";
+
+// A NOAA/NWS tsunami warning or advisory.
+message TsunamiWarning {
+  // Unique alert identifier.
+  string id = 1;
+  // Alert headline.
+  string headline = 2;
+  // Alert severity (Minor, Moderate, Severe, Extreme).
+  string severity = 3;
+  // Alert urgency (Immediate, Expected, Future).
+  string urgency = 4;
+  // Affected area description.
+  string area_desc = 5;
+  // Alert onset time (Unix epoch ms).
+  int64 onset = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Alert expiry time (Unix epoch ms).
+  int64 expires = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Full description text.
+  string description = 8;
+  // Source attribution.
+  string sender = 9;
+  // Event type (Tsunami Warning, Tsunami Watch, Tsunami Advisory).
+  string event = 10;
+}

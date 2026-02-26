@@ -35,6 +35,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/seismology/v1/list-tsunami-warnings:
+        post:
+            tags:
+                - SeismologyService
+            summary: ListTsunamiWarnings
+            description: ListTsunamiWarnings retrieves active NOAA tsunami warnings and advisories.
+            operationId: ListTsunamiWarnings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListTsunamiWarningsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListTsunamiWarningsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -176,3 +208,50 @@ components:
                     format: int32
                     description: Total count of items matching the query, if known. Zero if the total is unknown.
             description: PaginationResponse contains pagination metadata returned alongside list results.
+        ListTsunamiWarningsRequest:
+            type: object
+            description: Request to list active tsunami warnings.
+        ListTsunamiWarningsResponse:
+            type: object
+            properties:
+                warnings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TsunamiWarning'
+            description: Response containing active tsunami warnings.
+        TsunamiWarning:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique alert identifier.
+                headline:
+                    type: string
+                    description: Alert headline.
+                severity:
+                    type: string
+                    description: Alert severity (Minor, Moderate, Severe, Extreme).
+                urgency:
+                    type: string
+                    description: Alert urgency (Immediate, Expected, Future).
+                areaDesc:
+                    type: string
+                    description: Affected area description.
+                onset:
+                    type: integer
+                    format: int64
+                    description: 'Alert onset time (Unix epoch ms).. Warning: Values > 2^53 may lose precision in JavaScript'
+                expires:
+                    type: integer
+                    format: int64
+                    description: 'Alert expiry time (Unix epoch ms).. Warning: Values > 2^53 may lose precision in JavaScript'
+                description:
+                    type: string
+                    description: Full description text.
+                sender:
+                    type: string
+                    description: Source attribution.
+                event:
+                    type: string
+                    description: Event type (Tsunami Warning, Tsunami Watch, Tsunami Advisory).
+            description: A NOAA/NWS tsunami warning or advisory.

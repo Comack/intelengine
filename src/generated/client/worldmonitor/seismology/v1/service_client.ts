@@ -42,6 +42,26 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListTsunamiWarningsRequest {
+}
+
+export interface ListTsunamiWarningsResponse {
+  warnings: TsunamiWarning[];
+}
+
+export interface TsunamiWarning {
+  id: string;
+  headline: string;
+  severity: string;
+  urgency: string;
+  areaDesc: string;
+  onset: number;
+  expires: number;
+  description: string;
+  sender: string;
+  event: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -112,6 +132,30 @@ export class SeismologyServiceClient {
     }
 
     return await resp.json() as ListEarthquakesResponse;
+  }
+
+  async listTsunamiWarnings(req: ListTsunamiWarningsRequest, options?: SeismologyServiceCallOptions): Promise<ListTsunamiWarningsResponse> {
+    let path = "/api/seismology/v1/list-tsunami-warnings";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListTsunamiWarningsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
