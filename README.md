@@ -36,7 +36,7 @@
 | Problem                            | Solution                                                                                                   |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | News scattered across 100+ sources | **Single unified dashboard** with 100+ curated feeds                                                       |
-| No geospatial context for events   | **Interactive map** with 35+ toggleable data layers                                                        |
+| No geospatial context for events   | **Interactive map** with 42+ toggleable data layers                                                        |
 | Information overload               | **AI-synthesized briefs** with focal point detection and local LLM support                                 |
 | Crypto/macro signal noise          | **7-signal market radar** with composite BUY/CASH verdict                                                  |
 | Expensive OSINT tools ($$$)        | **100% free & open source**                                                                                |
@@ -76,7 +76,7 @@ All three variants run from a single codebase — switch between them with one c
 ### Interactive 3D Globe
 
 - **WebGL-accelerated rendering** — deck.gl + MapLibre GL JS for smooth 60fps performance with thousands of concurrent markers. Switchable between **3D globe** (with pitch/rotation) and **flat map** mode via `VITE_MAP_INTERACTION_MODE`
-- **35+ data layers** — conflicts, military bases, nuclear facilities, undersea cables, pipelines, satellite fire detection, protests, natural disasters, datacenters, displacement flows, climate anomalies, cyber threat IOCs, stock exchanges, financial centers, central banks, commodity hubs, Gulf investments, and more
+- **42+ data layers** — conflicts, military bases, nuclear facilities, undersea cables, pipelines, satellite fire detection, protests, natural disasters, datacenters, displacement flows, climate anomalies, cyber threat IOCs, stock exchanges, financial centers, central banks, commodity hubs, Gulf investments, and more
 - **Smart clustering** — Supercluster groups markers at low zoom, expands on zoom in. Cluster thresholds adapt to zoom level
 - **Progressive disclosure** — detail layers (bases, nuclear, datacenters) appear only when zoomed in; zoom-adaptive opacity fades markers from 0.2 at world view to 1.0 at street level
 - **Label deconfliction** — overlapping labels (e.g., multiple BREAKING badges) are automatically suppressed by priority, highest-severity first
@@ -112,6 +112,9 @@ All three variants run from a single codebase — switch between them with one c
 - Sanctions regimes
 - Cyber threat IOCs (C2 servers, malware hosts, phishing, malicious URLs) geo-located on the globe
 - Weather alerts and severe conditions
+- Wikipedia edit anomaly detection (Wikimedia API) for information operations
+- NOAA tsunami warnings and advisories
+- Real-time conflict incident mapping (Liveuamap)
 
 </details>
 
@@ -124,6 +127,9 @@ All three variants run from a single codebase — switch between them with one c
 - Nuclear facilities & gamma irradiators
 - APT cyber threat actor attribution
 - Spaceports & launch facilities
+- Satellite tracking (CelesTrak TLE) with orbit visualization
+- Space weather alerts (NOAA SWPC Kp-index, solar X-ray flux)
+- ACARS aircraft communications (text-based flight data)
 
 </details>
 
@@ -137,6 +143,10 @@ All three variants run from a single codebase — switch between them with one c
 - Internet outages (Cloudflare Radar)
 - Critical mineral deposits
 - NASA FIRMS satellite fire detection (VIIRS thermal hotspots)
+- Power grid carbon intensity & renewable mix (Electricity Maps)
+- BGP routing anomalies & internet hijacks (IODA/BGPStream)
+- Real-time radiation monitoring (Safecast sensor network)
+- Port congestion indices with vessel wait times (Portcast)
 
 </details>
 
@@ -150,6 +160,9 @@ All three variants run from a single codebase — switch between them with one c
 - Bitcoin technical trend (SMA50, SMA200, VWAP, Mayer Multiple)
 - JPY liquidity signal, QQQ/XLP macro regime, BTC hash rate
 - Inline SVG sparklines and donut gauges for visual trends
+- Whale alert: large-value crypto transfers across 10+ blockchains
+- Baltic Dry Index (global shipping cost indicator)
+- SEC EDGAR real-time regulatory filings (8-K, 10-Q)
 
 </details>
 
@@ -542,26 +555,27 @@ Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) 
 
 The entire API surface is defined in Protocol Buffer (`.proto`) files using [sebuf](https://github.com/SebastienMelki/sebuf) HTTP annotations. Code generation produces TypeScript clients, server handler stubs, and OpenAPI 3.1.0 documentation from a single source of truth — eliminating request/response schema drift between frontend and backend.
 
-**18 service domains** cover every data vertical:
+**19 service domains** cover every data vertical:
 
 | Domain           | RPCs                                             |
 | ---------------- | ------------------------------------------------ |
-| `aviation`       | Airport delays (FAA, Eurocontrol)                |
-| `climate`        | Climate anomalies                                |
-| `conflict`       | ACLED events, UCDP events, humanitarian summaries|
-| `cyber`          | Cyber threat IOCs                                |
+| `aviation`       | Airport delays (FAA, Eurocontrol), ACARS messages |
+| `climate`        | Climate anomalies, air quality (WAQI), pollution (Sentinel-5P), deforestation (GFW), weather forecasts (Open-Meteo) |
+| `conflict`       | ACLED events, UCDP events, humanitarian summaries, Liveuamap conflict incidents |
+| `cyber`          | Cyber threat IOCs (URLhaus, Feodo, OTX), CISA KEV, info-ops (Wikimedia edit anomalies) |
 | `displacement`   | Population displacement, exposure data           |
-| `economic`       | Energy prices, FRED series, macro signals, World Bank |
+| `economic`       | Energy prices, FRED series, macro signals, World Bank, SEC EDGAR filings |
 | `evidence`       | Raw source material ingestion, POLE entity extraction |
-| `infrastructure` | Internet outages, service statuses, temporal baselines |
-| `intelligence`   | classification, briefs, forensics runs, user feedback, anomaly explanations|
-| `maritime`       | Vessel snapshots, navigational warnings          |
-| `market`         | Stock indices, crypto/commodity quotes, ETF flows|
-| `military`       | Aircraft details, theater posture, USNI fleet    |
+| `infrastructure` | Internet outages, service statuses, temporal baselines, BGP routing anomalies, power grid status (Electricity Maps), radiation monitoring (Safecast) |
+| `intelligence`   | Classification, briefs, forensics runs, user feedback, anomaly explanations |
+| `maritime`       | Vessel snapshots, navigational warnings, SAR dark ship detections (GFW), port congestion (Portcast) |
+| `market`         | Stock indices, crypto/commodity quotes, ETF flows, whale transfers |
+| `military`       | Aircraft details, theater posture, USNI fleet, ACARS messages |
 | `news`           | News items, article summarization                |
 | `prediction`     | Prediction markets                               |
-| `research`       | arXiv papers, HackerNews, tech events            |
-| `seismology`     | Earthquakes                                      |
+| `research`       | arXiv papers, HackerNews, tech events, Bluesky social trends, GitHub repo momentum |
+| `seismology`     | Earthquakes, tsunami warnings (NWS)              |
+| `space`          | Satellite tracking (CelesTrak TLE), space weather (NOAA SWPC) |
 | `unrest`         | Protest/unrest events                            |
 | `wildfire`       | Fire detections                                  |
 
@@ -573,7 +587,7 @@ The entire API surface is defined in Protocol Buffer (`.proto`) files using [seb
 
 Proto definitions include `buf.validate` field constraints (e.g., latitude ∈ [−90, 90]), so request validation is generated automatically — handlers receive pre-validated data. Breaking changes are caught at CI time via `buf breaking` against the main branch.
 
-**Edge gateway** — a single Vercel Edge Function (`api/[domain]/v1/[rpc].ts`) imports all 18 `createServiceRoutes()` functions into a flat `Map<string, handler>` router. Every RPC is a POST endpoint at a static path (e.g., `POST /api/aviation/v1/list-airport-delays`), with CORS enforcement, a top-level error boundary that hides internal details on 5xx responses, and rate-limit support (`retryAfter` on 429). The same router runs locally via a Vite dev-server plugin (`sebufApiPlugin` in `vite.config.ts`) with HMR invalidation on handler changes.
+**Edge gateway** — a single Vercel Edge Function (`api/[domain]/v1/[rpc].ts`) imports all 19 `createServiceRoutes()` functions into a flat `Map<string, handler>` router. Every RPC is a POST endpoint at a static path (e.g., `POST /api/aviation/v1/list-airport-delays`), with CORS enforcement, a top-level error boundary that hides internal details on 5xx responses, and rate-limit support (`retryAfter` on 429). The same router runs locally via a Vite dev-server plugin (`sebufApiPlugin` in `vite.config.ts`) with HMR invalidation on handler changes.
 
 ### Cyber Threat Intelligence Layer
 
@@ -590,6 +604,8 @@ Five threat intelligence feeds provide indicators of compromise (IOCs) for activ
 Each IP-based IOC is geo-enriched using ipinfo.io with freeipapi.com as fallback. Geolocation results are Redis-cached for 24 hours. Enrichment runs concurrently — 16 parallel lookups with a 12-second timeout, processing up to 250 IPs per collection run.
 
 IOCs are classified into four types (`c2_server`, `malware_host`, `phishing`, `malicious_url`) with four severity levels, rendered as color-coded scatter dots on the globe. The layer uses a 10-minute cache, a 14-day rolling window, and caps display at 500 IOCs to maintain rendering performance.
+
+Additionally, the cyber domain includes **CISA Known Exploited Vulnerabilities (KEV)** tracking and **Wikimedia information operations detection** — real-time monitoring of Wikipedia edit anomalies on 18 geopolitically sensitive pages (conflict zones, world leaders, major tech companies) to detect edit wars and coordinated manipulation campaigns.
 
 ### Natural Disaster Monitoring
 
@@ -759,13 +775,13 @@ Panel heights are user-adjustable via drag handles (span-1 through span-4 grid r
 
 All real-time data sources feed into a central signal aggregator that builds a unified geospatial intelligence picture. Signals are clustered by country and region, with each signal carrying a severity (low/medium/high), geographic coordinates, and metadata. The aggregator:
 
-1. **Clusters by country** — groups signals from diverse sources (flights, vessels, protests, fires, outages, `keyword_spike`) into per-country profiles
+1. **Clusters by country** — groups signals from diverse sources (flights, vessels, protests, fires, outages, `keyword_spike`, whale transfers, radiation, grid stress, routing anomalies, dark ships, port congestion, conflict incidents, edit wars, tsunami warnings, space weather, regulatory filings, deforestation) into per-country profiles
 2. **Detects regional convergence** — identifies when multiple signal types spike in the same geographic corridor (e.g., military flights + protests + satellite fires in Eastern Mediterranean)
 3. **Feeds downstream analysis** — the CII, hotspot escalation, focal point detection, and AI insights modules all consume the aggregated signal picture rather than raw data
 
 ### Data Freshness & Intelligence Gaps
 
-A singleton tracker monitors 22 data sources (GDELT, RSS, AIS, military flights, earthquakes, weather, outages, ACLED, Polymarket, economic indicators, NASA FIRMS, cyber threat feeds, trending keywords, oil/energy, population exposure, and more) with status categorization: fresh (<15 min), stale (1h), very_stale (6h), no_data, error, disabled. It explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+A singleton tracker monitors 23+ data sources (GDELT, RSS, AIS, military flights, earthquakes, weather, outages, ACLED, Polymarket, economic indicators, NASA FIRMS, cyber threat feeds, trending keywords, oil/energy, population exposure, and more) with status categorization: fresh (<15 min), stale (1h), very_stale (6h), no_data, error, disabled. It explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
 
 ### Prediction Markets as Leading Indicators
 
@@ -1189,6 +1205,9 @@ The `.env.example` file documents every variable with descriptions and registrat
 | **Relay**         | `WS_RELAY_URL`, `VITE_WS_RELAY_URL`, `OPENSKY_CLIENT_ID/SECRET`            | Self-hosted                                |
 | **UI**            | `VITE_VARIANT`, `VITE_MAP_INTERACTION_MODE` (`flat` or `3d`, default `3d`) | N/A                                        |
 | **Forensics**     | `FORENSICS_WORKER_URL` (optional, for Python offloading)                   | N/A                                        |
+| **Maritime**  | `PORTCAST_API_KEY`, `GLOBAL_FISHING_WATCH_API_KEY`                         | Commercial / free research                 |
+| **Grid/Env**  | `ELECTRICITY_MAPS_API_KEY`                                                 | Free tier available                        |
+| **Conflict**  | `LIVEUAMAP_API_KEY`                                                        | Enterprise                                 |
 | **Observability** | `VITE_SENTRY_DSN` (optional, empty disables reporting)                     | N/A                                        |
 
 See [`.env.example`](./.env.example) for the complete list with registration links.
@@ -1264,12 +1283,15 @@ Set `WS_RELAY_URL` (server-side, HTTPS) and `VITE_WS_RELAY_URL` (client-side, WS
 | **AI/ML**             | Ollama / LM Studio (local, OpenAI-compatible), Groq (Llama 3.1 8B), OpenRouter (fallback), Transformers.js (browser-side T5, NER, embeddings) |
 | **Forensics Math**    | Python 3.11+, FastAPI, NumPy (optimized O(N³) statistical loops), uvicorn                                                                     |
 | **Caching**           | Redis (Upstash) — 3-tier cache with in-memory + Redis + upstream, cross-user AI deduplication. Vercel CDN (s-maxage). Service worker (Workbox) |
-| **Geopolitical APIs** | OpenSky, GDELT, ACLED, UCDP, HAPI, USGS, GDACS, NASA EONET, NASA FIRMS, Polymarket, Cloudflare Radar, WorldPop                                 |
+| **Geopolitical APIs** | OpenSky, GDELT, ACLED, UCDP, HAPI, USGS, GDACS, NASA EONET, NASA FIRMS, Polymarket, Cloudflare Radar, WorldPop, Safecast, CelesTrak, NOAA SWPC, NWS Tsunami, Wikimedia, Liveuamap |
 | **Market APIs**       | Yahoo Finance (equities, forex, crypto), CoinGecko (stablecoins), mempool.space (BTC hashrate), alternative.me (Fear & Greed)                  |
-| **Threat Intel APIs** | abuse.ch (Feodo Tracker, URLhaus), AlienVault OTX, AbuseIPDB, C2IntelFeeds                                                                     |
-| **Economic APIs**     | FRED (Federal Reserve), EIA (Energy), Finnhub (stock quotes)                                                                                   |
+| **Threat Intel APIs** | abuse.ch (Feodo Tracker, URLhaus), AlienVault OTX, AbuseIPDB, C2IntelFeeds, CISA KEV                                                            |
+| **Economic APIs**     | FRED (Federal Reserve), EIA (Energy), Finnhub (stock quotes), SEC EDGAR                                                                        |
+| **Maritime APIs**     | Portcast (port congestion), Global Fishing Watch (SAR dark ships), AISStream (vessel tracking)                                                  |
+| **Environmental APIs**| Electricity Maps (grid), Sentinel-5P (pollution), Global Forest Watch (deforestation), Open-Meteo (weather/flood)                               |
+| **Social APIs**       | Bluesky AT Protocol (social trends), GitHub Events (repo momentum)                                                                              |
 | **Localization**      | i18next (14 languages: en, fr, de, es, it, pl, pt, nl, sv, ru, ar, zh, ja, tr), RTL support, lazy-loaded bundles                                |
-| **API Contracts**     | Protocol Buffers (94 proto files, 18 services), sebuf HTTP annotations, buf CLI (lint + breaking checks), auto-generated TypeScript clients/servers + OpenAPI 3.1.0 docs |
+| **API Contracts**     | Protocol Buffers (110+ proto files, 19 services), sebuf HTTP annotations, buf CLI (lint + breaking checks), auto-generated TypeScript clients/servers + OpenAPI 3.1.0 docs |
 | **Deployment**        | Vercel Edge Functions (60+ endpoints) + Railway (WebSocket relay) + Tauri (macOS/Windows/Linux) + PWA (installable)                            |
 | **Finance Data**      | 92 stock exchanges, 19 financial centers, 13 central banks, 10 commodity hubs, 64 Gulf FDI investments                                         |
 | **Data**              | 150+ RSS feeds, ADS-B transponders, AIS maritime data, VIIRS satellite imagery, 8 live YouTube streams                                         |
@@ -1361,7 +1383,7 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Consolidated keychain vault (single OS prompt on startup)
 - [x] Cross-window secret synchronization (main ↔ settings)
 - [x] API key verification pipeline with soft-pass on network errors
-- [x] Proto-first API contracts (94 proto files, 18 service domains, auto-generated TypeScript + OpenAPI docs)
+- [x] Proto-first API contracts (110+ proto files, 19 service domains, auto-generated TypeScript + OpenAPI docs)
 - [x] USNI Fleet Intelligence (weekly deployment reports merged with live AIS tracking)
 - [x] Aircraft enrichment via Wingbits (military confidence classification)
 - [x] Undersea cable health monitoring (NGA navigational warnings + AIS cable ship tracking)
@@ -1377,6 +1399,18 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Advanced D3.js Visualizations (Causal DAG, POLE Map, Convergence Radar)
 - [x] Counterfactual Sandbox (Interactive "what-if" anomaly simulation)
 - [x] Timeline DVR (Automatic playback for historical situational awareness)
+- [x] Signal Expansion (30 new intelligence APIs across 19 service domains)
+- [x] Space domain (satellite tracking via CelesTrak TLE, NOAA space weather)
+- [x] Maritime intelligence (SAR dark ship detection, port congestion monitoring)
+- [x] Power grid monitoring (Electricity Maps carbon intensity & renewable mix)
+- [x] Radiation monitoring (Safecast real-time CPM sensor network)
+- [x] Tsunami warnings (NWS real-time alerts)
+- [x] Bluesky social trends (AT Protocol real-time topic tracking)
+- [x] Information operations detection (Wikimedia edit anomaly analysis)
+- [x] Conflict incident mapping (Liveuamap integration)
+- [x] Environmental monitoring (air quality, pollution, deforestation, weather forecasts)
+- [x] Financial signal expansion (whale transfers, SEC filings, Baltic Dry Index)
+- [x] BGP routing anomaly detection (IODA/BGPStream)
 - [ ] Mobile-optimized views
 - [ ] Push notifications for critical alerts
 - [ ] Self-hosted Docker image

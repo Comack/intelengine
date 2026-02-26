@@ -144,6 +144,9 @@ Layers are organized into logical groups for efficient monitoring:
 | **Hotspots** | Intelligence hotspots with activity levels based on news correlation |
 | **Sanctions** | Countries under economic sanctions regimes |
 | **Protests** | Live social unrest events from ACLED and GDELT |
+| **Conflict Incidents** | Real-time geocoded conflict events from Liveuamap |
+| **Info Ops** | Wikipedia edit anomaly detection on geopolitically sensitive pages |
+| **Tsunami Warnings** | NOAA/NWS active tsunami warnings and advisories |
 
 **Military & Strategic**
 | Layer | Description |
@@ -154,6 +157,9 @@ Layers are organized into logical groups for efficient monitoring:
 | **APT Groups** | State-sponsored cyber threat actors with geographic attribution |
 | **Spaceports** | 12 major launch facilities (NASA, SpaceX, Roscosmos, CNSA, ESA, ISRO, JAXA) |
 | **Critical Minerals** | Strategic mineral deposits (lithium, cobalt, rare earths) with operator info |
+| **Satellites** | 20,000+ tracked objects via CelesTrak TLE data |
+| **Space Weather** | NOAA SWPC Kp-index, solar X-ray flux, aurora forecasts |
+| **ACARS Messages** | Aircraft text communications (VHF/HF/Satellite) |
 
 **Infrastructure**
 | Layer | Description |
@@ -162,6 +168,10 @@ Layers are organized into logical groups for efficient monitoring:
 | **Pipelines** | 88 operating oil & gas pipelines across all continents |
 | **Internet Outages** | Network disruptions via Cloudflare Radar |
 | **AI Datacenters** | 111 major AI compute clusters (≥10,000 GPUs) |
+| **Power Grid** | Carbon intensity, renewable mix, and grid stress via Electricity Maps |
+| **BGP Routing** | Routing anomalies and internet hijacks via IODA/BGPStream |
+| **Radiation** | Real-time CPM readings from Safecast global sensor network |
+| **Port Congestion** | Vessel wait times and congestion indices for 15 strategic ports |
 
 **Transport**
 | Layer | Description |
@@ -183,6 +193,14 @@ Layers are organized into logical groups for efficient monitoring:
 | **Economic** | Tabbed economic panel with FRED indicators, EIA oil analytics, and USASpending.gov government contracts |
 | **Countries** | Country boundary labels |
 | **Waterways** | Strategic waterways and chokepoints |
+
+**Environmental**
+| Layer | Description |
+|-------|-------------|
+| **Air Quality** | Real-time AQI readings from World Air Quality Index (WAQI) |
+| **Pollution** | NO2/SO2 concentration from Sentinel-5P satellite |
+| **Deforestation** | GLAD/RADD real-time deforestation alerts via Global Forest Watch |
+| **Weather Forecasts** | High-resolution global weather and flood risk via Open-Meteo |
 
 ### Intelligence Panels
 
@@ -396,6 +414,26 @@ The system detects 12 distinct signal types across news, markets, military, and 
 | **🌍 Geographic Convergence** | 3+ event types in same 1°×1° grid cell | Multiple independent data streams converging on same location—heightened regional activity |
 | **🔺 Hotspot Escalation** | Multi-component score exceeds threshold with rising trend | Hotspot showing corroborated escalation across news, CII, convergence, and military data |
 | **✈ Military Surge** | Transport/fighter activity 2× baseline in theater | Unusual military airlift concentration—potential deployment or crisis response |
+
+**Environmental & Infrastructure Signals**
+
+| Signal | Trigger | What It Means |
+|--------|---------|---------------|
+| **☢ Radiation Spike** | Safecast CPM reading above 100 CPM threshold | Elevated radiation detected — possible nuclear incident, industrial accident, or equipment malfunction |
+| **⚡ Grid Stress** | Carbon intensity >700 or renewables <10% | Power grid under stress — possible demand surge, generation failure, or infrastructure disruption |
+| **🌊 Tsunami Warning** | NWS tsunami warning/watch/advisory issued | Seismic-triggered ocean wave threat — coastal evacuation may be in effect |
+| **📡 Routing Anomaly** | BGP hijack or significant route leak detected | Internet traffic may be intercepted or misdirected — possible state-sponsored attack |
+| **🚢 Port Congestion** | Congestion index >70 or wait time >24 hours | Strategic chokepoint bottleneck — supply chain delays likely |
+| **🛰 Space Weather** | Kp-index ≥7 (severe geomagnetic storm) | Satellite communications, GPS, and power grids may be disrupted |
+
+**Social & Intelligence Signals**
+
+| Signal | Trigger | What It Means |
+|--------|---------|---------------|
+| **📝 Edit War** | ≥3 Wikipedia edits in 1 hour on sensitive page with revert patterns | Possible information operation or breaking news driving rapid content changes |
+| **🐋 Whale Transfer** | Large-value crypto transfer (>$1M) across blockchains | Capital movement that often precedes market volatility or signals jurisdictional flight |
+| **📋 Regulatory Filing** | SEC 8-K or 10-Q filing detected | Material corporate event — acquisition, legal action, or financial restatement |
+| **🌊 Dark Ship** | SAR satellite detects vessel not broadcasting AIS | Possible sanctions evasion, illegal activity, or covert naval movement |
 
 ### How It Works
 
@@ -3370,6 +3408,11 @@ Different data sources update at different frequencies based on volatility and A
 | **Economic data** | 30 min | FRED data rarely changes intraday |
 | **Military tracking** | 5 min | Activity patterns need timely updates |
 | **PizzINT** | 10 min | Foot traffic changes slowly |
+| **Signal expansion** | 5 min | Aggregated refresh for 30 new intelligence APIs |
+| **Satellite positions** | 5 min | CelesTrak TLE updates |
+| **Space weather** | 5 min | NOAA SWPC Kp-index updates |
+| **Radiation** | 5 min | Safecast sensor readings |
+| **Tsunami warnings** | 5 min | NWS alert checks |
 
 ### Real-Time Streams
 
@@ -3516,6 +3559,23 @@ The dashboard fetches data from various public APIs and data sources:
 | OpenSky Network | Military aircraft tracking | Yes (free) |
 | Wingbits | Aircraft enrichment (owner, operator) | Yes (free) |
 | PizzINT | Pentagon-area activity metrics | No |
+| Safecast | Radiation monitoring (CPM) | No |
+| CelesTrak | Satellite TLE orbital data | No |
+| NOAA SWPC | Space weather (Kp-index, solar flux) | No |
+| NWS Alerts | Tsunami warnings | No |
+| Wikimedia | Wikipedia recent changes (edit anomalies) | No |
+| Bluesky (AT Protocol) | Social trend monitoring | No |
+| Electricity Maps | Power grid carbon intensity | Yes (free tier) |
+| Portcast | Port congestion data | Yes (commercial) |
+| Global Fishing Watch | SAR dark ship detections | Yes (free research) |
+| Liveuamap | Conflict incident mapping | Yes (enterprise) |
+| SEC EDGAR | Regulatory filings (8-K, 10-Q) | No |
+| CISA | Known Exploited Vulnerabilities (KEV) | No |
+| Open-Meteo | Weather and flood forecasts | No |
+| Global Forest Watch | Deforestation alerts | No |
+| Sentinel Hub | Sentinel-5P pollution data | Yes (free tier) |
+| WAQI | Air quality index readings | No |
+| GitHub Events | Repository momentum tracking | No |
 
 ### Optional API Keys
 
@@ -3532,6 +3592,10 @@ Some features require API credentials. Without them, the corresponding layer is 
 | `CLOUDFLARE_API_TOKEN` | Internet outages | Free Cloudflare account with Radar access |
 | `ACLED_ACCESS_TOKEN` | Protest data (server-side) | Free registration at acleddata.com |
 | `WINGBITS_API_KEY` | Aircraft enrichment | Contact [Wingbits](https://wingbits.com) for API access |
+| `PORTCAST_API_KEY` | Port congestion data | Commercial API at [portcast.io](https://www.portcast.io/) |
+| `GLOBAL_FISHING_WATCH_API_KEY` | SAR dark ship detections | Free research tier at [globalfishingwatch.org](https://globalfishingwatch.org/) |
+| `ELECTRICITY_MAPS_API_KEY` | Power grid data | Free tier at [electricitymaps.com](https://www.electricitymaps.com/) |
+| `LIVEUAMAP_API_KEY` | Conflict incidents | Enterprise API at [liveuamap.com](https://liveuamap.com/) |
 
 The dashboard functions fully without these keys—affected layers simply don't appear. Core functionality (news, markets, earthquakes, weather) requires no configuration.
 
@@ -3734,6 +3798,21 @@ Aggregates **70+ RSS feeds** from major news outlets, government sources, and sp
 - **CoinGecko**: Cryptocurrency prices
 - **FRED**: Federal Reserve economic data
 - **Polymarket**: Prediction market odds
+- **Safecast**: Real-time radiation monitoring (global CPM readings)
+- **CelesTrak**: Satellite orbital elements (TLE data for 20,000+ objects)
+- **NOAA SWPC**: Space weather alerts (Kp-index, solar X-ray flux)
+- **NWS Tsunami**: Active tsunami warnings and advisories
+- **Wikimedia**: Wikipedia recent changes for info-ops detection
+- **Bluesky**: Social trends via AT Protocol public API
+- **Electricity Maps**: Power grid carbon intensity and renewable mix
+- **Portcast**: Port congestion indices and vessel wait times
+- **Global Fishing Watch**: SAR satellite dark ship detections
+- **Liveuamap**: Real-time geocoded conflict incidents
+- **SEC EDGAR**: Real-time regulatory filings (8-K, 10-Q)
+- **CISA KEV**: Known exploited vulnerabilities catalog
+- **Open-Meteo**: Weather and flood risk forecasts
+- **Global Forest Watch**: Deforestation alerts
+- **WAQI**: Air quality index readings
 
 ## Data Attribution
 
@@ -3771,6 +3850,23 @@ Data provided by [The OpenSky Network](https://opensky-network.org). If you use 
 ### Other Sources
 
 - **Prediction Markets**: [Polymarket](https://polymarket.com/)
+
+### Signal Expansion Sources
+
+- **Safecast**: [Safecast](https://safecast.org/) — Open environmental data. CC0 license
+- **CelesTrak**: [CelesTrak](https://celestrak.org/) — Dr. T.S. Kelso's satellite tracking data
+- **NOAA SWPC**: [Space Weather Prediction Center](https://www.swpc.noaa.gov/) — US Government open data
+- **Wikimedia**: [Wikimedia Foundation](https://www.wikimedia.org/) — Content under CC BY-SA 3.0
+- **Bluesky/AT Protocol**: [Bluesky](https://bsky.social/) — Public API, posts under individual user terms
+- **Electricity Maps**: [Electricity Maps](https://www.electricitymaps.com/) — Attribution required per terms
+- **Portcast**: [Portcast](https://www.portcast.io/) — Commercial maritime intelligence
+- **Global Fishing Watch**: [Global Fishing Watch](https://globalfishingwatch.org/) — CC BY-SA 4.0
+- **Liveuamap**: [Liveuamap](https://liveuamap.com/) — Commercial API, analyst-verified events
+- **SEC EDGAR**: [SEC](https://www.sec.gov/) — US Government public data
+- **CISA KEV**: [CISA](https://www.cisa.gov/) — US Government public data
+- **Open-Meteo**: [Open-Meteo](https://open-meteo.com/) — Open data from Copernicus ERA5
+- **Global Forest Watch**: [Global Forest Watch](https://www.globalforestwatch.org/) — CC BY 4.0
+- **WAQI**: [World Air Quality Index](https://aqicn.org/) — Attribution required per terms
 
 ## Acknowledgments
 
@@ -3823,6 +3919,18 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 
 ### Completed
 
+- ✅ **Signal Expansion** - 30 new intelligence APIs integrated across 19 service domains
+- ✅ **Space Domain** - Satellite tracking (CelesTrak TLE) and space weather (NOAA SWPC)
+- ✅ **Maritime Intelligence** - SAR dark ship detection, port congestion monitoring
+- ✅ **Power Grid Monitoring** - Electricity Maps carbon intensity and renewable mix
+- ✅ **Radiation Monitoring** - Safecast real-time CPM global sensor network
+- ✅ **Tsunami Warnings** - NOAA/NWS real-time tsunami alerts
+- ✅ **Bluesky Social Trends** - AT Protocol real-time social signal integration
+- ✅ **Information Operations** - Wikimedia edit anomaly detection on 18 sensitive pages
+- ✅ **Conflict Mapping** - Liveuamap real-time geocoded incident integration
+- ✅ **Environmental Monitoring** - Air quality, pollution, deforestation, weather forecasts
+- ✅ **Financial Signal Expansion** - Whale transfers, SEC filings, Baltic Dry Index
+- ✅ **BGP Routing Anomalies** - Internet hijack and outage detection via IODA/BGPStream
 - ✅ **Focal Point Detection** - Intelligence synthesis correlating news entities with map signals
 - ✅ **AI-Powered Briefings** - Groq/OpenRouter/Browser ML fallback chain for summarization
 - ✅ **Military Surge Detection** - Alerts when multiple operators converge on regions
@@ -3877,7 +3985,7 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 
 - **Alert Webhooks** - Push critical alerts to Slack, Discord, email
 - **Custom Country Watchlists** - User-defined Tier-2 country monitoring
-- **Additional Data Sources** - World Bank, IMF, OFAC sanctions, UNHCR refugee data, FAO food security
+- **Additional Data Sources** - OFAC sanctions watchlist, FAO food security indicators
 - **Think Tank Feeds** - RUSI, Chatham House, ECFR, CFR, Wilson Center, CNAS, Arms Control Association
 
 The full [ROADMAP.md](../.planning/ROADMAP.md) documents implementation details, API endpoints, and 30+ free data sources for future integration.

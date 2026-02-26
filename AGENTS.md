@@ -50,7 +50,7 @@ The architecture intentionally mirrors each domain in four layers:
 - Handler implementation: `server/worldmonitor/{domain}/v1/handler.ts` plus per-RPC modules.
 - Frontend consumption: `src/services/{domain}/index.ts` calling generated clients.
 
-Active domains include `aviation`, `climate`, `conflict`, `cyber`, `displacement`, `economic`, `infrastructure`, `intelligence`, `maritime`, `market`, `military`, `news`, `prediction`, `research`, `seismology`, `unrest`, and `wildfire`.
+Active domains include `aviation`, `climate`, `conflict`, `cyber`, `displacement`, `economic`, `infrastructure`, `intelligence`, `maritime`, `market`, `military`, `news`, `prediction`, `research`, `seismology`, `space`, `unrest`, and `wildfire`.
 
 When adding behavior, follow the existing domain naming and folder conventions before introducing new top-level patterns.
 

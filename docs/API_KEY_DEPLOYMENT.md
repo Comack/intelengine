@@ -31,6 +31,10 @@ Desktop App                          Cloud (Vercel)
 |----------|-------------|---------|
 | `WORLDMONITOR_VALID_KEYS` | Comma-separated list of valid API keys | `wm_abc123def456,wm_xyz789` |
 | `CONVEX_URL` | Convex deployment URL (from `npx convex deploy`) | `https://xyz-123.convex.cloud` |
+| `PORTCAST_API_KEY` | Port congestion data (Portcast) | |
+| `GLOBAL_FISHING_WATCH_API_KEY` | SAR dark ship detections (Global Fishing Watch) | |
+| `ELECTRICITY_MAPS_API_KEY` | Power grid data (Electricity Maps) | |
+| `LIVEUAMAP_API_KEY` | Conflict incidents (Liveuamap) | |
 
 ### Generating API keys
 

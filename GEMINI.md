@@ -34,7 +34,7 @@ The project follows a strict domain-driven contract pattern. Features are organi
   - `src/components/`: UI components (PascalCase).
   - `src/services/`: Domain clients and analysis pipelines (kebab-case).
 - `proto/`: Source of truth for API contracts.
-- `server/`: Backend handler logic for all 18 domains.
+- `server/`: Backend handler logic for all 19 domains.
 - `api/`: Vercel Edge Function entrypoints and legacy routes.
 - `src-tauri/`: Desktop app shell (Rust) and sidecar logic.
 - `docs/`: Extensive documentation on endpoints and release processes.
