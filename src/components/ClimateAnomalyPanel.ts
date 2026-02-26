@@ -5,6 +5,8 @@ import { t } from '@/services/i18n';
 
 export class ClimateAnomalyPanel extends Panel {
   private anomalies: ClimateAnomaly[] = [];
+  private airQualityData: Array<{ city: string; aqi: number; dominantPollutant: string; level: string; latitude: number; longitude: number }> = [];
+  private deforestationData: Array<{ country: string; areaHectares: number; confidence: number; detectedAt: number; latitude: number; longitude: number }> = [];
   private onZoneClick?: (lat: number, lon: number) => void;
 
   constructor() {
@@ -25,6 +27,16 @@ export class ClimateAnomalyPanel extends Panel {
   public setAnomalies(anomalies: ClimateAnomaly[]): void {
     this.anomalies = anomalies;
     this.setCount(anomalies.length);
+    this.renderContent();
+  }
+
+  public setAirQuality(readings: Array<{ city: string; aqi: number; dominantPollutant: string; level: string; latitude: number; longitude: number }>): void {
+    this.airQualityData = readings;
+    this.renderContent();
+  }
+
+  public setDeforestationAlerts(alerts: Array<{ country: string; areaHectares: number; confidence: number; detectedAt: number; latitude: number; longitude: number }>): void {
+    this.deforestationData = alerts;
     this.renderContent();
   }
 
@@ -69,6 +81,48 @@ export class ClimateAnomalyPanel extends Panel {
         </table>
       </div>
     `);
+
+    // Air Quality Alerts section
+    const highAqi = this.airQualityData.filter(r => r.aqi >= 150);
+    if (highAqi.length > 0) {
+      const aqiRows = highAqi.map(r => {
+        const aqiColor = r.aqi >= 300 ? '#8B0000' : r.aqi >= 200 ? '#ff4444' : '#ff8800';
+        return `<div class="aqi-row" style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px;">
+          <span>${escapeHtml(r.city)}</span>
+          <span style="color: ${aqiColor};">AQI ${r.aqi}</span>
+          <span style="color: var(--text-muted);">${escapeHtml(r.dominantPollutant)}</span>
+        </div>`;
+      }).join('');
+
+      const aqiSection = document.createElement('div');
+      aqiSection.className = 'air-quality-section';
+      aqiSection.style.marginTop = '12px';
+      aqiSection.innerHTML = `
+        <h4 style="margin: 0 0 6px; font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Air Quality Alerts</h4>
+        <div class="aqi-alerts">${aqiRows}</div>
+      `;
+      this.content.querySelector('.climate-panel-content')?.appendChild(aqiSection);
+    }
+
+    // Deforestation Alerts section
+    if (this.deforestationData.length > 0) {
+      const deforestRows = this.deforestationData.slice(0, 10).map(a => {
+        return `<div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px;">
+          <span>${escapeHtml(a.country)}</span>
+          <span>${a.areaHectares.toFixed(0)} ha</span>
+          <span style="color: var(--text-muted);">${a.confidence}%</span>
+        </div>`;
+      }).join('');
+
+      const deforestSection = document.createElement('div');
+      deforestSection.className = 'deforestation-section';
+      deforestSection.style.marginTop = '12px';
+      deforestSection.innerHTML = `
+        <h4 style="margin: 0 0 6px; font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Deforestation Alerts</h4>
+        <div class="deforestation-alerts">${deforestRows}</div>
+      `;
+      this.content.querySelector('.climate-panel-content')?.appendChild(deforestSection);
+    }
 
     this.content.querySelectorAll('.climate-row').forEach(el => {
       el.addEventListener('click', () => {

@@ -14,7 +14,7 @@ import {
   LAYER_TO_SOURCE,
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
-import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchCableHealth, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, fetchUSNIFleetReport, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals, listForensicsRuns, listFusedSignals, listCalibratedAnomalies, getForensicsTopologySummary, getForensicsTrace, getForensicsPolicy, runForensicsShadow, fetchRoutingAnomalies, fetchGridStatus, fetchSarDetections, fetchPortCongestion, fetchWhaleTransfers, fetchAirQualityReadings, getSpaceWeather } from '@/services';
+import { fetchCategoryFeeds, getFeedFailures, fetchMultipleStocks, fetchCrypto, fetchPredictions, fetchEarthquakes, fetchWeatherAlerts, fetchFredData, fetchInternetOutages, isOutagesConfigured, fetchAisSignals, initAisStream, getAisStatus, disconnectAisStream, isAisConfigured, fetchCableActivity, fetchCableHealth, fetchProtestEvents, getProtestStatus, fetchFlightDelays, fetchMilitaryFlights, fetchMilitaryVessels, initMilitaryVesselStream, isMilitaryVesselTrackingConfigured, fetchUSNIFleetReport, initDB, updateBaseline, calculateDeviation, addToSignalHistory, saveSnapshot, cleanOldSnapshots, analysisWorker, fetchPizzIntStatus, fetchGdeltTensions, fetchNaturalEvents, fetchRecentAwards, fetchOilAnalytics, fetchCyberThreats, drainTrendingSignals, listForensicsRuns, listFusedSignals, listCalibratedAnomalies, getForensicsTopologySummary, getForensicsTrace, getForensicsPolicy, runForensicsShadow, fetchRoutingAnomalies, fetchGridStatus, fetchSarDetections, fetchPortCongestion, fetchWhaleTransfers, fetchAirQualityReadings, getSpaceWeather, listSatellites, fetchDeforestationAlerts, fetchRegulatoryFilings } from '@/services';
 import { fetchAcarsMessages } from '@/services/military';
 import { fetchCountryMarkets } from '@/services/prediction';
 import type { FredSeries, OilAnalytics } from '@/services/economic';
@@ -252,6 +252,9 @@ export class App {
   private latestWhaleFetchedAt = 0;
   private latestAqiFetchedAt = 0;
   private latestSpaceFetchedAt = 0;
+  private latestSatellites: any[] = [];
+  private latestDeforestationAlerts: any[] = [];
+  private latestRegulatoryFilings: any[] = [];
   private forensicsShadowInFlight: Set<'intelligence' | 'market'> = new Set();
   private forensicsShadowLastRunAt: Record<'intelligence' | 'market', number> = {
     intelligence: 0,
@@ -5944,7 +5947,7 @@ export class App {
 
   private async refreshSignalExpansionData(): Promise<void> {
     try {
-      const [routing, grid, sar, ports, acars, whales, aqi, spaceWx] = await Promise.allSettled([
+      const [routing, grid, sar, ports, acars, whales, aqi, spaceWx, sats, deforestation, filings] = await Promise.allSettled([
         fetchRoutingAnomalies(),
         fetchGridStatus(),
         fetchSarDetections(),
@@ -5953,6 +5956,9 @@ export class App {
         fetchWhaleTransfers(),
         fetchAirQualityReadings(),
         getSpaceWeather(),
+        listSatellites('SATELLITE_CATEGORY_UNSPECIFIED', 200),
+        fetchDeforestationAlerts(),
+        fetchRegulatoryFilings(),
       ]);
       const now = Date.now();
       if (routing.status === 'fulfilled') { this.latestRoutingAnomalies = routing.value; this.latestRoutingFetchedAt = now; }
@@ -5963,6 +5969,9 @@ export class App {
       if (whales.status === 'fulfilled') { this.latestWhaleTransfers = whales.value; this.latestWhaleFetchedAt = now; }
       if (aqi.status === 'fulfilled') { this.latestAirQualityReadings = aqi.value; this.latestAqiFetchedAt = now; }
       if (spaceWx.status === 'fulfilled') { this.latestSpaceWeather = spaceWx.value?.status ?? null; this.latestSpaceFetchedAt = now; }
+      if (sats.status === 'fulfilled') { this.latestSatellites = sats.value?.satellites ?? []; }
+      if (deforestation.status === 'fulfilled') { this.latestDeforestationAlerts = deforestation.value; }
+      if (filings.status === 'fulfilled') { this.latestRegulatoryFilings = filings.value; }
 
       // Feed into signal aggregator
       signalAggregator.ingestRoutingAnomalies(this.latestRoutingAnomalies.map((a: any) => ({
@@ -5986,8 +5995,34 @@ export class App {
         zoneName: z.zoneName, lat: z.lat, lon: z.lon, stressLevel: z.stressLevel,
         observedAt: Number(z.observedAt) || now,
       })));
+
+      // Push to map layers
+      this.map?.setRoutingAnomalies(this.latestRoutingAnomalies);
+      this.map?.setGridStatus(this.latestGridZones);
+      this.map?.setSarDetections(this.latestSarDetections);
+      this.map?.setPortCongestion(this.latestPortCongestion);
+      this.map?.setWhaleTransfers(this.latestWhaleTransfers);
+      this.map?.setAirQuality(this.latestAirQualityReadings);
+      this.map?.setSatellites(this.latestSatellites);
+      this.map?.setSpaceWeather(this.latestSpaceWeather);
+
+      // Push to enriched panels
+      const climatePanel = this.panels['climate'] as ClimateAnomalyPanel | undefined;
+      climatePanel?.setAirQuality?.(this.latestAirQualityReadings);
+      climatePanel?.setDeforestationAlerts?.(this.latestDeforestationAlerts);
+      (this.panels['crypto'] as CryptoPanel | undefined)?.setWhaleTransfers?.(this.latestWhaleTransfers);
+      (this.panels['economic'] as EconomicPanel | undefined)?.setRegulatoryFilings?.(this.latestRegulatoryFilings);
+
+      // Status panel feed
+      const totalItems = this.latestRoutingAnomalies.length + this.latestGridZones.length +
+        this.latestSarDetections.length + this.latestPortCongestion.length +
+        this.latestWhaleTransfers.length + this.latestAirQualityReadings.length +
+        this.latestSatellites.length + this.latestDeforestationAlerts.length +
+        this.latestRegulatoryFilings.length;
+      this.statusPanel?.updateFeed('signal-expansion', { status: 'ok', itemCount: totalItems });
     } catch (err) {
       console.warn('[App] Signal expansion refresh failed:', err);
+      this.statusPanel?.updateFeed('signal-expansion', { status: 'error' });
     }
   }
 }

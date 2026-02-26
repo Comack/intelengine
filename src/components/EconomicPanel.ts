@@ -6,12 +6,13 @@ import { getChangeClass, formatChange, formatOilValue, getTrendIndicator, getTre
 import { formatAwardAmount, getAwardTypeIcon } from '@/services/usa-spending';
 import { escapeHtml } from '@/utils/sanitize';
 
-type TabId = 'indicators' | 'oil' | 'spending';
+type TabId = 'indicators' | 'oil' | 'spending' | 'filings';
 
 export class EconomicPanel extends Panel {
   private fredData: FredSeries[] = [];
   private oilData: OilAnalytics | null = null;
   private spendingData: SpendingSummary | null = null;
+  private regulatoryFilings: Array<{ companyName: string; formType: string; filedAt: number; marketImpactScore: number; url: string }> = [];
   private lastUpdate: Date | null = null;
   private activeTab: TabId = 'indicators';
 
@@ -35,6 +36,11 @@ export class EconomicPanel extends Panel {
     this.render();
   }
 
+  public setRegulatoryFilings(filings: Array<{ companyName: string; formType: string; filedAt: number; marketImpactScore: number; url: string }>): void {
+    this.regulatoryFilings = filings;
+    this.render();
+  }
+
   public setLoading(loading: boolean): void {
     if (loading) {
       this.showLoading();
@@ -44,6 +50,7 @@ export class EconomicPanel extends Panel {
   private render(): void {
     const hasOil = this.oilData && (this.oilData.wtiPrice || this.oilData.brentPrice);
     const hasSpending = this.spendingData && this.spendingData.awards.length > 0;
+    const hasFilings = this.regulatoryFilings.length > 0;
 
     // Build tabs HTML
     const tabsHtml = `
@@ -61,6 +68,11 @@ export class EconomicPanel extends Panel {
             🏛️ ${t('components.economic.gov')}
           </button>
         ` : ''}
+        ${hasFilings ? `
+          <button class="economic-tab ${this.activeTab === 'filings' ? 'active' : ''}" data-tab="filings">
+            📋 Filings
+          </button>
+        ` : ''}
       </div>
     `;
 
@@ -75,6 +87,9 @@ export class EconomicPanel extends Panel {
         break;
       case 'spending':
         contentHtml = this.renderSpending();
+        break;
+      case 'filings':
+        contentHtml = this.renderFilings();
         break;
     }
 
@@ -109,6 +124,7 @@ export class EconomicPanel extends Panel {
       case 'indicators': return 'FRED';
       case 'oil': return 'EIA';
       case 'spending': return 'USASpending.gov';
+      case 'filings': return 'SEC EDGAR';
     }
   }
 
@@ -184,6 +200,21 @@ export class EconomicPanel extends Panel {
     }).join('')}
       </div>
     `;
+  }
+
+  private renderFilings(): string {
+    if (this.regulatoryFilings.length === 0) return '<div style="padding: 12px; color: var(--text-muted); text-align: center;">No recent filings</div>';
+    const rows = this.regulatoryFilings.slice(0, 15).map(f => {
+      const impactColor = f.marketImpactScore >= 0.7 ? '#ff4444' : f.marketImpactScore >= 0.4 ? '#ff8800' : '#44ff88';
+      const date = new Date(f.filedAt).toLocaleDateString();
+      return `<div style="display: flex; justify-content: space-between; padding: 4px 0; font-size: 11px; border-bottom: 1px solid var(--border-color);">
+        <span style="flex: 1;">${escapeHtml(f.companyName)}</span>
+        <span style="width: 50px; text-align: center; color: var(--text-muted);">${escapeHtml(f.formType)}</span>
+        <span style="width: 40px; text-align: center; color: ${impactColor};">●</span>
+        <span style="width: 70px; text-align: right; color: var(--text-muted);">${date}</span>
+      </div>`;
+    }).join('');
+    return `<div style="padding: 8px;">${rows}</div>`;
   }
 
   private renderSpending(): string {

@@ -210,6 +210,14 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 // Mobile defaults for finance variant
@@ -252,6 +260,14 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 export const VARIANT_CONFIG: VariantConfig = {

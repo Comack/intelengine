@@ -202,6 +202,11 @@ export class MacroSignalsPanel extends Panel {
           ${this.renderSignalCard(t('components.macroSignals.signals.hashRate'), s.hashRate.status, formatNum(s.hashRate.change30d), '', '30d change', 'https://mempool.space/mining')}
           ${this.renderSignalCard(t('components.macroSignals.signals.mining'), s.miningCost.status, '', '', 'Hashprice model', null)}
           ${this.renderFearGreedCard(s.fearGreed)}
+          ${s.balticDryIndex ? (() => {
+            const bdiValue = s.balticDryIndex.value;
+            const bdiStatus = bdiValue > 2000 ? 'bullish' : bdiValue > 1000 ? 'neutral' : 'bearish';
+            return this.renderSignalCard('Baltic Dry Index', bdiStatus, bdiValue.toLocaleString(), '', 'Global shipping demand proxy', null);
+          })() : ''}
         </div>
       </div>
     `;

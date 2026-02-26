@@ -172,6 +172,14 @@ const allLayersEnabled: MapLayers = {
   centralBanks: true,
   commodityHubs: true,
   gulfInvestments: true,
+  // Signal expansion layers
+  routingAnomalies: true,
+  gridStatus: true,
+  sarDetections: true,
+  portCongestion: true,
+  whaleTransfers: true,
+  airQuality: true,
+  satellites: true,
 };
 
 const allLayersDisabled: MapLayers = {
@@ -211,6 +219,14 @@ const allLayersDisabled: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 const SEEDED_NEWS_LOCATIONS: Array<{

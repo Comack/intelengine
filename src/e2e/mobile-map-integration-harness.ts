@@ -121,6 +121,14 @@ const layers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 await initI18n();

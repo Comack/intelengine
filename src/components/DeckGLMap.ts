@@ -39,7 +39,11 @@ import type {
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
-import type { ClimateAnomaly } from '@/services/climate';
+import type { ClimateAnomaly, AirQualityReading } from '@/services/climate';
+import type { RoutingAnomaly, GridZone } from '@/services/infrastructure';
+import type { SarDarkShip, PortCongestionStatus } from '@/services/maritime';
+import type { WhaleTransfer } from '@/services/market';
+import type { Satellite, SpaceWeatherStatus } from '@/generated/client/worldmonitor/space/v1/service_client';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { WeatherAlert } from '@/services/weather';
@@ -275,6 +279,15 @@ export class DeckGLMap {
   private ucdpEvents: UcdpGeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
+  private routingAnomalyData: RoutingAnomaly[] = [];
+  private gridStatusData: GridZone[] = [];
+  private sarDetectionData: SarDarkShip[] = [];
+  private portCongestionData: PortCongestionStatus[] = [];
+  private whaleTransferData: WhaleTransfer[] = [];
+  private airQualityData: AirQualityReading[] = [];
+  private satelliteData: Satellite[] = [];
+  // @ts-expect-error stored for future space-weather overlay
+  private spaceWeatherData: SpaceWeatherStatus | null = null;
 
   // Country highlight state
   private countryGeoJsonLoaded = false;
@@ -1139,6 +1152,29 @@ export class DeckGLMap {
     // Climate anomalies heatmap layer
     if (mapLayers.climate && this.climateAnomalies.length > 0) {
       layers.push(this.createClimateHeatmapLayer());
+    }
+
+    // Signal expansion layers
+    if (mapLayers.routingAnomalies && this.routingAnomalyData.length > 0) {
+      layers.push(this.createRoutingAnomaliesLayer());
+    }
+    if (mapLayers.gridStatus && this.gridStatusData.length > 0) {
+      layers.push(this.createGridStatusLayer());
+    }
+    if (mapLayers.sarDetections && this.sarDetectionData.length > 0) {
+      layers.push(this.createSarDetectionsLayer());
+    }
+    if (mapLayers.portCongestion && this.portCongestionData.length > 0) {
+      layers.push(this.createPortCongestionLayer());
+    }
+    if (mapLayers.whaleTransfers && this.whaleTransferData.length > 0) {
+      layers.push(this.createWhaleTransfersLayer());
+    }
+    if (mapLayers.airQuality && this.airQualityData.length > 0) {
+      layers.push(this.createAirQualityLayer());
+    }
+    if (mapLayers.satellites && this.satelliteData.length > 0) {
+      layers.push(this.createSatellitesLayer());
     }
 
     // Tech variant layers (Supercluster-based deck.gl layers for HQs and events)
@@ -2652,6 +2688,20 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${t('popups.cyberThreat.title')}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.medium'))} · ${text(obj.country || t('popups.unknown'))}</div>` };
       case 'news-locations-layer':
         return { html: `<div class="deckgl-tooltip"><strong>📰 ${t('components.deckgl.tooltip.news')}</strong><br/>${text(obj.title?.slice(0, 80) || '')}</div>` };
+      case 'routing-anomalies-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>BGP ${text(obj.type || 'Anomaly')}</strong><br/>AS${text(obj.victimAsn || '')} — ${text(obj.country || '')}</div>` };
+      case 'grid-status-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.zoneName || 'Grid Zone')}</strong><br/>Stress: ${text(obj.stressLevel || '')}<br/>Carbon: ${obj.carbonIntensity || 0}g/kWh</div>` };
+      case 'sar-detections-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Dark Vessel</strong><br/>Length: ${obj.lengthM || '?'}m<br/>Confidence: ${obj.confidence || 0}%</div>` };
+      case 'port-congestion-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.portName || 'Port')}</strong><br/>Wait: ${obj.avgWaitHours || '?'}h<br/>Vessels at anchor: ${obj.vesselsAtAnchor || 0}</div>` };
+      case 'whale-transfers-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Whale Transfer</strong><br/>$${((obj.amountUsd || 0) / 1e6).toFixed(1)}M ${text(obj.blockchain || '')}<br/>${text(obj.fromLabel || '?')} → ${text(obj.toLabel || '?')}</div>` };
+      case 'air-quality-layer':
+        return null;
+      case 'satellites-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || 'Satellite')}</strong><br/>${text(obj.category || '')}<br/>Alt: ${obj.altitudeKm || '?'}km</div>` };
       case 'gulf-investments-layer': {
         const inv = obj as GulfInvestment;
         const flag = inv.investingCountry === 'SA' ? '🇸🇦' : '🇦🇪';
@@ -2982,6 +3032,8 @@ export class DeckGLMap {
         { key: 'techEvents', label: t('components.deckgl.layers.techEvents'), icon: '&#128197;' },
         { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
         { key: 'fires', label: t('components.deckgl.layers.fires'), icon: '&#128293;' },
+        { key: 'routingAnomalies', label: 'BGP Routing', icon: '&#127760;' },
+        { key: 'gridStatus', label: 'Power Grid', icon: '&#9889;' },
       ]
       : SITE_VARIANT === 'finance'
       ? [
@@ -2999,6 +3051,8 @@ export class DeckGLMap {
           { key: 'natural', label: t('components.deckgl.layers.naturalEvents'), icon: '&#127755;' },
           { key: 'cyberThreats', label: t('components.deckgl.layers.cyberThreats'), icon: '&#128737;' },
           { key: 'forensics', label: 'Forensics Anomalies', icon: '&#129514;' },
+          { key: 'whaleTransfers', label: 'Whale Transfers', icon: '&#128051;' },
+          { key: 'portCongestion', label: 'Port Congestion', icon: '&#9875;' },
         ]
       : [
         { key: 'hotspots', label: t('components.deckgl.layers.intelHotspots'), icon: '&#127919;' },
@@ -3026,6 +3080,12 @@ export class DeckGLMap {
         { key: 'waterways', label: t('components.deckgl.layers.strategicWaterways'), icon: '&#9875;' },
         { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
         { key: 'minerals', label: t('components.deckgl.layers.criticalMinerals'), icon: '&#128142;' },
+        { key: 'routingAnomalies', label: 'BGP Routing', icon: '&#127760;' },
+        { key: 'gridStatus', label: 'Power Grid', icon: '&#9889;' },
+        { key: 'sarDetections', label: 'Dark Ships (SAR)', icon: '&#128752;' },
+        { key: 'portCongestion', label: 'Port Congestion', icon: '&#9875;' },
+        { key: 'airQuality', label: 'Air Quality', icon: '&#127787;' },
+        { key: 'satellites', label: 'Satellites', icon: '&#128752;' },
       ];
 
     toggles.innerHTML = `
@@ -3464,6 +3524,120 @@ export class DeckGLMap {
     });
   }
 
+  private createRoutingAnomaliesLayer(): ScatterplotLayer<RoutingAnomaly> {
+    return new ScatterplotLayer<RoutingAnomaly>({
+      id: 'routing-anomalies-layer',
+      data: this.routingAnomalyData,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => {
+        const sev = typeof d.severity === 'string' ? ({ low: 1, medium: 2, high: 3, critical: 4 }[d.severity.toLowerCase()] || 2) : 2;
+        return 8000 + sev * 6000;
+      },
+      getFillColor: [255, 80, 60, 180],
+      radiusMinPixels: 4,
+      radiusMaxPixels: 18,
+      pickable: true,
+    });
+  }
+
+  private createGridStatusLayer(): ScatterplotLayer<GridZone> {
+    return new ScatterplotLayer<GridZone>({
+      id: 'grid-status-layer',
+      data: this.gridStatusData,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 12000,
+      getFillColor: (d) => {
+        const level = typeof d.stressLevel === 'string' ? d.stressLevel.toLowerCase() : String(d.stressLevel);
+        if (level === 'critical' || level === '3') return [255, 50, 50, 180];
+        if (level === 'high' || level === '2') return [255, 160, 50, 180];
+        if (level === 'elevated' || level === '1') return [255, 220, 60, 180];
+        return [80, 200, 80, 180];
+      },
+      radiusMinPixels: 4,
+      radiusMaxPixels: 16,
+      pickable: true,
+    });
+  }
+
+  private createSarDetectionsLayer(): ScatterplotLayer<SarDarkShip> {
+    return new ScatterplotLayer<SarDarkShip>({
+      id: 'sar-detections-layer',
+      data: this.sarDetectionData,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => 5000 + (d.confidence || 0) * 100,
+      getFillColor: [0, 220, 220, 180],
+      radiusMinPixels: 3,
+      radiusMaxPixels: 14,
+      pickable: true,
+    });
+  }
+
+  private createPortCongestionLayer(): ScatterplotLayer<PortCongestionStatus> {
+    return new ScatterplotLayer<PortCongestionStatus>({
+      id: 'port-congestion-layer',
+      data: this.portCongestionData,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => 8000 + (d.congestionIndex || 0) * 4000,
+      getFillColor: (d) => {
+        const idx = d.congestionIndex || 0;
+        if (idx >= 0.75) return [255, 50, 50, 200];
+        if (idx >= 0.5) return [255, 140, 50, 190];
+        return [255, 200, 60, 170];
+      },
+      radiusMinPixels: 5,
+      radiusMaxPixels: 20,
+      pickable: true,
+    });
+  }
+
+  private createWhaleTransfersLayer(): ScatterplotLayer<WhaleTransfer> {
+    return new ScatterplotLayer<WhaleTransfer>({
+      id: 'whale-transfers-layer',
+      data: this.whaleTransferData,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => 6000 + Math.min(Math.sqrt(d.amountUsd || 0) * 0.5, 30000),
+      getFillColor: [160, 80, 255, 180],
+      radiusMinPixels: 4,
+      radiusMaxPixels: 22,
+      pickable: true,
+    });
+  }
+
+  private createAirQualityLayer(): HeatmapLayer<AirQualityReading> {
+    return new HeatmapLayer<AirQualityReading>({
+      id: 'air-quality-layer',
+      data: this.airQualityData,
+      getPosition: (d) => [d.lon, d.lat],
+      getWeight: (d) => d.aqi || 0,
+      radiusPixels: 50,
+      intensity: 0.6,
+      threshold: 0.1,
+      opacity: 0.4,
+      colorRange: [
+        [80, 200, 80],
+        [200, 220, 60],
+        [255, 180, 50],
+        [255, 120, 50],
+        [255, 60, 60],
+        [180, 40, 40],
+      ],
+      pickable: false,
+    });
+  }
+
+  private createSatellitesLayer(): ScatterplotLayer<Satellite> {
+    return new ScatterplotLayer<Satellite>({
+      id: 'satellites-layer',
+      data: this.satelliteData,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 3000,
+      getFillColor: [180, 200, 255, 160],
+      radiusMinPixels: 2,
+      radiusMaxPixels: 5,
+      pickable: true,
+    });
+  }
+
   // Data setters - all use render() for debouncing
   public setEarthquakes(earthquakes: Earthquake[]): void {
     this.earthquakes = earthquakes;
@@ -3576,6 +3750,46 @@ export class DeckGLMap {
 
   public setClimateAnomalies(anomalies: ClimateAnomaly[]): void {
     this.climateAnomalies = anomalies;
+    this.render();
+  }
+
+  public setRoutingAnomalies(data: RoutingAnomaly[]): void {
+    this.routingAnomalyData = data;
+    this.render();
+  }
+
+  public setGridStatus(data: GridZone[]): void {
+    this.gridStatusData = data;
+    this.render();
+  }
+
+  public setSarDetections(data: SarDarkShip[]): void {
+    this.sarDetectionData = data;
+    this.render();
+  }
+
+  public setPortCongestion(data: PortCongestionStatus[]): void {
+    this.portCongestionData = data;
+    this.render();
+  }
+
+  public setWhaleTransfers(data: WhaleTransfer[]): void {
+    this.whaleTransferData = data;
+    this.render();
+  }
+
+  public setAirQuality(data: AirQualityReading[]): void {
+    this.airQualityData = data;
+    this.render();
+  }
+
+  public setSatellites(data: Satellite[]): void {
+    this.satelliteData = data;
+    this.render();
+  }
+
+  public setSpaceWeather(data: SpaceWeatherStatus | null): void {
+    this.spaceWeatherData = data;
     this.render();
   }
 

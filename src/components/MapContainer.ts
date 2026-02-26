@@ -381,6 +381,39 @@ export class MapContainer {
     }
   }
 
+  // Signal expansion layer setters
+  public setRoutingAnomalies(data: any[]): void {
+    this.deckGLMap?.setRoutingAnomalies(data);
+  }
+
+  public setGridStatus(data: any[]): void {
+    this.deckGLMap?.setGridStatus(data);
+  }
+
+  public setSarDetections(data: any[]): void {
+    this.deckGLMap?.setSarDetections(data);
+  }
+
+  public setPortCongestion(data: any[]): void {
+    this.deckGLMap?.setPortCongestion(data);
+  }
+
+  public setWhaleTransfers(data: any[]): void {
+    this.deckGLMap?.setWhaleTransfers(data);
+  }
+
+  public setAirQuality(data: any[]): void {
+    this.deckGLMap?.setAirQuality(data);
+  }
+
+  public setSatellites(data: any[]): void {
+    this.deckGLMap?.setSatellites(data);
+  }
+
+  public setSpaceWeather(data: any): void {
+    this.deckGLMap?.setSpaceWeather(data);
+  }
+
   // Callback setters - MapComponent uses different names
   public onHotspotClicked(callback: (hotspot: Hotspot) => void): void {
     if (this.useDeckGL) {

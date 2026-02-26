@@ -38,7 +38,8 @@ export type DataSourceId =
   | 'ucdp_events'    // UCDP georeferenced conflict events
   | 'unhcr'          // UNHCR displacement data
   | 'climate'        // Climate anomaly data (Open-Meteo)
-  | 'worldpop';      // WorldPop population exposure
+  | 'worldpop'       // WorldPop population exposure
+  | 'signal_expansion'; // Signal expansion APIs (BGP, grid, SAR, etc.)
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -107,6 +108,7 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   unhcr: { name: 'UNHCR Displacement', requiredForRisk: false, panelId: 'displacement' },
   climate: { name: 'Climate Anomalies', requiredForRisk: false, panelId: 'climate' },
   worldpop: { name: 'Population Exposure', requiredForRisk: false, panelId: 'population-exposure' },
+  signal_expansion: { name: 'Signal Expansion', requiredForRisk: false, panelId: 'map' },
 };
 
 class DataFreshnessTracker {
@@ -368,6 +370,7 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   unhcr: 'UNHCR displacement data unavailable—refugee flows unknown',
   climate: 'Climate anomaly data unavailable—extreme weather patterns undetected',
   worldpop: 'Population exposure data unavailable—affected population unknown',
+  signal_expansion: 'Signal expansion data unavailable—BGP, grid, SAR, and AQI feeds offline',
 };
 
 /**

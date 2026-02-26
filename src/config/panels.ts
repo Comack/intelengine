@@ -88,6 +88,14 @@ const FULL_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
@@ -130,6 +138,14 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 // ============================================
@@ -213,6 +229,14 @@ const TECH_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 const TECH_MOBILE_MAP_LAYERS: MapLayers = {
@@ -255,6 +279,14 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 // ============================================
@@ -333,6 +365,14 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
@@ -375,6 +415,14 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   centralBanks: true,
   commodityHubs: false,
   gulfInvestments: false,
+  // Signal expansion layers
+  routingAnomalies: false,
+  gridStatus: false,
+  sarDetections: false,
+  portCongestion: false,
+  whaleTransfers: false,
+  airQuality: false,
+  satellites: false,
 };
 
 // ============================================
@@ -400,6 +448,13 @@ export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> =
   displacement: ['unhcr'],
   climate: ['climate'],
   techEvents: ['tech_events'],
+  routingAnomalies: ['signal_expansion'],
+  gridStatus: ['signal_expansion'],
+  sarDetections: ['signal_expansion'],
+  portCongestion: ['signal_expansion'],
+  whaleTransfers: ['signal_expansion'],
+  airQuality: ['signal_expansion'],
+  satellites: ['signal_expansion'],
 };
 
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)

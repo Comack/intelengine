@@ -565,6 +565,14 @@ export interface MapLayers {
   commodityHubs: boolean;
   // Gulf FDI layers
   gulfInvestments: boolean;
+  // Signal expansion layers
+  routingAnomalies: boolean;
+  gridStatus: boolean;
+  sarDetections: boolean;
+  portCongestion: boolean;
+  whaleTransfers: boolean;
+  airQuality: boolean;
+  satellites: boolean;
 }
 
 export interface AIDataCenter {
