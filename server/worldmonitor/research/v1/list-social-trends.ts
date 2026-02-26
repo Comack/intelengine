@@ -86,6 +86,95 @@ async function fetchFromRelay(req: ListSocialTrendsRequest): Promise<SocialTrend
   });
 }
 
+const BLUESKY_WATCHLIST = [
+  { query: 'Ukraine war', entities: ['Ukraine', 'Russia'] },
+  { query: 'Gaza conflict', entities: ['Israel', 'Hamas', 'Gaza'] },
+  { query: 'Taiwan China', entities: ['Taiwan', 'China'] },
+  { query: 'AI safety', entities: ['OpenAI', 'Anthropic', 'AI'] },
+  { query: 'cybersecurity breach', entities: ['Cyber'] },
+  { query: 'NATO military', entities: ['NATO'] },
+  { query: 'cryptocurrency bitcoin', entities: ['Bitcoin', 'Crypto'] },
+  { query: 'climate change extreme weather', entities: ['Climate'] },
+  { query: 'oil prices energy', entities: ['Oil', 'Energy'] },
+  { query: 'Federal Reserve interest rates', entities: ['Fed', 'Markets'] },
+  { query: 'nuclear weapons Iran', entities: ['Iran', 'Nuclear'] },
+  { query: 'supply chain disruption', entities: ['Supply Chain'] },
+];
+
+interface BskyPost {
+  uri: string;
+  cid: string;
+  author: { handle: string; displayName?: string };
+  record: { text: string; createdAt: string };
+  indexedAt: string;
+}
+
+interface BskySearchResponse {
+  posts: BskyPost[];
+  cursor?: string;
+}
+
+const BSKY_API = 'https://public.api.bsky.app';
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function fetchFromBluesky(): Promise<SocialTrend[]> {
+  const now = Date.now();
+  const oneHourAgo = now - 60 * 60 * 1000;
+  const trends: SocialTrend[] = [];
+
+  const results = await Promise.allSettled(
+    BLUESKY_WATCHLIST.map(async (item, i) => {
+      // Rate limit: 100ms between each request
+      if (i > 0) await sleep(i * 100);
+
+      const url = `${BSKY_API}/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(item.query)}&limit=25&sort=latest`;
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(5000),
+        headers: { 'User-Agent': 'WorldMonitor/1.0' },
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as BskySearchResponse;
+      return { item, data };
+    }),
+  );
+
+  for (const result of results) {
+    if (result.status !== 'fulfilled' || !result.value) continue;
+    const { item, data } = result.value;
+
+    const recentPosts = data.posts.filter(
+      (p) => new Date(p.indexedAt).getTime() >= oneHourAgo,
+    );
+    if (recentPosts.length < 2) continue;
+
+    const velocity = recentPosts.length / 60; // mentions per minute
+    const topPosts = recentPosts
+      .slice(0, 3)
+      .map((p) => p.record.text.slice(0, 200));
+
+    trends.push({
+      topic: item.query,
+      platform: 'bluesky',
+      mentionCount1h: recentPosts.length,
+      velocity: Math.round(velocity * 100) / 100,
+      topPosts,
+      matchedEntities: item.entities,
+      observedAt: String(now),
+    });
+  }
+
+  trends.sort((a, b) => b.mentionCount1h - a.mentionCount1h);
+  return trends;
+}
+
+function isSyntheticOnly(trends: SocialTrend[]): boolean {
+  const synTopics = new Set(syntheticTrends().map((t) => t.topic));
+  return trends.length > 0 && trends.every((t) => synTopics.has(t.topic));
+}
+
 export async function listSocialTrends(
   _ctx: ServerContext,
   req: ListSocialTrendsRequest,
@@ -98,9 +187,34 @@ export async function listSocialTrends(
     trends = syntheticTrends();
   }
 
+  // Augment with real Bluesky data when relay returned synthetic or failed
+  const wantBluesky = !req.platform || req.platform === 'bluesky';
+  if (wantBluesky && isSyntheticOnly(trends)) {
+    try {
+      const bskyTrends = await fetchFromBluesky();
+      if (bskyTrends.length > 0) {
+        // Merge: deduplicate by topic (prefer real Bluesky data)
+        const bskyTopics = new Set(bskyTrends.map((t) => t.topic.toLowerCase()));
+        const filtered = trends.filter(
+          (t) => !bskyTopics.has(t.topic.toLowerCase()),
+        );
+        trends = [...bskyTrends, ...filtered];
+        trends.sort((a, b) => b.mentionCount1h - a.mentionCount1h);
+      }
+    } catch {
+      // Bluesky fetch failed; keep existing trends
+    }
+  }
+
   // Apply platform filter if requested
   if (req.platform) {
     trends = trends.filter((t) => t.platform === req.platform);
+  }
+
+  // Apply limit
+  const limit = req.limit || 20;
+  if (trends.length > limit) {
+    trends = trends.slice(0, limit);
   }
 
   return { trends, sampledAt: String(Date.now()) };
