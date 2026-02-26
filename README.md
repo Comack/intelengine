@@ -94,6 +94,9 @@ All three variants run from a single codebase — switch between them with one c
 - **Trending Keyword Spike Detection** — 2-hour rolling window vs 7-day baseline flags surging terms across RSS feeds, with CVE/APT entity extraction and auto-summarization
 - **Strategic Posture Assessment** — composite risk score combining all intelligence modules with trend detection
 - **Deterministic Forensics** — multi-modal analysis pipeline using weak supervision fusion to learn source weights, conformal anomaly detection for rigorous p-values, and causal discovery to map signal propagation.
+- **Semi-Supervised Learning** — active feedback loop allowing analysts to acknowledge or dismiss anomalies, directly anchoring the EM-algorithm's learned accuracies with human-in-the-loop ground truth.
+- **Generative Explainability** — LLM-driven anomaly synthesis that fetches raw evidence text and uses local Ollama models to explain *why* a specific statistical deviation occurred.
+- **High-Performance Scaling** — O(N³) statistical loops offloaded to a Python/NumPy microservice, enabling the processing of thousands of global signals without UI lag.
 - **Evidence Ingestion** — automated and manual ingestion of raw evidence with structured POLE (Persons, Objects, Locations, Events) entity extraction.
 - **Country Brief Pages** — click any country for a full-page intelligence dossier with CII score ring, AI-generated analysis, top news with citation anchoring, prediction markets, 7-day event timeline, active signal chips, infrastructure exposure, and stock market index — exportable as JSON, CSV, or image
 
@@ -174,9 +177,10 @@ All three variants run from a single codebase — switch between them with one c
 
 ### Forensics & Analysis Visualizations
 
-- **Interactive Causal DAG** — Force-directed graph (D3.js) visualizing the causal relationships and time lags between different signal types (e.g., how a `military_surge` leads to a `market_drop`).
+- **Interactive Causal DAG** — Force-directed graph (D3.js) visualizing the causal relationships and time lags between different signal types across **Tactical, Operational, and Strategic** horizons.
 - **POLE Entity Relationship Map** — Relational context for evidence, graphing the connections between extracted Persons, Objects, Locations, and Events.
 - **"What-If" Counterfactual Sandbox** — Interactive anomaly explainability allowing analysts to drag contribution sliders and simulate how signal changes would affect anomaly significance.
+- **Generative Context Sidebar** — On-demand AI synthesis of underlying evidence text to provide natural language explanations for complex anomalies.
 - **Geospatial Hexagonal Columns** — High-performance 3D map markers for anomalies using deck.gl `ColumnLayer`, where column height represents magnitude (`legacyZScore`) and opacity represents confidence (`pValue`).
 - **Timeline DVR Mode** — Global playback scrubber with automatic playback, allowing historical review of cascading alerts across the entire dashboard.
 - **Convergence Radar** — Venn-diagram style radar visualizing triangulation consensus between Wire, Gov, and Intel sources.
@@ -550,7 +554,7 @@ The entire API surface is defined in Protocol Buffer (`.proto`) files using [seb
 | `economic`       | Energy prices, FRED series, macro signals, World Bank |
 | `evidence`       | Raw source material ingestion, POLE entity extraction |
 | `infrastructure` | Internet outages, service statuses, temporal baselines |
-| `intelligence`   | Event classification, briefs, forensics shadow runs|
+| `intelligence`   | classification, briefs, forensics runs, user feedback, anomaly explanations|
 | `maritime`       | Vessel snapshots, navigational warnings          |
 | `market`         | Stock indices, crypto/commodity quotes, ETF flows|
 | `military`       | Aircraft details, theater posture, USNI fleet    |
@@ -945,7 +949,7 @@ All three variants run on three platforms that work together:
            │  ┌───────────────────────────────────┐
            │  │     Tauri Desktop (Rust + Node)   │
            │  │  OS keychain · Token-auth sidecar │
-           │  │  60+ local API handlers · br/gzip    │
+           │  │  60+ local API handlers · br/gzip │
            │  │  Cloud fallback · Traffic logging │
            │  └───────────────────────────────────┘
            │
@@ -1184,6 +1188,7 @@ The `.env.example` file documents every variable with descriptions and registrat
 | **Geopolitical**  | `ACLED_ACCESS_TOKEN`, `CLOUDFLARE_API_TOKEN`, `NASA_FIRMS_API_KEY`         | Free for researchers                       |
 | **Relay**         | `WS_RELAY_URL`, `VITE_WS_RELAY_URL`, `OPENSKY_CLIENT_ID/SECRET`            | Self-hosted                                |
 | **UI**            | `VITE_VARIANT`, `VITE_MAP_INTERACTION_MODE` (`flat` or `3d`, default `3d`) | N/A                                        |
+| **Forensics**     | `FORENSICS_WORKER_URL` (optional, for Python offloading)                   | N/A                                        |
 | **Observability** | `VITE_SENTRY_DSN` (optional, empty disables reporting)                     | N/A                                        |
 
 See [`.env.example`](./.env.example) for the complete list with registration links.
@@ -1257,6 +1262,7 @@ Set `WS_RELAY_URL` (server-side, HTTPS) and `VITE_WS_RELAY_URL` (client-side, WS
 | **Frontend**          | TypeScript, Vite, deck.gl (WebGL 3D globe), MapLibre GL, D3.js, vite-plugin-pwa (service worker + manifest)                                           |
 | **Desktop**           | Tauri 2 (Rust) with Node.js sidecar, OS keychain integration (keyring crate), native TLS (reqwest)                                             |
 | **AI/ML**             | Ollama / LM Studio (local, OpenAI-compatible), Groq (Llama 3.1 8B), OpenRouter (fallback), Transformers.js (browser-side T5, NER, embeddings) |
+| **Forensics Math**    | Python 3.11+, FastAPI, NumPy (optimized O(N³) statistical loops), uvicorn                                                                     |
 | **Caching**           | Redis (Upstash) — 3-tier cache with in-memory + Redis + upstream, cross-user AI deduplication. Vercel CDN (s-maxage). Service worker (Workbox) |
 | **Geopolitical APIs** | OpenSky, GDELT, ACLED, UCDP, HAPI, USGS, GDACS, NASA EONET, NASA FIRMS, Polymarket, Cloudflare Radar, WorldPop                                 |
 | **Market APIs**       | Yahoo Finance (equities, forex, crypto), CoinGecko (stablecoins), mempool.space (BTC hashrate), alternative.me (Fear & Greed)                  |
@@ -1363,6 +1369,10 @@ Desktop release details, signing hooks, variant outputs, and clean-machine valid
 - [x] Storage quota management (graceful degradation on exhausted localStorage/IndexedDB)
 - [x] Chunk reload guard (one-shot recovery from stale-asset 404s after deployments)
 - [x] Deterministic Forensics Engine (Shadow runs, weak supervision fusion, conformal p-values)
+- [x] Semi-Supervised Feedback Loop (Human-in-the-loop anchor for unsupervised learning)
+- [x] Variable Horizon Causal Discovery (Tactical, Operational, and Strategic lag detection)
+- [x] High-Performance Forensics Worker (Offloaded Python/NumPy statistical engine)
+- [x] Generative Anomaly Explainability (LLM-synthesized context from raw evidence)
 - [x] Evidence Ingestion Service (Structured POLE extraction from raw evidence)
 - [x] Advanced D3.js Visualizations (Causal DAG, POLE Map, Convergence Radar)
 - [x] Counterfactual Sandbox (Interactive "what-if" anomaly simulation)

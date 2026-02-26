@@ -241,6 +241,7 @@ export interface ForensicsCausalEdge {
   delayMs: number;
   supportCount: number;
   conditionalLift: number;
+  horizon: string;
 }
 
 export interface ListFusedSignalsRequest {
@@ -382,6 +383,26 @@ export interface ForensicsTopologyBaselineSummary {
   lastUpdated: number;
 }
 
+export interface SubmitForensicsFeedbackRequest {
+  sourceId: string;
+  signalType: string;
+  isTruePositive: boolean;
+}
+
+export interface SubmitForensicsFeedbackResponse {
+  success: boolean;
+}
+
+export interface ExplainAnomalyRequest {
+  anomalyId: string;
+  evidenceIds: string[];
+}
+
+export interface ExplainAnomalyResponse {
+  explanation: string;
+  supportingEvidenceIds: string[];
+}
+
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
 
 export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RISING" | "TREND_DIRECTION_STABLE" | "TREND_DIRECTION_FALLING";
@@ -448,6 +469,8 @@ export interface IntelligenceServiceHandler {
   listForensicsRuns(ctx: ServerContext, req: ListForensicsRunsRequest): Promise<ListForensicsRunsResponse>;
   getForensicsPolicy(ctx: ServerContext, req: GetForensicsPolicyRequest): Promise<GetForensicsPolicyResponse>;
   getForensicsTopologySummary(ctx: ServerContext, req: GetForensicsTopologySummaryRequest): Promise<GetForensicsTopologySummaryResponse>;
+  submitForensicsFeedback(ctx: ServerContext, req: SubmitForensicsFeedbackRequest): Promise<SubmitForensicsFeedbackResponse>;
+  explainAnomaly(ctx: ServerContext, req: ExplainAnomalyRequest): Promise<ExplainAnomalyResponse>;
 }
 
 export function createIntelligenceServiceRoutes(
@@ -993,6 +1016,92 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.getForensicsTopologySummary(ctx, body);
           return new Response(JSON.stringify(result as GetForensicsTopologySummaryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/submit-forensics-feedback",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as SubmitForensicsFeedbackRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("submitForensicsFeedback", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.submitForensicsFeedback(ctx, body);
+          return new Response(JSON.stringify(result as SubmitForensicsFeedbackResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/intelligence/v1/explain-anomaly",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ExplainAnomalyRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("explainAnomaly", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.explainAnomaly(ctx, body);
+          return new Response(JSON.stringify(result as ExplainAnomalyResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

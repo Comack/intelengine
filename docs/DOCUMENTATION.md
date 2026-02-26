@@ -46,7 +46,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 | **Country Instability Index** | Real-time stability scores for 20 monitored countries |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
-| **Deterministic Forensics** | Shadow-run orchestration with causal discovery and entity relationship mapping |
+| **Deterministic Forensics** | Shadow-run orchestration with semi-supervised feedback, generative AI explanations, and multi-horizon causal DAGs |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 
 ### News Coverage
@@ -194,7 +194,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Country Instability Index** | Real-time stability scores for 20 monitored countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
-| **Deterministic Forensics** | Shadow-run orchestration with causal discovery and entity relationship mapping |
+| **Deterministic Forensics** | Shadow-run orchestration with semi-supervised feedback, generative AI explanations, and multi-horizon causal DAGs |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
 
@@ -524,8 +524,21 @@ These normalized signals, alongside exact timestamps, form the structured matrix
 To combine signals from disparate, unlabeled sources, the pipeline uses an **Expectation-Maximization (EM)** algorithm:
 
 1. **Source Accuracy Learning**: Iteratively estimates the true accuracy of each signal source based on consensus and independence.
-2. **Dependency Penalty**: Pairwise correlation analysis penalizes redundant signals to prevent double-counting correlated inputs (e.g., two news outlets repeating the same wire).
-3. **Probabilistic Fusion**: Outputs a unified `ForensicsFusedSignal` with a 0-100 score, exact probability bounds, and a list of weighted contributors.
+2. **Semi-Supervised Feedback (Anchor Labels)**: Analysts can acknowledge or dismiss anomalies in the UI. These human-in-the-loop decisions are saved to the `forensics-blackboard` and injected into the EM loop as hard-coded soft labels (1.0 or 0.0), forcing the algorithm to anchor its learned weights around human-validated truth.
+3. **Dependency Penalty**: Pairwise correlation analysis penalizes redundant signals to prevent double-counting correlated inputs (e.g., two news outlets repeating the same wire).
+4. **Probabilistic Fusion**: Outputs a unified `ForensicsFusedSignal` with a 0-100 score, exact probability bounds, and a list of weighted contributors.
+
+To support high-performance scaling of these O(N³) statistical loops, the math is optionally offloaded to a Python/NumPy microservice (`forensics-worker`), removing the computational constraints of the single-threaded Node.js event loop.
+
+#### Semi-Supervised Feedback Loop Data Flow
+
+When an analyst interacts with the Forensics UI:
+- **Action**: User clicks `✅ Acknowledge` or `❌ Dismiss` on an anomaly card.
+- **Service**: The frontend calls `SubmitForensicsFeedback(sourceId, signalType, isTruePositive)`.
+- **Storage**: The backend persists the feedback in Redis via the `forensics-blackboard`.
+- **Injection**: On the next shadow run, the orchestrator retrieves all feedback for the current signal set.
+- **Math**: In the EM algorithm's E-step, if a `source:type` pair has feedback, its `softLabel` is hard-coded to 1.0 or 0.0, overriding the probabilistic estimate.
+- **Result**: The algorithm recalculates all other source accuracies based on this ground-truth anchor, significantly reducing false positives over time.
 
 ### Conformal Anomaly Detection
 
@@ -547,19 +560,48 @@ The pipeline uses **Topological Data Analysis (TDA)** to map the shape and struc
 
 ### Causal Discovery
 
-The Causal Discovery engine identifies directed relationships and temporal lags between different signal types (e.g., `pipeline_disruption` → `market_move_oil`):
+The Causal Discovery engine identifies directed relationships and temporal lags between different signal types (e.g., `pipeline_disruption` → `market_move_oil`) across three distinct temporal horizons:
 
-- **Activation Bucketing**: Signals are bucketed into 30-minute intervals over a configurable lookback window (up to 4 hours).
-- **Conditional Lift**: Calculates the probability of signal B activating given signal A's prior activation, divided by B's baseline probability.
+- **Tactical**: 15-minute buckets looking back 2 hours. Detects immediate kinetic reactions.
+- **Operational**: 6-hour buckets looking back 3 days. Maps unfolding geopolitical escalations.
+- **Strategic**: 1-day buckets looking back 30 days. Identifies long-term structural dependencies.
+
+Discovery is driven by:
+- **Activation Bucketing**: Signals are bucketed based on the horizon's resolution. Thresholds are computed using the 70th percentile of positive signal values within each bucket.
+- **Conditional Lift**: Calculates the probability of signal B activating given signal A's prior activation, divided by B's baseline probability. The baseline is adjusted for the lookback window width to prevent false positives in high-frequency signal types.
 - **Minimum Description Length (MDL)**: Computes a causal score based on MDL gain, filtering out weak or coincidental relationships.
+- **Deduplication**: When an edge is detected across multiple horizons, the engine prioritizes the horizon with the highest MDL gain and `causal_score`.
 
-### Explainability (Counterfactual Levers)
+#### Multi-Horizon Visualization
 
-To make AI-driven anomalies understandable, the system computes **Counterfactual Levers**:
+The Forensics Graph renderer (`ForensicsVisualizations.ts`) styles causal edges by their detected horizon:
+- **Tactical**: Solid red lines (#ef4444) indicate immediate, high-priority causal links.
+- **Operational**: Dashed orange lines (#f97316) indicate unfolding multi-day relationships.
+- **Strategic**: Dotted blue lines (#3b82f6) indicate long-term structural dependencies.
 
-- Reconstructs the logit (log-odds) that led to an anomaly classification.
-- Iteratively simulates flipping each contributing signal from a positive to a negative vote.
-- Computes the "delta logit" required to un-flag the anomaly, allowing analysts to interact with a "what-if" sandbox to understand exactly which inputs drove the alert.
+### High-Performance Offloading (Python/NumPy)
+
+To enable massive scaling, the forensics pipeline supports a high-performance worker architecture:
+- **Stat-Offloading**: The $O(N^3)$ loops for calculating signal accuracies and dependency penalties are moved to a dedicated Python microservice (`forensics-worker/main.py`).
+- **NumPy Optimization**: Uses optimized linear algebra routines to process thousands of global signals simultaneously, which would otherwise block the Node.js event loop.
+- **Automatic Routing**: The orchestrator automatically routes heavy fusion requests to the worker if the `FORENSICS_WORKER_URL` environment variable is set.
+
+### Explainability (Counterfactual Levers & Generative AI)
+
+To make AI-driven anomalies understandable, the system provides both mathematical and natural language explainability:
+
+- **Generative Context Synthesis**: Analysts can trigger an "Explain Context" request. The backend fetches the raw text of every piece of evidence (news, alerts, sensor data) tied to the anomaly and uses a local Ollama LLM (`llama3`) to synthesize a human-readable explanation of the statistical event.
+- **Counterfactual Levers**: Reconstructs the logit (log-odds) that led to an anomaly classification. It iteratively simulates flipping each contributing signal from a positive to a negative vote, allowing analysts to interact with a "what-if" sandbox.
+- **Leverage Impact**: Computes the "delta logit" required to un-flag the anomaly, visualizing exactly which inputs drove the alert.
+
+#### Generative AI Explainability Data Flow
+
+1. **Request**: User clicks `🧠 Explain Context` on an anomaly card.
+2. **Identification**: The UI sends the `anomaly_id` and all associated `evidence_ids` to the `ExplainAnomaly` RPC.
+3. **Retrieval**: The backend fetches the full text content, titles, and summaries for all evidence IDs from the Redis-backed `Evidence Service`.
+4. **Prompting**: A structured prompt is constructed: *"You are an intelligence analyst. Explain the following anomaly based on the provided evidence..."*, including the concatenated raw evidence text.
+5. **Synthesis**: The prompt is dispatched to the local Ollama instance (or configured cloud fallback).
+6. **Delivery**: The synthesized natural language situation report is streamed back to the UI and displayed directly within the anomaly card.
 
 ### Evidence Ingestion & POLE Extraction
 

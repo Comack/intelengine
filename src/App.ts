@@ -4726,7 +4726,6 @@ export class App {
 
     const now = Date.now();
     const stateKey = signals
-      .slice(0, 60)
       .map((signal) => {
         const observedBucket = bucketSignalTimestamp(signal.observedAt, 5 * 60 * 1000);
         return `${signal.sourceId}:${signal.signalType}:${signal.value.toFixed(2)}:${observedBucket}`;

@@ -7,6 +7,7 @@ import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
 import { renderPoleGraph, renderConvergenceRadar } from './ForensicsVisualizations';
+import { submitForensicsFeedback, explainAnomaly } from '@/services/forensics';
 
 export class SignalModal {
   private element: HTMLElement;
@@ -93,6 +94,56 @@ export class SignalModal {
           return typeof signalTerm !== 'string' || signalTerm.toLowerCase() !== term.toLowerCase();
         });
         this.renderSignals();
+      }
+
+      if (target.classList.contains('forensics-feedback-btn')) {
+        const sourceId = target.dataset.sourceId || '';
+        const signalType = target.dataset.signalType || '';
+        const isTruePositive = target.dataset.isTruePositive === 'true';
+        if (sourceId && signalType) {
+          submitForensicsFeedback(sourceId, signalType, isTruePositive).catch(console.error);
+          
+          // Provide visual feedback
+          target.textContent = isTruePositive ? '✅ Logged' : '❌ Logged';
+          target.style.opacity = '0.5';
+          target.style.pointerEvents = 'none';
+          
+          // Also disable the sibling button
+          const sibling = target.parentElement?.querySelector('.forensics-feedback-btn:not(:active)') as HTMLElement;
+          if (sibling && sibling !== target) {
+            sibling.style.opacity = '0.5';
+            sibling.style.pointerEvents = 'none';
+          }
+        }
+      }
+
+      if (target.classList.contains('forensics-explain-btn')) {
+        const anomalyId = target.dataset.anomalyId || '';
+        const evidenceIdsRaw = target.dataset.evidenceIds || '';
+        const evidenceIds = evidenceIdsRaw ? evidenceIdsRaw.split(',') : [];
+        const container = target.parentElement?.nextElementSibling as HTMLElement;
+        
+        if (anomalyId && container) {
+          target.textContent = '🧠 Explaining...';
+          target.style.opacity = '0.7';
+          target.style.pointerEvents = 'none';
+          
+          container.style.display = 'block';
+          container.innerHTML = '<i>Querying semantic search and local LLM...</i>';
+          
+          explainAnomaly(anomalyId, evidenceIds).then(res => {
+            target.textContent = '🧠 Explained';
+            container.innerHTML = `<strong>Explanation:</strong> ${escapeHtml(res.explanation)}`;
+            if (res.supportingEvidenceIds.length > 0) {
+              container.innerHTML += `<br><br><strong>Key Evidence:</strong> ${escapeHtml(res.supportingEvidenceIds.join(', '))}`;
+            }
+          }).catch(err => {
+            target.textContent = '🧠 Explain Context';
+            target.style.opacity = '1';
+            target.style.pointerEvents = 'auto';
+            container.innerHTML = `<span style="color: var(--semantic-critical);">Failed to explain: ${escapeHtml(String(err))}</span>`;
+          });
+        }
       }
     });
   }
@@ -342,6 +393,12 @@ export class SignalModal {
               📍 ${t('modals.signal.viewOnMap')}: ${escapeHtml(anomaly.region || `${anomaly.lat.toFixed(2)}°, ${anomaly.lon.toFixed(2)}°`)}
             </button>
           </div>
+          <div class="signal-feedback" style="margin-top: 8px; display: flex; gap: 8px;">
+            <button class="forensics-feedback-btn" data-source-id="${escapeHtml(anomaly.sourceId)}" data-signal-type="${escapeHtml(anomaly.signalType)}" data-is-true-positive="true" style="font-size: 12px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color);">✅ Acknowledge</button>
+            <button class="forensics-feedback-btn" data-source-id="${escapeHtml(anomaly.sourceId)}" data-signal-type="${escapeHtml(anomaly.signalType)}" data-is-true-positive="false" style="font-size: 12px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color);">❌ Dismiss</button>
+            <button class="forensics-explain-btn" data-anomaly-id="${escapeHtml(`${anomaly.sourceId}:${anomaly.signalType}`)}" data-evidence-ids="${escapeHtml(anomaly.evidenceIds.join(','))}" style="font-size: 12px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--semantic-info); background: var(--semantic-info-bg); color: var(--semantic-info);">🧠 Explain Context</button>
+          </div>
+          <div class="signal-explanation-container" style="margin-top: 8px; font-size: 12px; color: var(--text-dim); display: none;"></div>
         </div>
       `;
     }).join('');

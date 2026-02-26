@@ -424,7 +424,7 @@ export class ForensicsSignalBuilder {
     };
 
     const signals: ForensicsSignalInput[] = [];
-    for (const event of this.ctx.aisDisruptions.slice(0, 80)) {
+    for (const event of this.ctx.aisDisruptions) {
       const signalType = this.classifyAisTrajectorySignal(event);
       const observedAt = resolveObservedAt(event.observedAt, now);
       const freshness = computeFreshnessPenalty(observedAt, CONFLICT_FRESHNESS_PROFILE, now);
@@ -605,8 +605,7 @@ export class ForensicsSignalBuilder {
     }
 
     return signals
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 60);
+      .sort((a, b) => b.value - a.value);
   }
 
   buildIntelligenceSignals(): ForensicsSignalInput[] {
@@ -640,7 +639,7 @@ export class ForensicsSignalBuilder {
       convergenceScore: number;
     }>();
 
-    for (const cluster of summary.topCountries.slice(0, 20)) {
+    for (const cluster of summary.topCountries) {
       for (const signal of cluster.signals) {
         const sourceId = `${cluster.country}:${signal.type}`;
         const existing = bucket.get(sourceId);
@@ -705,11 +704,9 @@ export class ForensicsSignalBuilder {
         };
       });
     const trajectorySignals = this.buildAisTrajectorySignals(now)
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 40);
+      .sort((a, b) => b.value - a.value);
     const countryRiskSignals = this.buildCountryRiskSignals(now)
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 60);
+      .sort((a, b) => b.value - a.value);
     const merged = new Map<string, ForensicsSignalInput>();
     for (const signal of [...baseSignals, ...countryRiskSignals, ...trajectorySignals]) {
       const key = `${signal.sourceId}:${signal.signalType}`;
@@ -719,8 +716,7 @@ export class ForensicsSignalBuilder {
       }
     }
     return Array.from(merged.values())
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 180);
+      .sort((a, b) => b.value - a.value);
   }
 
   buildMacroSignals(now = Date.now()): ForensicsSignalInput[] {
@@ -822,8 +818,7 @@ export class ForensicsSignalBuilder {
     );
 
     return signals
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 25);
+      .sort((a, b) => b.value - a.value);
   }
 
   buildEtfSignals(now = Date.now()): ForensicsSignalInput[] {
@@ -836,7 +831,7 @@ export class ForensicsSignalBuilder {
 
     const signals: ForensicsSignalInput[] = [];
     let included = 0;
-    for (const etf of etfData.etfs.slice(0, 80)) {
+    for (const etf of etfData.etfs) {
       const flowAbs = Math.abs(etf.estFlow || 0);
       const volumeRatio = Math.max(0, etf.volumeRatio || 0);
       if (flowAbs < 15_000_000 && volumeRatio < 1.35) continue;
@@ -876,8 +871,7 @@ export class ForensicsSignalBuilder {
     }
 
     return signals
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 25);
+      .sort((a, b) => b.value - a.value);
   }
 
   buildStablecoinSignals(now = Date.now()): ForensicsSignalInput[] {
@@ -891,7 +885,7 @@ export class ForensicsSignalBuilder {
     const signals: ForensicsSignalInput[] = [];
     let depeggedCount = 0;
     let maxDeviation = 0;
-    for (const coin of stableData.stablecoins.slice(0, 80)) {
+    for (const coin of stableData.stablecoins) {
       const deviation = Math.abs(coin.deviation || 0);
       if (deviation < 0.2) continue;
       depeggedCount += 1;
@@ -935,8 +929,7 @@ export class ForensicsSignalBuilder {
     }
 
     return signals
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 25);
+      .sort((a, b) => b.value - a.value);
   }
 
   buildEconomicSignals(now = Date.now()): ForensicsSignalInput[] {
@@ -1002,8 +995,7 @@ export class ForensicsSignalBuilder {
     }
 
     return signals
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 20);
+      .sort((a, b) => b.value - a.value);
   }
 
   buildMarketSignals(): ForensicsSignalInput[] {
@@ -1110,16 +1102,15 @@ export class ForensicsSignalBuilder {
     }
 
     const cappedSignals = [
-      ...marketSignals.sort((a, b) => b.value - a.value).slice(0, 70),
-      ...predictionSignals.sort((a, b) => b.value - a.value).slice(0, 30),
-      ...this.buildMacroSignals(now).slice(0, 25),
-      ...this.buildEtfSignals(now).slice(0, 25),
-      ...this.buildStablecoinSignals(now).slice(0, 25),
-      ...this.buildEconomicSignals(now).slice(0, 20),
+      ...marketSignals.sort((a, b) => b.value - a.value),
+      ...predictionSignals.sort((a, b) => b.value - a.value),
+      ...this.buildMacroSignals(now),
+      ...this.buildEtfSignals(now),
+      ...this.buildStablecoinSignals(now),
+      ...this.buildEconomicSignals(now),
     ];
 
     return cappedSignals
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 180);
+      .sort((a, b) => b.value - a.value);
   }
 }

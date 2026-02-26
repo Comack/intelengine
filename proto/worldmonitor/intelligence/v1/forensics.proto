@@ -215,6 +215,8 @@ message ForensicsCausalEdge {
   int32 support_count = 5;
   // Conditional lift: P(B|A) / P(B baseline).
   double conditional_lift = 6;
+  // Horizon type (e.g., "tactical", "operational", "strategic").
+  string horizon = 7;
 }
 
 // ForensicsCounterfactualLever describes how much one signal drives an anomaly.
@@ -249,4 +251,32 @@ message ForensicsPolicyEntry {
   double last_reward = 6;
   // Last update timestamp, as Unix epoch milliseconds.
   int64 last_updated = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// ForensicsFeedback represents a user's feedback on an anomaly.
+message ForensicsFeedback {
+  string source_id = 1;
+  string signal_type = 2;
+  bool is_true_positive = 3;
+  int64 timestamp = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message SubmitForensicsFeedbackRequest {
+  string source_id = 1;
+  string signal_type = 2;
+  bool is_true_positive = 3;
+}
+
+message SubmitForensicsFeedbackResponse {
+  bool success = 1;
+}
+
+message ExplainAnomalyRequest {
+  string anomaly_id = 1; // e.g., the source_id + signal_type
+  repeated string evidence_ids = 2; // the evidence underlying this anomaly
+}
+
+message ExplainAnomalyResponse {
+  string explanation = 1;
+  repeated string supporting_evidence_ids = 2;
 }

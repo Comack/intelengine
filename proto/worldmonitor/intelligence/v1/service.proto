@@ -16,6 +16,7 @@ import "worldmonitor/intelligence/v1/get_forensics_run.proto";
 import "worldmonitor/intelligence/v1/list_forensics_runs.proto";
 import "worldmonitor/intelligence/v1/get_forensics_policy.proto";
 import "worldmonitor/intelligence/v1/get_forensics_topology_summary.proto";
+import "worldmonitor/intelligence/v1/forensics.proto";
 
 // IntelligenceService provides APIs for cross-domain intelligence synthesis including
 // risk scores, PizzINT monitoring, GDELT tension analysis, and AI-powered classification.
@@ -85,5 +86,15 @@ service IntelligenceService {
   // GetForensicsTopologySummary returns topology alerts, trends, and baselines.
   rpc GetForensicsTopologySummary(GetForensicsTopologySummaryRequest) returns (GetForensicsTopologySummaryResponse) {
     option (sebuf.http.config) = {path: "/get-forensics-topology-summary"};
+  }
+
+  // SubmitForensicsFeedback allows users to provide semi-supervised feedback.
+  rpc SubmitForensicsFeedback(SubmitForensicsFeedbackRequest) returns (SubmitForensicsFeedbackResponse) {
+    option (sebuf.http.config) = {path: "/submit-forensics-feedback"};
+  }
+
+  // ExplainAnomaly provides an AI explanation based on vectorized evidence.
+  rpc ExplainAnomaly(ExplainAnomalyRequest) returns (ExplainAnomalyResponse) {
+    option (sebuf.http.config) = {path: "/explain-anomaly"};
   }
 }

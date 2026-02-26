@@ -233,3 +233,33 @@ export async function getForensicsPolicy(
     };
   }
 }
+
+export async function submitForensicsFeedback(
+  sourceId: string,
+  signalType: string,
+  isTruePositive: boolean,
+): Promise<boolean> {
+  try {
+    const res = await client.submitForensicsFeedback({ sourceId, signalType, isTruePositive });
+    return res.success;
+  } catch (error) {
+    console.error('[Forensics] Failed to submit feedback:', error);
+    return false;
+  }
+}
+
+export async function explainAnomaly(
+  anomalyId: string,
+  evidenceIds: string[],
+): Promise<{ explanation: string; supportingEvidenceIds: string[] }> {
+  try {
+    const res = await client.explainAnomaly({ anomalyId, evidenceIds });
+    return {
+      explanation: res.explanation || 'No explanation available.',
+      supportingEvidenceIds: res.supportingEvidenceIds || [],
+    };
+  } catch (error) {
+    console.error('[Forensics] Failed to explain anomaly:', error);
+    return { explanation: 'Error retrieving explanation.', supportingEvidenceIds: [] };
+  }
+}

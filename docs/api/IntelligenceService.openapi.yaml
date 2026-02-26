@@ -419,6 +419,70 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/submit-forensics-feedback:
+        post:
+            tags:
+                - IntelligenceService
+            summary: SubmitForensicsFeedback
+            description: SubmitForensicsFeedback allows users to provide semi-supervised feedback.
+            operationId: SubmitForensicsFeedback
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SubmitForensicsFeedbackRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SubmitForensicsFeedbackResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/explain-anomaly:
+        post:
+            tags:
+                - IntelligenceService
+            summary: ExplainAnomaly
+            description: ExplainAnomaly provides an AI explanation based on vectorized evidence.
+            operationId: ExplainAnomaly
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExplainAnomalyRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExplainAnomalyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1242,6 +1306,9 @@ components:
                     type: number
                     format: double
                     description: 'Conditional lift: P(B|A) / P(B baseline).'
+                horizon:
+                    type: string
+                    description: Horizon type (e.g., "tactical", "operational", "strategic").
             description: ForensicsCausalEdge describes a directed causal relationship between two signal types.
         ListFusedSignalsRequest:
             type: object
@@ -1629,3 +1696,35 @@ components:
                     format: int64
                     description: 'Last update timestamp as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: ForensicsTopologyBaselineSummary contains current baseline stats for one metric key.
+        SubmitForensicsFeedbackRequest:
+            type: object
+            properties:
+                sourceId:
+                    type: string
+                signalType:
+                    type: string
+                isTruePositive:
+                    type: boolean
+        SubmitForensicsFeedbackResponse:
+            type: object
+            properties:
+                success:
+                    type: boolean
+        ExplainAnomalyRequest:
+            type: object
+            properties:
+                anomalyId:
+                    type: string
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+        ExplainAnomalyResponse:
+            type: object
+            properties:
+                explanation:
+                    type: string
+                supportingEvidenceIds:
+                    type: array
+                    items:
+                        type: string

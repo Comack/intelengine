@@ -243,7 +243,10 @@ interface WeakSupervisionResult {
   classPrior: number;
 }
 
-export function runWeakSupervisionFusion(signals: ForensicsSignalInput[]): WeakSupervisionResult {
+export function runWeakSupervisionFusion(
+  signals: ForensicsSignalInput[],
+  feedbackMap: Map<string, boolean> = new Map()
+): WeakSupervisionResult {
   if (signals.length === 0) return { fusedSignals: [], learnedWeights: new Map(), learnedAccuracies: new Map(), classPrior: 0.5 };
 
   const sourceIds = Array.from(new Set(signals.map((signal) => signal.sourceId)));
@@ -346,7 +349,19 @@ export function runWeakSupervisionFusion(signals: ForensicsSignalInput[]): WeakS
   for (let iter = 0; iter < 80; iter++) {
     const previous = [...accuracies];
     const previousPrior = classPrior;
-    const softLabels = labelMatrix.map((labels) => {
+    const softLabels = labelMatrix.map((labels, i) => {
+      const sourceId = sourceIds[i]!;
+      // Check if we have hardcoded feedback for any of the active signals for this source
+      for (let j = 0; j < labels.length; j++) {
+        if (labels[j] !== 0) {
+          const signalType = signalTypes[j]!;
+          const feedback = feedbackMap.get(`${sourceId}:${signalType}`);
+          if (feedback !== undefined) {
+            return feedback ? 1.0 : 0.0;
+          }
+        }
+      }
+
       let logit = Math.log(Math.max(1e-6, classPrior) / Math.max(1e-6, 1 - classPrior));
       labels.forEach((label, j) => {
         if (label === 0) return;
@@ -836,18 +851,20 @@ export async function runForensicsShadowPipeline(
       try {
         if (action === 'weak-supervision-fusion') {
           fusedSignals = await executePhase(trace, action, ['policy-select'], async () => {
-            const workerPayload = { domain, signals: enrichedSignals, alpha };
+            const { getForensicsFeedbackMap } = await import('./forensics-blackboard');
+            const feedbackMap = await getForensicsFeedbackMap();
+            const workerPayload = { domain, signals: enrichedSignals, alpha, feedbackMap: Object.fromEntries(feedbackMap) };
             const workerResponse = await callWorker<WorkerFuseResponse>('/internal/forensics/v1/fuse', workerPayload);
             if (isWorkerFuseResponse(workerResponse)) {
               // Worker path: run locally once to capture learned weights (sub-5ms for typical counts)
-              const localResult = runWeakSupervisionFusion(enrichedSignals);
+              const localResult = runWeakSupervisionFusion(enrichedSignals, feedbackMap);
               learnedWeights = localResult.learnedWeights;
               learnedAccuracies = localResult.learnedAccuracies;
               classPrior = localResult.classPrior;
               return workerResponse.fusedSignals || [];
             }
             if (workerMode === 'remote') workerMode = 'mixed';
-            const result = runWeakSupervisionFusion(enrichedSignals);
+            const result = runWeakSupervisionFusion(enrichedSignals, feedbackMap);
             learnedWeights = result.learnedWeights;
             learnedAccuracies = result.learnedAccuracies;
             classPrior = result.classPrior;

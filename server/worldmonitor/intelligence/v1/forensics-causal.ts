@@ -3,8 +3,12 @@ import type {
   ForensicsSignalInput,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
-const BUCKET_MS = 30 * 60 * 1000;        // 30-minute buckets
-const CAUSAL_LOOKBACK_BUCKETS = 8;        // look back up to 4 hours
+const HORIZONS = [
+  { type: 'tactical', bucketMs: 15 * 60 * 1000, lookback: 8 },         // 2 hours
+  { type: 'operational', bucketMs: 6 * 60 * 60 * 1000, lookback: 12 }, // 3 days
+  { type: 'strategic', bucketMs: 24 * 60 * 60 * 1000, lookback: 30 }   // 30 days
+];
+
 const MIN_SUPPORT = 4;
 const MIN_CAUSAL_SCORE = 0.15;
 const MAX_CAUSAL_EDGES = 40;
@@ -21,6 +25,7 @@ function clamp(n: number, min: number, max: number): number {
 
 function bucketizeActivations(
   signals: ForensicsSignalInput[],
+  bucketMs: number,
 ): { activeBuckets: Map<string, Set<number>>; thresholds: Map<string, number>; bucketMin: number; bucketMax: number } {
   // Compute per-type value thresholds (70th percentile of positive values)
   const valuesByType = new Map<string, number[]>();
@@ -43,7 +48,7 @@ function bucketizeActivations(
   let bucketMax = Number.NEGATIVE_INFINITY;
   for (const signal of signals) {
     if (!Number.isFinite(signal.observedAt) || signal.observedAt <= 0) continue;
-    const b = Math.floor(signal.observedAt / BUCKET_MS);
+    const b = Math.floor(signal.observedAt / bucketMs);
     if (b < bucketMin) bucketMin = b;
     if (b > bucketMax) bucketMax = b;
   }
@@ -56,7 +61,7 @@ function bucketizeActivations(
     const threshold = thresholds.get(type) ?? 0;
     if (!Number.isFinite(signal.value) || signal.value < threshold) continue;
     if (!Number.isFinite(signal.observedAt) || signal.observedAt <= 0) continue;
-    const b = Math.floor(signal.observedAt / BUCKET_MS);
+    const b = Math.floor(signal.observedAt / bucketMs);
     if (!activeBuckets.has(type)) activeBuckets.set(type, new Set());
     activeBuckets.get(type)!.add(b);
   }
@@ -88,64 +93,79 @@ export function runCausalDiscovery(signals: ForensicsSignalInput[]): ForensicsCa
   const signalTypes = Array.from(new Set(signals.map((s) => s.signalType)));
   if (signals.length < 8 || signalTypes.length < 3) return [];
 
-  const { activeBuckets, bucketMin, bucketMax } = bucketizeActivations(signals);
-  const totalBuckets = Math.max(1, bucketMax - bucketMin + 1);
-  const baselines = computeBaselineRates(activeBuckets, totalBuckets);
+  const allEdges: ForensicsCausalEdge[] = [];
 
-  const types = Array.from(activeBuckets.keys());
-  const edges: ForensicsCausalEdge[] = [];
+  for (const horizon of HORIZONS) {
+    const { activeBuckets, bucketMin, bucketMax } = bucketizeActivations(signals, horizon.bucketMs);
+    const totalBuckets = Math.max(1, bucketMax - bucketMin + 1);
+    const baselines = computeBaselineRates(activeBuckets, totalBuckets);
 
-  for (let ai = 0; ai < types.length; ai++) {
-    const typeA = types[ai]!;
-    const bucketsA = activeBuckets.get(typeA)!;
-    for (let bi = 0; bi < types.length; bi++) {
-      if (ai === bi) continue;
-      const typeB = types[bi]!;
-      const bucketsB = activeBuckets.get(typeB)!;
-      const baselineB = baselines.get(typeB) ?? 0;
-      if (baselineB < 1e-9) continue;
+    const types = Array.from(activeBuckets.keys());
 
-      // For each active bucket of A, check if B activates within lookback window
-      let coActivationCount = 0;
-      const offsetList: number[] = [];
+    for (let ai = 0; ai < types.length; ai++) {
+      const typeA = types[ai]!;
+      const bucketsA = activeBuckets.get(typeA)!;
+      for (let bi = 0; bi < types.length; bi++) {
+        if (ai === bi) continue;
+        const typeB = types[bi]!;
+        const bucketsB = activeBuckets.get(typeB)!;
+        const baselineB = baselines.get(typeB) ?? 0;
+        if (baselineB < 1e-9) continue;
 
-      for (const bucketA of bucketsA) {
-        for (let lag = 1; lag <= CAUSAL_LOOKBACK_BUCKETS; lag++) {
-          if (bucketsB.has(bucketA + lag)) {
-            coActivationCount++;
-            offsetList.push(lag);
-            break; // Count each A-bucket at most once per B direction
+        // For each active bucket of A, check if B activates within lookback window
+        let coActivationCount = 0;
+        const offsetList: number[] = [];
+
+        for (const bucketA of bucketsA) {
+          for (let lag = 1; lag <= horizon.lookback; lag++) {
+            if (bucketsB.has(bucketA + lag)) {
+              coActivationCount++;
+              offsetList.push(lag);
+              break; // Count each A-bucket at most once per B direction
+            }
           }
         }
+
+        if (coActivationCount < MIN_SUPPORT) continue;
+
+        // P(B within window | A active)
+        const pBgivenA = coActivationCount / bucketsA.size;
+        // Adjust baseline for the window width: P(B in any of lookback consecutive buckets)
+        const adjustedBaseline = clamp(1 - Math.pow(Math.max(0, 1 - baselineB), horizon.lookback), 1e-9, 1);
+        const conditionalLift = pBgivenA / adjustedBaseline;
+
+        if (conditionalLift <= 1) continue;
+
+        const mdlGain = conditionalLift * Math.log2(conditionalLift) * (coActivationCount / totalBuckets);
+        const causalScore = clamp(sigmoid(mdlGain * 2 - 1), 0, 1);
+        if (causalScore < MIN_CAUSAL_SCORE) continue;
+
+        const delayMs = Math.round(medianOffset(offsetList) * horizon.bucketMs);
+
+        allEdges.push({
+          causeSignalType: typeA,
+          effectSignalType: typeB,
+          causalScore: Math.round(causalScore * 1_000_000) / 1_000_000,
+          delayMs,
+          supportCount: coActivationCount,
+          conditionalLift: Math.round(conditionalLift * 1_000_000) / 1_000_000,
+          horizon: horizon.type,
+        });
       }
-
-      if (coActivationCount < MIN_SUPPORT) continue;
-
-      // P(B within window | A active)
-      const pBgivenA = coActivationCount / bucketsA.size;
-      // Adjust baseline for the window width: P(B in any of 8 consecutive buckets)
-      const adjustedBaseline = clamp(1 - Math.pow(Math.max(0, 1 - baselineB), CAUSAL_LOOKBACK_BUCKETS), 1e-9, 1);
-      const conditionalLift = pBgivenA / adjustedBaseline;
-
-      if (conditionalLift <= 1) continue;
-
-      const mdlGain = conditionalLift * Math.log2(conditionalLift) * (coActivationCount / totalBuckets);
-      const causalScore = clamp(sigmoid(mdlGain * 2 - 1), 0, 1);
-      if (causalScore < MIN_CAUSAL_SCORE) continue;
-
-      const delayMs = Math.round(medianOffset(offsetList) * BUCKET_MS);
-
-      edges.push({
-        causeSignalType: typeA,
-        effectSignalType: typeB,
-        causalScore: Math.round(causalScore * 1_000_000) / 1_000_000,
-        delayMs,
-        supportCount: coActivationCount,
-        conditionalLift: Math.round(conditionalLift * 1_000_000) / 1_000_000,
-      });
     }
   }
 
-  edges.sort((a, b) => b.causalScore - a.causalScore);
-  return edges.slice(0, MAX_CAUSAL_EDGES);
+  // Deduplicate edges across horizons, keeping the one with the highest score
+  const bestEdges = new Map<string, ForensicsCausalEdge>();
+  for (const edge of allEdges) {
+    const key = `${edge.causeSignalType}->${edge.effectSignalType}`;
+    const existing = bestEdges.get(key);
+    if (!existing || edge.causalScore > existing.causalScore) {
+      bestEdges.set(key, edge);
+    }
+  }
+
+  const finalEdges = Array.from(bestEdges.values());
+  finalEdges.sort((a, b) => b.causalScore - a.causalScore);
+  return finalEdges.slice(0, MAX_CAUSAL_EDGES);
 }

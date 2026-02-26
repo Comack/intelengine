@@ -44,7 +44,8 @@ export function renderCausalDag(
     source: edge.causeSignalType,
     target: edge.effectSignalType,
     score: edge.causalScore,
-    delay: edge.delayMs
+    delay: edge.delayMs,
+    horizon: edge.horizon || 'tactical'
   }));
 
   const simulation = d3.forceSimulation(nodes as d3.SimulationNodeDatum[])
@@ -52,8 +53,9 @@ export function renderCausalDag(
     .force('charge', d3.forceManyBody().strength(-300))
     .force('center', d3.forceCenter(width / 2, height / 2));
 
+  // Define marker for tactical horizon
   svg.append('defs').append('marker')
-    .attr('id', 'arrow')
+    .attr('id', 'arrow-tactical')
     .attr('viewBox', '0 -5 10 10')
     .attr('refX', 18)
     .attr('refY', 0)
@@ -62,16 +64,52 @@ export function renderCausalDag(
     .attr('orient', 'auto')
     .append('path')
     .attr('d', 'M0,-5L10,0L0,5')
-    .attr('fill', '#94a3b8');
+    .attr('fill', '#ef4444');
+
+  // Define marker for operational horizon
+  svg.append('defs').append('marker')
+    .attr('id', 'arrow-operational')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 18)
+    .attr('refY', 0)
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('fill', '#f97316');
+
+  // Define marker for strategic horizon
+  svg.append('defs').append('marker')
+    .attr('id', 'arrow-strategic')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 18)
+    .attr('refY', 0)
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('fill', '#3b82f6');
 
   const link = svg.append('g')
-    .attr('stroke', '#475569')
-    .attr('stroke-opacity', 0.6)
     .selectAll('line')
     .data(links)
     .join('line')
+    .attr('stroke', d => {
+      if (d.horizon === 'tactical') return '#ef4444';
+      if (d.horizon === 'operational') return '#f97316';
+      if (d.horizon === 'strategic') return '#3b82f6';
+      return '#94a3b8';
+    })
+    .attr('stroke-opacity', 0.6)
     .attr('stroke-width', d => Math.max(1, d.score * 3))
-    .attr('marker-end', 'url(#arrow)');
+    .attr('stroke-dasharray', d => {
+      if (d.horizon === 'operational') return '4 2';
+      if (d.horizon === 'strategic') return '2 4';
+      return 'none';
+    })
+    .attr('marker-end', d => `url(#arrow-${d.horizon})`);
 
   const nodeGroup = svg.append('g')
     .selectAll('g')

@@ -241,6 +241,7 @@ export interface ForensicsCausalEdge {
   delayMs: number;
   supportCount: number;
   conditionalLift: number;
+  horizon: string;
 }
 
 export interface ListFusedSignalsRequest {
@@ -380,6 +381,26 @@ export interface ForensicsTopologyBaselineSummary {
   maxValue: number;
   lastValue: number;
   lastUpdated: number;
+}
+
+export interface SubmitForensicsFeedbackRequest {
+  sourceId: string;
+  signalType: string;
+  isTruePositive: boolean;
+}
+
+export interface SubmitForensicsFeedbackResponse {
+  success: boolean;
+}
+
+export interface ExplainAnomalyRequest {
+  anomalyId: string;
+  evidenceIds: string[];
+}
+
+export interface ExplainAnomalyResponse {
+  explanation: string;
+  supportingEvidenceIds: string[];
 }
 
 export type SeverityLevel = "SEVERITY_LEVEL_UNSPECIFIED" | "SEVERITY_LEVEL_LOW" | "SEVERITY_LEVEL_MEDIUM" | "SEVERITY_LEVEL_HIGH";
@@ -748,6 +769,54 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as GetForensicsTopologySummaryResponse;
+  }
+
+  async submitForensicsFeedback(req: SubmitForensicsFeedbackRequest, options?: IntelligenceServiceCallOptions): Promise<SubmitForensicsFeedbackResponse> {
+    let path = "/api/intelligence/v1/submit-forensics-feedback";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as SubmitForensicsFeedbackResponse;
+  }
+
+  async explainAnomaly(req: ExplainAnomalyRequest, options?: IntelligenceServiceCallOptions): Promise<ExplainAnomalyResponse> {
+    let path = "/api/intelligence/v1/explain-anomaly";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ExplainAnomalyResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

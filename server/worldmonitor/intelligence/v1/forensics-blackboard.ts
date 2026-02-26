@@ -501,4 +501,52 @@ export async function listForensicsRunSummaries(
   return runs.slice(0, limit);
 }
 
+export interface ForensicsFeedbackEntry {
+  sourceId: string;
+  signalType: string;
+  isTruePositive: boolean;
+  timestamp: number;
+}
+
+const feedbackMemory = new Map<string, ForensicsFeedbackEntry[]>();
+const FEEDBACK_KEY_PREFIX = 'forensics:feedback';
+const FEEDBACK_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
+
+export async function saveForensicsFeedback(entry: ForensicsFeedbackEntry): Promise<void> {
+  const key = `${FEEDBACK_KEY_PREFIX}:global`;
+  let existing = feedbackMemory.get(key);
+  if (!existing) {
+    const cached = await getCachedJson(key);
+    existing = Array.isArray(cached) ? cached as ForensicsFeedbackEntry[] : [];
+  }
+  
+  // Update or append
+  const updated = existing.filter(e => !(e.sourceId === entry.sourceId && e.signalType === entry.signalType));
+  updated.push(entry);
+  
+  // Keep last 10000 feedbacks
+  if (updated.length > 10000) {
+    updated.splice(0, updated.length - 10000);
+  }
+  
+  feedbackMemory.set(key, updated);
+  await setCachedJson(key, updated, FEEDBACK_TTL_SECONDS);
+}
+
+export async function getForensicsFeedbackMap(): Promise<Map<string, boolean>> {
+  const key = `${FEEDBACK_KEY_PREFIX}:global`;
+  let existing = feedbackMemory.get(key);
+  if (!existing) {
+    const cached = await getCachedJson(key);
+    existing = Array.isArray(cached) ? cached as ForensicsFeedbackEntry[] : [];
+    feedbackMemory.set(key, existing);
+  }
+  
+  const map = new Map<string, boolean>();
+  for (const entry of existing) {
+    map.set(`${entry.sourceId}:${entry.signalType}`, entry.isTruePositive);
+  }
+  return map;
+}
+
 export type { StoredForensicsRun };
