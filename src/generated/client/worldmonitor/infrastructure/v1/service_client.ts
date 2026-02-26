@@ -174,6 +174,25 @@ export interface GridZone {
   observedAt: string;
 }
 
+export interface ListRadiationReadingsRequest {
+  limit: number;
+}
+
+export interface ListRadiationReadingsResponse {
+  readings: RadiationReading[];
+}
+
+export interface RadiationReading {
+  id: string;
+  latitude: number;
+  longitude: number;
+  cpm: number;
+  capturedAt: number;
+  deviceId: string;
+  locationName: string;
+  elevated: boolean;
+}
+
 export type CableHealthStatus = "CABLE_HEALTH_STATUS_UNSPECIFIED" | "CABLE_HEALTH_STATUS_OK" | "CABLE_HEALTH_STATUS_DEGRADED" | "CABLE_HEALTH_STATUS_FAULT";
 
 export type GridStressLevel = "GRID_STRESS_UNSPECIFIED" | "GRID_STRESS_NORMAL" | "GRID_STRESS_ELEVATED" | "GRID_STRESS_HIGH" | "GRID_STRESS_CRITICAL";
@@ -398,6 +417,30 @@ export class InfrastructureServiceClient {
     }
 
     return await resp.json() as GetGridStatusResponse;
+  }
+
+  async listRadiationReadings(req: ListRadiationReadingsRequest, options?: InfrastructureServiceCallOptions): Promise<ListRadiationReadingsResponse> {
+    let path = "/api/infrastructure/v1/list-radiation-readings";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListRadiationReadingsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

@@ -16,6 +16,8 @@ import {
   type RoutingAnomaly,
   type GetGridStatusResponse,
   type GridZone,
+  type ListRadiationReadingsResponse,
+  type RadiationReading,
 } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { InternetOutage } from '@/types';
 import { createCircuitBreaker } from '@/utils';
@@ -200,4 +202,17 @@ export async function fetchGridStatus(): Promise<GridZone[]> {
     return client.getGridStatus({});
   }, emptyGridFallback);
   return res.zones;
+}
+
+// ---- Radiation Readings ----
+const radiationBreaker = createCircuitBreaker<ListRadiationReadingsResponse>({ name: 'Radiation Readings' });
+const emptyRadiationFallback: ListRadiationReadingsResponse = { readings: [] };
+
+export type { RadiationReading };
+
+export async function fetchRadiationReadings(limit = 100): Promise<RadiationReading[]> {
+  const res = await radiationBreaker.execute(async () => {
+    return client.listRadiationReadings({ limit });
+  }, emptyRadiationFallback);
+  return res.readings;
 }

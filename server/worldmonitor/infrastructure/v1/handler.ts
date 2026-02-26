@@ -7,6 +7,7 @@ import { getTemporalBaseline } from './get-temporal-baseline';
 import { recordBaselineSnapshot } from './record-baseline-snapshot';
 import { listRoutingAnomalies } from './list-routing-anomalies';
 import { getGridStatus } from './get-grid-status';
+import { listRadiationReadings } from './list-radiation-readings';
 
 export const infrastructureHandler: InfrastructureServiceHandler = {
   getCableHealth,
@@ -16,4 +17,5 @@ export const infrastructureHandler: InfrastructureServiceHandler = {
   recordBaselineSnapshot,
   listRoutingAnomalies,
   getGridStatus,
+  listRadiationReadings,
 };

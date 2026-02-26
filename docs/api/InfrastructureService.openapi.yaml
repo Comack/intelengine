@@ -227,6 +227,38 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/infrastructure/v1/list-radiation-readings:
+        post:
+            tags:
+                - InfrastructureService
+            summary: ListRadiationReadings
+            description: ListRadiationReadings retrieves recent radiation measurements from the Safecast sensor network.
+            operationId: ListRadiationReadings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ListRadiationReadingsRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListRadiationReadingsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -743,3 +775,51 @@ components:
                     format: int64
                     description: Unix milliseconds of the observation.
             description: GridZone represents the energy grid health for a specific balancing authority or region.
+        ListRadiationReadingsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum number of readings to return.
+            description: Request to list recent radiation readings.
+        ListRadiationReadingsResponse:
+            type: object
+            properties:
+                readings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RadiationReading'
+            description: Response containing radiation readings.
+        RadiationReading:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique measurement identifier.
+                latitude:
+                    type: number
+                    format: double
+                    description: Latitude of the sensor.
+                longitude:
+                    type: number
+                    format: double
+                    description: Longitude of the sensor.
+                cpm:
+                    type: number
+                    format: double
+                    description: Radiation level in counts per minute (CPM).
+                capturedAt:
+                    type: integer
+                    format: int64
+                    description: 'Measurement timestamp (Unix epoch ms).. Warning: Values > 2^53 may lose precision in JavaScript'
+                deviceId:
+                    type: string
+                    description: Device identifier.
+                locationName:
+                    type: string
+                    description: Location name or description.
+                elevated:
+                    type: boolean
+                    description: Whether the reading is above normal background levels.
+            description: A real-time radiation measurement from the Safecast sensor network.

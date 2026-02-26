@@ -10,6 +10,7 @@ import "worldmonitor/infrastructure/v1/get_cable_health.proto";
 import "worldmonitor/infrastructure/v1/record_baseline_snapshot.proto";
 import "worldmonitor/infrastructure/v1/list_routing_anomalies.proto";
 import "worldmonitor/infrastructure/v1/get_grid_status.proto";
+import "worldmonitor/infrastructure/v1/list_radiation_readings.proto";
 
 // InfrastructureService provides APIs for internet outage monitoring from Cloudflare Radar,
 // external service status tracking, and temporal baseline anomaly detection.
@@ -49,5 +50,10 @@ service InfrastructureService {
   // GetGridStatus retrieves electricity grid health and carbon intensity from Electricity Maps.
   rpc GetGridStatus(GetGridStatusRequest) returns (GetGridStatusResponse) {
     option (sebuf.http.config) = {path: "/get-grid-status"};
+  }
+
+  // ListRadiationReadings retrieves recent radiation measurements from the Safecast sensor network.
+  rpc ListRadiationReadings(ListRadiationReadingsRequest) returns (ListRadiationReadingsResponse) {
+    option (sebuf.http.config) = {path: "/list-radiation-readings"};
   }
 }

@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "sebuf/http/annotations.proto";
+
+// A real-time radiation measurement from the Safecast sensor network.
+message RadiationReading {
+  // Unique measurement identifier.
+  string id = 1;
+  // Latitude of the sensor.
+  double latitude = 2;
+  // Longitude of the sensor.
+  double longitude = 3;
+  // Radiation level in counts per minute (CPM).
+  double cpm = 4;
+  // Measurement timestamp (Unix epoch ms).
+  int64 captured_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Device identifier.
+  string device_id = 6;
+  // Location name or description.
+  string location_name = 7;
+  // Whether the reading is above normal background levels.
+  bool elevated = 8;
+}

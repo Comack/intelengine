@@ -174,6 +174,25 @@ export interface GridZone {
   observedAt: string;
 }
 
+export interface ListRadiationReadingsRequest {
+  limit: number;
+}
+
+export interface ListRadiationReadingsResponse {
+  readings: RadiationReading[];
+}
+
+export interface RadiationReading {
+  id: string;
+  latitude: number;
+  longitude: number;
+  cpm: number;
+  capturedAt: number;
+  deviceId: string;
+  locationName: string;
+  elevated: boolean;
+}
+
 export type CableHealthStatus = "CABLE_HEALTH_STATUS_UNSPECIFIED" | "CABLE_HEALTH_STATUS_OK" | "CABLE_HEALTH_STATUS_DEGRADED" | "CABLE_HEALTH_STATUS_FAULT";
 
 export type GridStressLevel = "GRID_STRESS_UNSPECIFIED" | "GRID_STRESS_NORMAL" | "GRID_STRESS_ELEVATED" | "GRID_STRESS_HIGH" | "GRID_STRESS_CRITICAL";
@@ -236,6 +255,7 @@ export interface InfrastructureServiceHandler {
   getCableHealth(ctx: ServerContext, req: GetCableHealthRequest): Promise<GetCableHealthResponse>;
   listRoutingAnomalies(ctx: ServerContext, req: ListRoutingAnomaliesRequest): Promise<ListRoutingAnomaliesResponse>;
   getGridStatus(ctx: ServerContext, req: GetGridStatusRequest): Promise<GetGridStatusResponse>;
+  listRadiationReadings(ctx: ServerContext, req: ListRadiationReadingsRequest): Promise<ListRadiationReadingsResponse>;
 }
 
 export function createInfrastructureServiceRoutes(
@@ -523,6 +543,49 @@ export function createInfrastructureServiceRoutes(
 
           const result = await handler.getGridStatus(ctx, body);
           return new Response(JSON.stringify(result as GetGridStatusResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "POST",
+      path: "/api/infrastructure/v1/list-radiation-readings",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = await req.json() as ListRadiationReadingsRequest;
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listRadiationReadings", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listRadiationReadings(ctx, body);
+          return new Response(JSON.stringify(result as ListRadiationReadingsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });
