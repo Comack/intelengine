@@ -47,7 +47,7 @@
 | Intelligence Black Box             | **Forensics Engine** with weak supervision fusion, conformal anomalies, and causal discovery                |
 | Siloed financial data              | **Finance variant** with 92 stock exchanges, 19 financial centers, 13 central banks, and Gulf FDI tracking |
 | Advanced Visualizations            | **Interactive D3.js Graphs** for causal DAGs, POLE entity maps, and convergence radars                     |
-| Undocumented, fragile APIs         | **Proto-first API contracts** — 18 typed services with auto-generated clients, servers, and OpenAPI docs   |
+| Undocumented, fragile APIs         | **Proto-first API contracts** — 19 typed services with auto-generated clients, servers, and OpenAPI docs   |
 
 ---
 

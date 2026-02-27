@@ -4,7 +4,7 @@ World Monitor desktop now uses a runtime configuration schema with per-feature t
 
 ## Secret keys
 
-The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 21 keys:
+The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 25 keys:
 
 - `GROQ_API_KEY`
 - `OPENROUTER_API_KEY`
@@ -27,6 +27,10 @@ The desktop vault schema (Rust `SUPPORTED_SECRET_KEYS`) supports the following 2
 - `OLLAMA_API_URL`
 - `OLLAMA_MODEL`
 - `WORLDMONITOR_API_KEY` — gates cloud fallback access (min 16 chars)
+- `PORTCAST_API_KEY` — port congestion data (Portcast/MarineTraffic)
+- `GLOBAL_FISHING_WATCH_API_KEY` — SAR dark ship detections (GFW Gateway API)
+- `ELECTRICITY_MAPS_API_KEY` — real-time power grid carbon intensity
+- `LIVEUAMAP_API_KEY` — geocoded conflict incidents (enterprise API key)
 
 Note: `UC_DP_KEY` exists in the TypeScript `RuntimeSecretKey` union but is not in the desktop Rust keychain or sidecar.
 
@@ -59,3 +63,7 @@ If required secrets are missing/disabled:
 - AIS / OpenSky relay: live tracking features are disabled cleanly.
 - Forensics: Shadow runs and causal discovery fallback to in-memory state if Redis is unreachable.
 - WorldMonitor API key: cloud fallback is blocked; desktop operates local-only.
+- Portcast: port congestion data returns synthetic fallback values.
+- Global Fishing Watch: SAR dark ship detections return empty state.
+- Electricity Maps: grid carbon intensity returns synthetic values.
+- Liveuamap: conflict incident feed returns empty state; other conflict sources remain active.

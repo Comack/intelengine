@@ -2,23 +2,24 @@
 
 AI-powered real-time global intelligence dashboard aggregating news, markets, geopolitical data, and infrastructure monitoring into a unified situation awareness interface.
 
-🌐 **[Live Demo: worldmonitor.app](https://worldmonitor.app)** | 💻 **[Tech Variant: tech.worldmonitor.app](https://tech.worldmonitor.app)**
+🌐 **[Live Demo: worldmonitor.app](https://worldmonitor.app)** | 💻 **[Tech Variant: tech.worldmonitor.app](https://tech.worldmonitor.app)** | 📈 **[Finance Variant: finance.worldmonitor.app](https://finance.worldmonitor.app)**
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
 ![D3.js](https://img.shields.io/badge/D3.js-F9A03C?style=flat&logo=d3.js&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.5.1-blue)
+![Version](https://img.shields.io/badge/version-2.5.3-blue)
 
 ![World Monitor Dashboard](../new-world-monitor.png)
 
 ## Platform Variants
 
-World Monitor runs two specialized variants from a single codebase, each optimized for different monitoring needs:
+World Monitor runs three specialized variants from a single codebase, each optimized for different monitoring needs:
 
 | Variant | URL | Focus |
 |---------|-----|-------|
 | **🌍 World Monitor** | [worldmonitor.app](https://worldmonitor.app) | Geopolitical intelligence, military tracking, conflict monitoring, infrastructure security |
 | **💻 Tech Monitor** | [tech.worldmonitor.app](https://tech.worldmonitor.app) | Technology sector intelligence, AI/startup ecosystems, cloud infrastructure, tech events |
+| **📈 Finance Monitor** | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Global markets, trading, central banks, Gulf FDI, macro signals, financial intelligence |
 
 A compact **variant switcher** in the header allows seamless navigation between variants while preserving your map position and panel configuration.
 
@@ -48,6 +49,11 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Deterministic Forensics** | Shadow-run orchestration with semi-supervised feedback, generative AI explanations, and multi-horizon causal DAGs |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
+| **Radiation Monitoring** | Safecast decentralized radiation sensor readings with map layer visualization |
+| **Port Congestion** | Strategic port health index for global shipping chokepoints |
+| **Tsunami Warnings** | NWS real-time tsunami alert feed with coastal risk indicators |
+| **Info-Ops Detection** | Wikimedia edit-war monitoring as early warning for information operations |
+| **Space Weather** | NOAA Kp-index, solar X-ray flux, and aurora forecasts impacting satellite/grid |
 
 ### News Coverage
 
@@ -103,7 +109,33 @@ The tech variant ([tech.worldmonitor.app](https://tech.worldmonitor.app)) provid
 
 ---
 
-## Features
+## Finance Monitor
+
+The finance variant ([finance.worldmonitor.app](https://finance.worldmonitor.app)) provides specialized intelligence for global markets, macroeconomic signals, and financial risk monitoring.
+
+### Finance Intelligence Panels
+
+| Panel | Purpose |
+|-------|---------|
+| **Market Overview** | Real-time equity indices, forex rates, and commodity prices |
+| **Central Bank Watch** | FOMC, ECB, BOJ policy decisions and interest rate tracking |
+| **Gulf FDI Intelligence** | Saudi Vision 2030, UAE/QIA sovereign wealth flows, emerging market deals |
+| **Macro Signals** | Baltic Dry Index, gold/silver spot prices, VIX, yield curves |
+| **Whale Transfers** | Large-value cryptocurrency transfers signaling capital flows |
+| **Regulatory Filings** | SEC EDGAR 8-K and 10-Q real-time filing alerts |
+| **Commodity Tracker** | Oil, gas, agricultural, and precious metals price feeds |
+| **Safe Haven Tracker** | Gold/silver correlation with geopolitical escalation |
+
+### Finance News Categories
+
+- **Markets & Trading** - Equity, bond, forex, and derivatives market news
+- **Central Banks** - Policy rate decisions, quantitative easing, inflation guidance
+- **Commodities** - Energy, agriculture, metals market movements
+- **Crypto & DeFi** - Digital asset markets, blockchain developments
+- **M&A & Deals** - Corporate acquisitions, IPOs, major capital market transactions
+- **Macro & Policy** - IMF, World Bank, fiscal stimulus, sanctions
+
+---
 
 ### Interactive Global Map
 
@@ -4074,6 +4106,14 @@ Different data types refresh at different intervals based on volatility and API 
 | **Earthquakes** | 5 minutes | USGS update cadence |
 | **Internet Outages** | 5 minutes | Cloudflare Radar update frequency |
 | **AIS Vessels** | Real-time | WebSocket streaming |
+| **Radiation (Safecast)** | 30 minutes | Sensor network aggregation cadence |
+| **Space Weather (SWPC)** | 15 minutes | NOAA Kp-index update frequency |
+| **Tsunami Warnings (NWS)** | 2 minutes | Redis-cached with short TTL for safety |
+| **Social Trends (Bluesky)** | 5 minutes | Rate-limited AT Protocol queries |
+| **Port Congestion** | 15 minutes | Commercial API rate limits |
+| **Power Grid (Electricity Maps)** | 60 minutes | Grid carbon intensity update cadence |
+| **Info-Ops (Wikimedia)** | 10 minutes | Wikipedia recent-changes API polling |
+| **Satellite TLE (CelesTrak)** | 24 hours | Orbital elements change slowly |
 
 ### Error Handling Strategy
 
