@@ -1390,38 +1390,171 @@ The 10K commands/day free tier is sufficient for a personal or small-team deploy
 
 ### Railway Relay Setup (Optional — Live AIS & Flight Tracking)
 
-For real-time AIS vessel positions and live military flight tracking, deploy the WebSocket relay on Railway. These APIs require a persistent WebSocket connection and residential IPs (not available on Vercel):
+The relay is a single Node.js process (`scripts/ais-relay.cjs`) that runs persistently on Railway. It handles three things the Vercel edge runtime cannot:
 
-```bash
-# Fork or copy scripts/ais-relay.cjs to a new Railway project
-# Set these environment variables in Railway:
-AISSTREAM_API_KEY=your-key       # From aisstream.io (free)
-OPENSKY_CLIENT_ID=your-id        # From opensky-network.org (free)
-OPENSKY_CLIENT_SECRET=your-secret
+1. **Persistent WebSocket** to `aisstream.io` — maintains a global vessel position cache, aggregates positions into a snapshot API (`GET /ais/snapshot`), and fans out to up to 10 concurrent WebSocket clients
+2. **OpenSky OAuth2 proxy** — handles token lifecycle (acquire, refresh, 1-minute cooldown on failure), caches aircraft state responses for 30 seconds to protect the free API quota, and deduplicates concurrent requests
+3. **RSS proxy for blocked feeds** — proxies RSS feeds from domains that block Vercel/AWS IPs using residential Railway IPs; also caches responses for 5 minutes
+
+The relay also hosts an in-memory UCDP conflict events cache (refreshed every 6 hours) and a Polymarket cache — all persistent across requests because Railway keeps the process alive, unlike serverless.
+
+#### Step-by-Step Deployment
+
+**1. Create a Railway project**
+
+Go to [railway.app](https://railway.app/) → New Project → Deploy from GitHub repo (or "Empty project" to deploy manually).
+
+**2. Point Railway at the relay script**
+
+In your Railway service settings, set the start command:
+
+```
+node scripts/ais-relay.cjs
 ```
 
-Then in your `.env.local` or Vercel environment:
+Or if deploying the relay from a fork/separate repo, copy `scripts/ais-relay.cjs` and `scripts/package.json` into the repo root.
+
+**3. Set environment variables in Railway**
+
+| Variable | Required | Description | Where to get it |
+|----------|----------|-------------|-----------------|
+| `AISSTREAM_API_KEY` | Yes (for AIS) | AIS vessel stream key | [aisstream.io](https://aisstream.io/) — free registration |
+| `OPENSKY_CLIENT_ID` | Yes (for flights) | OpenSky OAuth2 client ID | [opensky-network.org](https://opensky-network.org/) → My OpenSky → Client Credentials |
+| `OPENSKY_CLIENT_SECRET` | Yes (for flights) | OpenSky OAuth2 client secret | Same as above |
+| `PORT` | No | Relay HTTP port (default: 3004) | Set automatically by Railway |
+
+**4. Connect World Monitor to your relay**
+
+Copy the Railway public domain (e.g. `your-relay.up.railway.app`) and add to `.env.local` or Vercel environment variables:
 
 ```bash
-WS_RELAY_URL=https://your-relay.railway.app      # Server-side (HTTPS)
-VITE_WS_RELAY_URL=wss://your-relay.railway.app   # Client-side (WSS)
-VITE_OPENSKY_RELAY_URL=https://your-relay.railway.app/opensky
+WS_RELAY_URL=https://your-relay.up.railway.app       # Used server-side for AIS snapshot polling
+VITE_WS_RELAY_URL=wss://your-relay.up.railway.app    # Used client-side for WebSocket connection
+VITE_OPENSKY_RELAY_URL=https://your-relay.up.railway.app/opensky  # Military flight proxy
 ```
 
-Without the relay, AIS and OpenSky layers are hidden but all other features work normally.
+> **Note**: `WS_RELAY_URL` (HTTPS) is used by the Vercel edge functions for server-side AIS snapshot polling. `VITE_WS_RELAY_URL` (WSS) is used by the browser for the real-time WebSocket connection. Both must be set for full AIS functionality.
+
+#### Relay HTTP Endpoints
+
+Once deployed, you can verify your relay is healthy:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `GET /` or `/health` | GET | Health check — returns vessel count, WS client count, cache status |
+| `GET /ais/snapshot` | GET | Aggregated vessel positions (2s cache), add `?candidates=true` for candidate reports |
+| `GET /opensky?...` | GET | Proxied OpenSky state vector queries (30s cache, OAuth2 managed) |
+| `GET /rss?url=...` | GET | RSS feed proxy for blocked domains (5 min cache) |
+
+```bash
+# Verify your relay is up:
+curl https://your-relay.up.railway.app/health
+# → {"status":"ok","vessels":1240,"connected":true,"cache":{"ucdp":"warm",...}}
+```
+
+#### Resource Requirements
+
+The relay is lightweight — a Railway Starter plan ($5/mo) is more than sufficient. The free tier (500 hours/month) also works if you don't need 24/7 uptime. Memory usage is ~50–100 MB with a full vessel cache loaded.
+
+---
 
 ### Forensics Worker Setup (Optional — Advanced)
 
-The Forensics Engine can offload computationally intensive statistical work (causal discovery, conformal anomaly scoring) to an external Python worker:
+The Forensics Engine runs entirely in JavaScript by default. For production deployments or large signal volumes, you can offload the two most compute-intensive operations to a Python microservice (`forensics-worker/`):
+
+- **Weak supervision fusion** (`/internal/forensics/v1/fuse`) — builds a value matrix across signal sources and types, labels signals via 70th-percentile thresholds, and applies Snorkel-style EM (Expectation-Maximization) label model estimation with sigmoid normalization. This is O(N²) across signals and benefits significantly from NumPy's vectorized operations vs V8.
+- **Conformal anomaly scoring** (`/internal/forensics/v1/anomaly`) — computes calibrated prediction intervals and non-conformity scores for anomaly detection.
+
+The orchestrator in `forensics-orchestrator.ts` automatically detects `FORENSICS_WORKER_URL` and routes these calls to the worker. If the worker is unavailable or times out (8-second timeout), it falls back to the JavaScript implementation.
+
+#### Step-by-Step Setup
+
+**1. Install dependencies**
 
 ```bash
-# Requires Python 3.11+ and the forensics worker dependencies
-# See forensics-worker/ directory for setup
-FORENSICS_WORKER_URL=https://your-worker.example.com
-FORENSICS_WORKER_SHARED_SECRET=your-secret
+cd forensics-worker
+pip install fastapi uvicorn pydantic numpy
 ```
 
-Without this, the forensics engine runs entirely in-process using JavaScript fallbacks (slightly lower accuracy on causal discovery).
+Requires **Python 3.9+** (3.11+ recommended for best NumPy performance).
+
+**2. Start the worker**
+
+```bash
+# Development
+python main.py
+# → Uvicorn running on http://localhost:8000
+
+# Production (with reload disabled, multiple workers)
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+```
+
+**3. Connect World Monitor to the worker**
+
+Add to `.env.local` or Vercel environment:
+
+```bash
+FORENSICS_WORKER_URL=http://localhost:8000          # Local dev
+# FORENSICS_WORKER_URL=https://your-worker.fly.dev  # Production
+
+FORENSICS_WORKER_SHARED_SECRET=your-random-secret   # Optional but recommended
+```
+
+The worker secret is sent as `X-Forensics-Worker-Secret` on every request. If set, validate it in a reverse proxy or add a middleware check to `main.py`.
+
+**4. Tune policy parameters (optional)**
+
+```bash
+FORENSICS_DYNAMIC_POLICY=true         # Enable adaptive policy learning (default: true)
+FORENSICS_POLICY_EPSILON=0.15         # Exploration rate for policy updates (default: 0.15)
+FORENSICS_POLICY_LEARNING_RATE=0.2    # Step size for policy gradient updates (default: 0.2)
+FORENSICS_POLICY_LEARN=true           # Whether to update policy from feedback signals (default: true)
+```
+
+#### Production Deployment Options
+
+**Fly.io (recommended for cost):**
+
+```bash
+cd forensics-worker
+fly launch --name worldmonitor-forensics --dockerfile Dockerfile
+fly secrets set FORENSICS_WORKER_SHARED_SECRET=your-secret
+fly deploy
+```
+
+**Railway:**
+
+```bash
+# Set start command to:
+uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2
+```
+
+**Docker:**
+
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY forensics-worker/ .
+RUN pip install fastapi uvicorn pydantic numpy
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+#### Worker API Reference
+
+| Endpoint | Method | Input | Output | What it does |
+|----------|--------|-------|--------|-------------|
+| `POST /internal/forensics/v1/fuse` | POST | `{domain, signals[], alpha, feedbackMap}` | `{fusedSignals[]}` | Weak supervision EM fusion across signal sources |
+| `POST /internal/forensics/v1/anomaly` | POST | `{signals[], lookbackMs}` | `{anomalies[]}` | Conformal prediction interval anomaly scoring |
+
+#### Without the Worker
+
+If `FORENSICS_WORKER_URL` is not set, the forensics engine operates fully in JavaScript:
+
+- Weak supervision fusion uses a simplified label averaging approach (slightly lower recall on correlated multi-domain signals)
+- Conformal anomaly scoring uses a JS fallback with pre-computed quantile tables
+- All forensics UI panels, causal DAGs, POLE graphs, and shadow runs continue to work — only the statistical precision of the fusion layer is reduced
+
+For personal or small-team deployments, the JavaScript fallback is entirely sufficient.
 
 ### Platform Notes
 
