@@ -2906,11 +2906,11 @@ News Feeds → Clustering → Velocity Analysis → Hotspot Correlation
                 ↓                                    ↓
          Keyword Monitors              Strategic Risk Overview
                                                      ↑
-Military Flights → Near-Hotspot Detection ──────────┤
+Military Flights → Near-Hotspot Detection ───────────┤
                                                      ↑
-AIS Vessels → Chokepoint Monitoring ────────────────┤
+AIS Vessels → Chokepoint Monitoring ─────────────────┤
                                                      ↑
-ACLED/GDELT → Protest Events ───────────────────────┤
+ACLED/GDELT → Protest Events ────────────────────────┤
                        ↓
                 CII Unrest Score
 ```

@@ -158,7 +158,7 @@ All three variants run from a single codebase — switch between them with one c
 - Stablecoin peg health monitor (USDT, USDC, DAI, FDUSD, USDe)
 - Fear & Greed Index with 30-day history
 - Bitcoin technical trend (SMA50, SMA200, VWAP, Mayer Multiple)
-- JPY liquidity signal, QQQ/XLP macro regime, BTC hash rate
+- JPY liquidity signal, QQQ/XLP macro regime, BTC hashrate
 - Inline SVG sparklines and donut gauges for visual trends
 - Whale alert: large-value crypto transfers across 10+ blockchains
 - Baltic Dry Index (global shipping cost indicator)
@@ -809,7 +809,7 @@ The Market Radar panel computes a composite BUY/CASH verdict from 7 independent 
 | **Flow Structure**  | BTC 5-day return vs QQQ 5-day return  | Gap < 5% (aligned)          |
 | **Macro Regime**    | QQQ 20-day ROC vs XLP 20-day ROC      | QQQ outperforming (risk-on) |
 | **Technical Trend** | BTC vs SMA50 + 30-day VWAP            | Above both (bullish)        |
-| **Hash Rate**       | Bitcoin mining hashrate 30-day change | Growing > 3%                |
+| **Hashrate**        | Bitcoin mining hashrate 30-day change | Growing > 3%                |
 | **Mining Cost**     | BTC price vs hashrate-implied cost    | Price > $60K (profitable)   |
 | **Fear & Greed**    | alternative.me sentiment index        | Value > 50                  |
 
