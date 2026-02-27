@@ -27,7 +27,7 @@ const WEBKIT_DMABUF_ENV: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
 const MENU_FILE_SETTINGS_ID: &str = "file.settings";
 const MENU_HELP_GITHUB_ID: &str = "help.github";
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
-const SUPPORTED_SECRET_KEYS: [&str; 21] = [
+const SUPPORTED_SECRET_KEYS: [&str; 25] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "FRED_API_KEY",
@@ -49,6 +49,10 @@ const SUPPORTED_SECRET_KEYS: [&str; 21] = [
     "OLLAMA_API_URL",
     "OLLAMA_MODEL",
     "WORLDMONITOR_API_KEY",
+    "PORTCAST_API_KEY",
+    "GLOBAL_FISHING_WATCH_API_KEY",
+    "ELECTRICITY_MAPS_API_KEY",
+    "LIVEUAMAP_API_KEY",
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
