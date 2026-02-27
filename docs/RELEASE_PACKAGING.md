@@ -46,7 +46,7 @@ If these fail, use one of the supported remediations:
 - Pre-vendored Rust crates (`src-tauri/vendor/`) + Cargo offline mode.
 - CI artifact/caching strategy that restores required package inputs before build.
 
-See `docs/TAURI_VALIDATION_REPORT.md` for failure classification labels and troubleshooting flow.
+Network preflight failures are typically caused by proxy misconfigurations, firewall rules blocking `registry.npmjs.org` or `index.crates.io`, or missing auth tokens in CI environments.
 
 ## Packaging commands
 

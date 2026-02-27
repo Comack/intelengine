@@ -412,7 +412,7 @@ This provides a unified command center for all intelligence findings, whether ge
 
 ### Signal Types
 
-The system detects 12 distinct signal types across news, markets, military, and infrastructure domains:
+The system detects 23 distinct signal types across news, markets, military, infrastructure, environmental, and intelligence domains:
 
 **News & Source Signals**
 
@@ -3151,9 +3151,110 @@ To prevent map clutter, natural events are filtered:
 
 ---
 
-## Military Surge Detection
+## Wildfire Detection (NASA FIRMS)
 
-The system detects unusual concentrations of military activity using two complementary algorithms.
+The Wildfire layer supplements the EONET/GDACS natural events feed with near real-time satellite fire data from NASA FIRMS (Fire Information for Resource Management System).
+
+### Data Sources
+
+| Instrument | Satellite | Spatial Resolution | Latency |
+|------------|-----------|-------------------|---------|
+| **MODIS** | Terra / Aqua | 1 km | ~3 hours |
+| **VIIRS 375m** | Suomi-NPP / NOAA-20 | 375 m | ~3 hours |
+
+VIIRS is preferred for its higher resolution; MODIS provides wider historical coverage.
+
+### What It Adds Beyond EONET
+
+- **Conflict-zone fire detection** — clusters of hotspots in non-forested areas (urban, agricultural, industrial) can indicate strikes, explosions, or infrastructure fires rather than natural wildfires.
+- **Precise coordinates** — FIRMS returns per-pixel hotspot lat/lon rather than polygon centroids.
+- **Brightness temperature** — `frp` (Fire Radiative Power) and `bright_ti4` fields indicate fire intensity.
+
+Requires `NASA_FIRMS_API_KEY` (free registration at [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/)). Layer is hidden when the key is absent.
+
+---
+
+## Radiation Monitoring (Safecast)
+
+The Radiation layer displays live CPM (counts per minute) readings from the Safecast global sensor network — a citizen-science network deployed after the 2011 Fukushima disaster.
+
+### Coverage & Thresholds
+
+| Reading | Level | Indicator |
+|---------|-------|-----------|
+| < 50 CPM | Normal background | ✅ Green |
+| 50–100 CPM | Elevated | 🟡 Yellow |
+| > 100 CPM | Alert threshold | 🔴 Red |
+
+### Signal Value
+
+Radiation spikes near nuclear facilities, military sites, or industrial zones can indicate:
+
+- Nuclear plant incidents or coolant failures
+- Radiological dispersal device (dirty bomb) events
+- Industrial accidents involving radioactive materials
+- Equipment calibration anomalies (verified via neighboring sensors)
+
+Data is sourced from the [Safecast API](https://api.safecast.org/) using a 30-minute lookback window. No API key required.
+
+---
+
+## Space Domain Intelligence
+
+The Space layers track orbital objects and space weather conditions with implications for communications, GPS, and grid stability.
+
+### Satellite Tracking (CelesTrak)
+
+The Satellites layer displays 20,000+ tracked objects using Two-Line Element (TLE) data from [CelesTrak](https://celestrak.org/NORAD/elements/):
+
+| Object Class | Examples | Strategic Relevance |
+|-------------|---------|---------------------|
+| **Reconnaissance** | USA-224, KH-11 | Imaging over conflict zones |
+| **Communications** | Starlink, Inmarsat | Battlefield comms, internet resilience |
+| **Navigation** | GPS Block III, GLONASS | Precision weapons, civilian positioning |
+| **Early Warning** | SBIRS GEO, Oko | ICBM launch detection |
+| **ASAT Debris** | Cosmos 1408 field | Orbital hazard zones |
+
+TLE data updates every 24 hours (orbital elements change slowly).
+
+### Space Weather (NOAA SWPC)
+
+The Space Weather panel displays NOAA Space Weather Prediction Center data:
+
+| Metric | Source | Threshold | Impact |
+|--------|--------|-----------|--------|
+| **Kp-index** | SWPC geomagnetic | Kp ≥ 5 (G1 storm) | HF radio disruption; Kp ≥ 7 triggers alert |
+| **Solar X-Ray Flux** | GOES X-ray | X-class flare | Radio blackouts on sunlit side |
+| **Aurora Forecast** | OVATION model | Equatorward extent | Power grid induced currents |
+
+A `space_weather` signal fires when Kp ≥ 7 (severe storm), warning operators of potential satellite communication outages, GPS degradation, and power grid stress.
+
+---
+
+## Information Operations Detection (Wikimedia SSE)
+
+The Info Ops layer monitors the Wikimedia EventStreams SSE feed for edit-war patterns on geopolitically sensitive Wikipedia pages — an early warning signal for breaking news and coordinated information operations.
+
+### Detection Logic
+
+1. **Page candidates** — the system watches articles for conflict zones, heads of state, military units, and major infrastructure.
+2. **Edit frequency** — pages receiving ≥3 edits within 60 minutes are flagged.
+3. **Revert patterns** — consecutive reverts on the same section indicate a content dispute.
+4. **Bot exclusion** — edits by known bots (`AnomieBOT`, `ClueBot NG`) are filtered to reduce noise.
+
+### Signal Meaning
+
+An `edit_war` signal on a sensitive article can indicate:
+
+- A breaking news event that editors are racing to update (conflict escalation, leader death, major attack)
+- A coordinated influence operation attempting to change historical or factual framing
+- A domestic policy event causing partisan editing
+
+No API key required — the Wikimedia EventStreams feed is fully open.
+
+---
+
+
 
 ### Baseline-Based Surge Detection
 
@@ -3673,46 +3774,79 @@ src/
 │   ├── entities.ts           # 100+ entity definitions (companies, indices, commodities, countries)
 │   └── panels.ts             # Panel configs, layer defaults, mobile optimizations
 ├── services/
+│   ├── aviation/             # Airport delay monitoring (FAA)
+│   │   └── index.ts
+│   ├── climate/              # Pollution, air quality, deforestation, weather forecasts
+│   │   └── index.ts
+│   ├── conflict/             # ACLED, UCDP events, Liveuamap incidents, humanitarian
+│   │   └── index.ts
+│   ├── cyber/                # URLhaus, OTX, AbuseIPDB, CISA KEV, info-ops detection
+│   │   └── index.ts
+│   ├── displacement/         # UNHCR displacement flows and population exposure
+│   │   └── index.ts
+│   ├── economic/             # FRED, EIA, macro signals, SEC filings, World Bank
+│   │   └── index.ts
+│   ├── infrastructure/       # Internet outages, radiation, routing anomalies, grid
+│   │   └── index.ts
+│   ├── intelligence/         # Risk scores, forensics, GDELT, sanctioned entities
+│   │   └── index.ts
+│   ├── maritime/             # AIS vessel tracking, port congestion, SAR dark ships
+│   │   └── index.ts
+│   ├── market/               # Stock quotes, crypto, whale transfers, ETFs
+│   │   └── index.ts
+│   ├── military/             # Aircraft tracking, ACARS, theater posture, USNI
+│   │   └── index.ts
+│   ├── news/                 # Article summarization and dedup
+│   │   └── index.ts
+│   ├── prediction/           # Polymarket prediction markets
+│   │   └── index.ts
+│   ├── research/             # arXiv, HackerNews, GitHub momentum, Bluesky trends
+│   │   └── index.ts
+│   ├── unrest/               # Social unrest events
+│   │   └── index.ts
+│   ├── wildfires/            # NASA FIRMS fire detections
+│   │   └── index.ts
 │   ├── ais.ts                # WebSocket vessel tracking with density analysis
-│   ├── military-vessels.ts   # Naval vessel identification and tracking
-│   ├── military-flights.ts   # Aircraft tracking via OpenSky relay
-│   ├── military-surge.ts     # Surge detection with news correlation
+│   ├── cable-activity.ts     # Undersea cable activity monitoring
+│   ├── cable-health.ts       # Cable health scoring
+│   ├── cached-risk-scores.ts # Theater posture API client with caching
 │   ├── cached-theater-posture.ts # Theater posture API client with caching
-│   ├── wingbits.ts           # Aircraft enrichment (owner, operator, type)
-│   ├── pizzint.ts            # Pentagon Pizza Index + GDELT tensions
-│   ├── protests.ts           # ACLED + GDELT integration
-│   ├── gdelt-intel.ts        # GDELT Doc API topic intelligence
-│   ├── gdacs.ts              # UN GDACS disaster alerts
-│   ├── eonet.ts              # NASA EONET natural events + GDACS merge
-│   ├── flights.ts            # FAA delay parsing
-│   ├── outages.ts            # Cloudflare Radar integration
-│   ├── rss.ts                # RSS parsing with circuit breakers
-│   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
-│   ├── earthquakes.ts        # USGS integration
-│   ├── weather.ts            # NWS alerts
-│   ├── fred.ts               # Federal Reserve data
-│   ├── oil-analytics.ts      # EIA oil prices, production, inventory
-│   ├── usa-spending.ts       # USASpending.gov contracts & awards
-│   ├── polymarket.ts         # Prediction markets (filtered)
 │   ├── clustering.ts         # Jaccard similarity clustering
 │   ├── correlation.ts        # Signal detection engine
-│   ├── velocity.ts           # Velocity & sentiment analysis
-│   ├── related-assets.ts     # Infrastructure near news events
-│   ├── activity-tracker.ts   # New item detection & highlighting
-│   ├── analysis-worker.ts    # Web Worker manager
-│   ├── ml-worker.ts          # Browser ML inference (ONNX)
-│   ├── summarization.ts      # AI briefings with fallback chain
-│   ├── parallel-analysis.ts  # Concurrent headline analysis
-│   ├── storage.ts            # IndexedDB snapshots & baselines
-│   ├── data-freshness.ts     # Real-time data staleness tracking
-│   ├── signal-aggregator.ts  # Central signal collection & grouping
-│   ├── focal-point-detector.ts   # Intelligence synthesis layer
-│   ├── entity-index.ts       # Entity lookup maps (by alias, keyword, sector)
-│   ├── entity-extraction.ts  # News-to-entity matching for market correlation
 │   ├── country-instability.ts    # CII scoring algorithm
+│   ├── cross-module-integration.ts # Unified alerts and strategic risk
+│   ├── data-freshness.ts     # Real-time data staleness tracking
+│   ├── earthquakes.ts        # USGS integration (also feeds seismology domain)
+│   ├── entity-extraction.ts  # News-to-entity matching for market correlation
+│   ├── entity-index.ts       # Entity lookup maps (by alias, keyword, sector)
+│   ├── eonet.ts              # NASA EONET natural events + GDACS merge
+│   ├── evidence.ts           # POLE graph ingestion and retrieval
+│   ├── focal-point-detector.ts   # Intelligence synthesis layer
+│   ├── forensics.ts          # Forensics engine client
+│   ├── gdacs.ts              # UN GDACS disaster alerts
+│   ├── gdelt-intel.ts        # GDELT Doc API topic intelligence
 │   ├── geo-convergence.ts        # Geographic convergence detection
+│   ├── hotspot-escalation.ts # Multi-factor hotspot escalation
 │   ├── infrastructure-cascade.ts # Dependency graph and cascade analysis
-│   └── cross-module-integration.ts # Unified alerts and strategic risk
+│   ├── live-news.ts          # YouTube live news streams
+│   ├── military-flights.ts   # Aircraft tracking via OpenSky relay
+│   ├── military-surge.ts     # Surge detection with news correlation
+│   ├── military-vessels.ts   # Naval vessel identification and tracking
+│   ├── parallel-analysis.ts  # Concurrent headline analysis
+│   ├── pizzint.ts            # Pentagon Pizza Index + GDELT tensions
+│   ├── protests.ts           # ACLED + GDELT integration
+│   ├── rss.ts                # RSS parsing with circuit breakers
+│   ├── runtime.ts            # Runtime detection and URL rewriting
+│   ├── runtime-config.ts     # Secrets and feature toggles
+│   ├── signal-aggregator.ts  # Central signal collection & grouping
+│   ├── space.ts              # Satellite TLE and space weather client
+│   ├── storage.ts            # IndexedDB snapshots & baselines
+│   ├── summarization.ts      # AI briefings with fallback chain
+│   ├── tauri-bridge.ts       # Tauri command bridge
+│   ├── velocity.ts           # Velocity & sentiment analysis
+│   ├── weather.ts            # NWS alerts
+│   ├── wingbits.ts           # Aircraft enrichment (owner, operator, type)
+│   └── analysis-core.ts      # Shared signal types, circuit breaker, scoring
 ├── workers/
 │   └── analysis.worker.ts    # Off-thread clustering & correlation
 ├── utils/
@@ -3722,23 +3856,49 @@ src/
 │   └── analysis-constants.ts # Shared thresholds for worker sync
 ├── styles/
 └── types/
-api/                          # Vercel Edge serverless proxies
-├── cloudflare-outages.js     # Proxies Cloudflare Radar
-├── coingecko.js              # Crypto prices with validation
-├── eia/[[...path]].js        # EIA petroleum data (oil prices, production)
-├── faa-status.js             # FAA ground stops/delays
-├── finnhub.js                # Stock quotes (batch, primary)
-├── fred-data.js              # Federal Reserve economic data
-├── gdelt-doc.js              # GDELT Doc API (topic intelligence)
-├── gdelt-geo.js              # GDELT Geo API (event geolocation)
-├── polymarket.js             # Prediction markets with validation
-├── yahoo-finance.js          # Stock indices/commodities (backup)
-├── opensky-relay.js          # Military aircraft tracking
-├── wingbits.js               # Aircraft enrichment proxy
-├── risk-scores.js            # Pre-computed CII and strategic risk (Redis cached)
-├── theater-posture.js        # Theater-level force aggregation (Redis cached)
-├── groq-summarize.js         # AI summarization with Groq API
-└── openrouter-summarize.js   # AI summarization fallback via OpenRouter
+api/                          # Vercel Edge serverless routes
+├── [domain]/v1/[[...path]].ts # Primary catch-all gateway — routes all sebuf RPC calls
+│                              # to generated route tables in src/generated/server/
+├── eia/[[...path]].js        # EIA petroleum data legacy proxy
+├── internal/forensics/v1/    # Internal forensics worker task endpoint
+├── youtube/embed.js          # YouTube embed helper
+├── youtube/live.js           # YouTube live stream lookup
+├── rss-proxy.js              # Domain-allowlisted RSS/XML proxy (100+ feeds)
+├── story.js                  # Story/snapshot sharing endpoint
+├── og-story.js               # OpenGraph meta for shared stories
+├── register-interest.js      # Waitlist / interest registration
+├── version.js                # Version metadata endpoint
+├── fwdstart.js               # Desktop startup forwarding helper
+├── download.js               # Desktop installer download helper
+├── _api-key.js               # Shared API key validation helper
+└── _cors.js                  # Shared CORS helper
+server/
+├── cors.ts                   # CORS and origin validation
+├── error-mapper.ts           # Error normalization for all handlers
+├── router.ts                 # Static route matching for generated RPC routes
+├── _shared/
+│   ├── redis.ts              # Upstash Redis cache helpers and key prefixing
+│   └── hash.ts               # Stable hash keys for cache entries
+└── worldmonitor/
+    ├── aviation/v1/          # FAA airport delays
+    ├── climate/v1/           # Open-Meteo forecasts, WAQI AQI, Sentinel-5P, GFW deforestation
+    ├── conflict/v1/          # ACLED, UCDP, Liveuamap incidents, UNHCR reports
+    ├── cyber/v1/             # URLhaus, OTX, AbuseIPDB, CISA KEV, Wikimedia info-ops
+    ├── displacement/v1/      # UNHCR displacement statistics, population exposure
+    ├── economic/v1/          # FRED, EIA, macro signals, SEC EDGAR filings, World Bank
+    ├── evidence/v1/          # POLE graph ingestion (ingest-evidence, list-evidence, get-evidence)
+    ├── infrastructure/v1/    # Cloudflare outages, Safecast radiation, BGP routing, Electricity Maps, cable health
+    ├── intelligence/v1/      # Risk scores, forensics engine, GDELT, PizzINT, sanctioned entities
+    ├── maritime/v1/          # AIS snapshots, navigational warnings, Portcast congestion, GFW SAR
+    ├── market/v1/            # Finnhub/Yahoo quotes, CoinGecko, whale transfers, ETF flows
+    ├── military/v1/          # OpenSky flights, ACARS messages, Wingbits enrichment, USNI fleet
+    ├── news/v1/              # Groq/OpenRouter article summarization
+    ├── prediction/v1/        # Polymarket filtered markets
+    ├── research/v1/          # arXiv, HackerNews, GitHub Events, Bluesky social trends
+    ├── seismology/v1/        # USGS earthquakes, NWS tsunami warnings
+    ├── space/v1/             # CelesTrak TLE satellites, NOAA SWPC space weather
+    ├── unrest/v1/            # ACLED/GDELT social unrest events
+    └── wildfire/v1/          # NASA FIRMS MODIS/VIIRS fire detections
 ```
 
 ## Usage

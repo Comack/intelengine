@@ -43,7 +43,7 @@
 | Static news feeds                  | **Real-time updates** with live video streams                                                              |
 | Cloud-dependent AI tools           | **Run AI locally** with Ollama/LM Studio — no API keys, no data leaves your machine                       |
 | Web-only dashboards                | **Native desktop app** (Tauri) for macOS, Windows, and Linux + installable PWA with offline map support    |
-| Flat 2D maps                       | **3D WebGL globe** with deck.gl rendering and 35+ toggleable data layers                                   |
+| Flat 2D maps                       | **3D WebGL globe** with deck.gl rendering and 42+ toggleable data layers                                   |
 | Intelligence Black Box             | **Forensics Engine** with weak supervision fusion, conformal anomalies, and causal discovery                |
 | Siloed financial data              | **Finance variant** with 92 stock exchanges, 19 financial centers, 13 central banks, and Gulf FDI tracking |
 | Advanced Visualizations            | **Interactive D3.js Graphs** for causal DAGs, POLE entity maps, and convergence radars                     |
