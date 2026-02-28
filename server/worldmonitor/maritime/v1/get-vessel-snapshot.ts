@@ -16,6 +16,14 @@ import type {
 // ========================================================================
 
 function getRelayBaseUrl(): string | null {
+  // In sidecar mode with AISSTREAM_API_KEY present, the embedded relay handles AIS.
+  // Route to the sidecar's own /api/local-ais-snapshot endpoint.
+  const mode = process.env.LOCAL_API_MODE || '';
+  if ((mode.includes('sidecar') || mode === 'tauri-sidecar') && process.env.AISSTREAM_API_KEY && !process.env.WS_RELAY_URL) {
+    const port = process.env.LOCAL_API_PORT || '46123';
+    return `http://127.0.0.1:${port}`;
+  }
+
   const relayUrl = process.env.WS_RELAY_URL;
   if (!relayUrl) return null;
   return relayUrl
@@ -71,8 +79,12 @@ async function fetchVesselSnapshotFromRelay(): Promise<VesselSnapshot | undefine
     const relayBaseUrl = getRelayBaseUrl();
     if (!relayBaseUrl) return undefined;
 
+    // Sidecar embedded relay uses /api/local-ais-snapshot; Railway relay uses /ais/snapshot
+    const isSidecar = relayBaseUrl.includes('127.0.0.1') && !process.env.WS_RELAY_URL;
+    const snapshotPath = isSidecar ? '/api/local-ais-snapshot?candidates=false' : '/ais/snapshot?candidates=false';
+
     const response = await fetch(
-      `${relayBaseUrl}/ais/snapshot?candidates=false`,
+      `${relayBaseUrl}${snapshotPath}`,
       {
         headers: { Accept: 'application/json' },
         signal: AbortSignal.timeout(10000),

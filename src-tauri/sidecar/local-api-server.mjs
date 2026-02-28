@@ -7,6 +7,10 @@ import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createLocalCache } from './local-cache.mjs';
+import { createAisRelay } from './ais-relay.mjs';
+import { createOpenSkyRelay } from './opensky-relay.mjs';
+import { createForensicsWorker } from './forensics-worker.mjs';
 
 const brotliCompressAsync = promisify(brotliCompress);
 
@@ -238,14 +242,23 @@ async function buildRouteTable(root) {
 }
 
 const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
+const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MiB
 
 async function readBody(req) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
     return req[REQUEST_BODY_CACHE];
   }
 
+  const claimedLength = parseInt(req.headers['content-length'] || '0', 10);
+  if (claimedLength > MAX_BODY_BYTES) return null;
+
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let totalBytes = 0;
+  for await (const chunk of req) {
+    totalBytes += chunk.length;
+    if (totalBytes > MAX_BODY_BYTES) return null;
+    chunks.push(chunk);
+  }
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
   req[REQUEST_BODY_CACHE] = body;
   return body;
@@ -296,6 +309,49 @@ const moduleCache = new Map();
 const failedImports = new Set();
 const fallbackCounts = new Map();
 const cloudPreferred = new Set();
+
+// ---- Lazy relay + cache instances ----
+// Initialized on first request requiring them. Reset when credentials change.
+let _aisRelayInstance = null;
+let _openSkyRelayInstance = null;
+let _localCache = null;
+const _forensicsWorker = createForensicsWorker();
+
+function getLocalCache(resourceDir) {
+  if (!_localCache) {
+    const persistPath = resourceDir ? path.join(resourceDir, 'sidecar-cache.json') : null;
+    _localCache = createLocalCache({ persistPath, maxEntries: 500 });
+  }
+  return _localCache;
+}
+
+function getAisRelay(logger) {
+  if (!process.env.AISSTREAM_API_KEY) return null;
+  if (!_aisRelayInstance) {
+    _aisRelayInstance = createAisRelay({ logger });
+    _aisRelayInstance.start();
+  }
+  return _aisRelayInstance;
+}
+
+function getOpenSkyRelay() {
+  if (!process.env.OPENSKY_CLIENT_ID || !process.env.OPENSKY_CLIENT_SECRET) return null;
+  if (!_openSkyRelayInstance) {
+    _openSkyRelayInstance = createOpenSkyRelay();
+  }
+  return _openSkyRelayInstance;
+}
+
+function resetRelays() {
+  if (_aisRelayInstance) {
+    _aisRelayInstance.stop();
+    _aisRelayInstance = null;
+  }
+  if (_openSkyRelayInstance) {
+    _openSkyRelayInstance.reset();
+    _openSkyRelayInstance = null;
+  }
+}
 
 const TRAFFIC_LOG_MAX = 200;
 const trafficLog = [];
@@ -367,6 +423,7 @@ function resolveConfig(options = {}) {
     ].find((candidate) => existsSync(candidate)) ?? path.join(resourceDir, 'api');
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
   const cloudFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
+  const localFirst = String(options.localFirst ?? process.env.LOCAL_API_LOCAL_FIRST ?? '') === 'true';
   const logger = options.logger ?? console;
 
   return {
@@ -376,6 +433,7 @@ function resolveConfig(options = {}) {
     apiDir,
     mode,
     cloudFallback,
+    localFirst,
     logger,
   };
 }
@@ -392,9 +450,9 @@ async function handleLocalServiceStatus(context) {
     summary: { operational: 2, degraded: 0, outage: 0, unknown: 0 },
     services: [
       { id: 'local-api', name: 'Local Desktop API', category: 'dev', status: 'operational', description: `Running on 127.0.0.1:${context.port}` },
-      { id: 'cloud-pass-through', name: 'Cloud pass-through', category: 'cloud', status: 'operational', description: `Fallback target ${context.remoteBase}` },
+      { id: 'cloud-pass-through', name: 'Cloud pass-through', category: 'cloud', status: context.localFirst ? 'disabled' : 'operational', description: context.localFirst ? 'Disabled — local-first mode' : `Fallback target ${context.remoteBase}` },
     ],
-    local: { enabled: true, mode: context.mode, port: context.port, remoteBase: context.remoteBase },
+    local: { enabled: true, mode: context.mode, port: context.port, remoteBase: context.remoteBase, localFirst: context.localFirst },
   });
 }
 
@@ -413,7 +471,14 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
     }
   }
   try {
-    return await proxyToCloud(requestUrl, req, context.remoteBase);
+    const cloudResponse = await proxyToCloud(requestUrl, req, context.remoteBase);
+    // Tag the cloud response so the frontend fetch patch can record its source
+    if (cloudResponse instanceof Response) {
+      const tagged = new Response(cloudResponse.body, cloudResponse);
+      tagged.headers.set('x-wm-data-source', 'cloud');
+      return tagged;
+    }
+    return cloudResponse;
   } catch (error) {
     context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
     return null;
@@ -778,7 +843,14 @@ async function dispatch(requestUrl, req, routes, context) {
       apiDir: context.apiDir,
       remoteBase: context.remoteBase,
       cloudFallback: context.cloudFallback,
+      localFirst: context.localFirst,
       routes: routes.length,
+    });
+  }
+  if (requestUrl.pathname === '/api/local-mode') {
+    return json({
+      localFirst: context.localFirst,
+      cloudFallback: context.cloudFallback && !context.localFirst,
     });
   }
   if (requestUrl.pathname === '/api/local-traffic-log') {
@@ -871,6 +943,94 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
+  // ---- Local AIS snapshot (embedded relay) ----
+  if (requestUrl.pathname === '/api/local-ais-snapshot') {
+    const relay = getAisRelay(context.logger);
+    if (!relay) return json({ error: 'AISSTREAM_API_KEY not configured' }, 503);
+    const includeCandidates = requestUrl.searchParams.get('candidates') === 'true';
+    const snapshot = relay.buildSnapshot();
+    if (includeCandidates) {
+      return json({ ...snapshot, candidateReports: relay.getCandidateReports() });
+    }
+    return json(snapshot);
+  }
+
+  // ---- OpenSky flight states (embedded OAuth2 relay) ----
+  if (requestUrl.pathname === '/api/local-opensky') {
+    const relay = getOpenSkyRelay();
+    if (!relay) return json({ error: 'OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET not configured' }, 503);
+    const params = Object.fromEntries(requestUrl.searchParams.entries());
+    const result = await relay.fetchStates(params);
+    return json(result, result.error ? 502 : 200);
+  }
+
+  // ---- Local cache HTTP interface (for server-side handler access) ----
+  if (requestUrl.pathname === '/api/local-cache') {
+    const cache = getLocalCache(context.resourceDir);
+    if (req.method === 'GET') {
+      const key = requestUrl.searchParams.get('key');
+      if (!key) return json({ error: 'key required' }, 400);
+      const value = cache.get(key);
+      return json({ value });
+    }
+    if (req.method === 'POST') {
+      const body = await readBody(req);
+      if (!body) return json({ error: 'expected { key, value, ttl }' }, 400);
+      try {
+        const { key, value, ttl } = JSON.parse(body.toString());
+        if (!key || ttl == null) return json({ error: 'key and ttl required' }, 400);
+        cache.set(key, value, Number(ttl));
+        return json({ ok: true });
+      } catch { return json({ error: 'invalid JSON' }, 400); }
+    }
+    return json({ error: 'GET or POST required' }, 405);
+  }
+
+  // ---- Forensics worker endpoints (self-referencing sidecar) ----
+  if (requestUrl.pathname === '/internal/forensics/v1/fuse' && req.method === 'POST') {
+    const workerSecret = process.env.FORENSICS_WORKER_SHARED_SECRET;
+    const localToken  = process.env.LOCAL_API_TOKEN;
+    const expected    = workerSecret || localToken;
+    const authHeader  = req.headers['x-forensics-worker-secret'] || req.headers.authorization?.replace('Bearer ', '');
+    if (!expected || authHeader !== expected) {
+      return json({ error: 'Unauthorized' }, 401);
+    }
+    const body = await readBody(req);
+    if (!body) return json({ error: 'expected { signals, feedbackMap }' }, 400);
+    try {
+      const { signals = [], feedbackMap = {} } = JSON.parse(body.toString());
+      const feedbackMapObj = new Map(Object.entries(feedbackMap));
+      const result = _forensicsWorker.runWeakSupervisionFusion(signals, feedbackMapObj);
+      return json({
+        fusedSignals: result.fusedSignals,
+        learnedWeights: Object.fromEntries(result.learnedWeights),
+        learnedAccuracies: Object.fromEntries(result.learnedAccuracies),
+        classPrior: result.classPrior,
+      });
+    } catch (err) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  if (requestUrl.pathname === '/internal/forensics/v1/anomaly' && req.method === 'POST') {
+    const workerSecret = process.env.FORENSICS_WORKER_SHARED_SECRET;
+    const localToken  = process.env.LOCAL_API_TOKEN;
+    const expected    = workerSecret || localToken;
+    const authHeader  = req.headers['x-forensics-worker-secret'] || req.headers.authorization?.replace('Bearer ', '');
+    if (!expected || authHeader !== expected) {
+      return json({ error: 'Unauthorized' }, 401);
+    }
+    const body = await readBody(req);
+    if (!body) return json({ error: 'expected { signals, alpha }' }, 400);
+    try {
+      const { signals = [], alpha = 0.05 } = JSON.parse(body.toString());
+      const anomalies = _forensicsWorker.detectAnomalies(signals, alpha);
+      return json({ anomalies });
+    } catch (err) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
   if (requestUrl.pathname === '/api/local-env-update') {
     if (req.method === 'POST') {
       const body = await readBody(req);
@@ -888,6 +1048,10 @@ async function dispatch(requestUrl, req, routes, context) {
             moduleCache.clear();
             failedImports.clear();
             cloudPreferred.clear();
+            // Reset relay instances when their credentials change
+            if (['AISSTREAM_API_KEY', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET'].includes(key)) {
+              resetRelays();
+            }
             return json({ ok: true, key });
           }
           return json({ error: 'key not in allowlist' }, 403);
@@ -917,18 +1081,48 @@ async function dispatch(requestUrl, req, routes, context) {
     }
   }
 
-  if (context.cloudFallback && cloudPreferred.has(requestUrl.pathname)) {
+  // When local-first mode is active, cloud fallback is completely disabled.
+  const allowCloud = context.cloudFallback && !context.localFirst;
+
+  if (allowCloud && cloudPreferred.has(requestUrl.pathname)) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context);
     if (cloudResponse) return cloudResponse;
   }
 
+  // ---- Local cache probe (GET requests only, cacheable routes) ----
+  const CACHEABLE_ROUTE_TTLS = {
+    '/seismology/v1/GetEarthquakes': 120,
+    '/aviation/v1/GetFlights': 60,
+    '/conflict/v1/GetAcledEvents': 600,
+    '/economic/v1/GetFredSeries': 900,
+    '/wildfire/v1/GetWildfirePerimeters': 180,
+    '/climate/v1/GetClimateIndicators': 600,
+    '/space/v1/GetSpaceWeather': 300,
+  };
+
+  const cacheKeySegment = Object.keys(CACHEABLE_ROUTE_TTLS).find((seg) => requestUrl.pathname.includes(seg));
+  const cacheKey = cacheKeySegment && req.method === 'GET'
+    ? `route:${requestUrl.pathname}${requestUrl.search}`
+    : null;
+
+  if (cacheKey) {
+    const localCache = getLocalCache(context.resourceDir);
+    const cached = localCache.get(cacheKey);
+    if (cached) {
+      return new Response(JSON.stringify(cached), {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'x-local-cache': 'HIT' },
+      });
+    }
+  }
+
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {
-    if (context.cloudFallback) {
+    if (allowCloud) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler missing');
       if (cloudResponse) return cloudResponse;
     }
-    logOnce(context.logger, requestUrl.pathname, 'no local handler');
+    logOnce(context.logger, requestUrl.pathname, context.localFirst ? 'no local handler (local-first, cloud blocked)' : 'no local handler');
     return json({ error: 'No local handler for this endpoint', endpoint: requestUrl.pathname }, 404);
   }
 
@@ -936,7 +1130,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const mod = await importHandler(modulePath);
     if (typeof mod.default !== 'function') {
       logOnce(context.logger, requestUrl.pathname, 'invalid handler module');
-      if (context.cloudFallback) {
+      if (allowCloud) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, `invalid handler module`);
         if (cloudResponse) return cloudResponse;
       }
@@ -953,23 +1147,33 @@ async function dispatch(requestUrl, req, routes, context) {
     const response = await mod.default(request);
     if (!(response instanceof Response)) {
       logOnce(context.logger, requestUrl.pathname, 'handler returned non-Response');
-      if (context.cloudFallback) {
+      if (allowCloud) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
         if (cloudResponse) return cloudResponse;
       }
       return json({ error: 'Handler returned invalid response', endpoint: requestUrl.pathname }, 500);
     }
 
-    if (!response.ok && context.cloudFallback) {
+    if (!response.ok && allowCloud) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, `local status ${response.status}`);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
+    }
+
+    // Store successful GET responses in local cache
+    if (response.ok && cacheKey && cacheKeySegment) {
+      try {
+        const cloned = response.clone();
+        const data = await cloned.json();
+        const ttl = CACHEABLE_ROUTE_TTLS[cacheKeySegment] ?? 60;
+        getLocalCache(context.resourceDir).set(cacheKey, data, ttl);
+      } catch { /* non-JSON or clone error — skip caching */ }
     }
 
     return response;
   } catch (error) {
     const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
     context.logger.error(`[local-api] ${requestUrl.pathname} → ${reason}`);
-    if (context.cloudFallback) {
+    if (allowCloud) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
@@ -1006,6 +1210,11 @@ export async function createLocalApiServer(options = {}) {
       const corsOrigin = getSidecarCorsOrigin(req);
       headers['access-control-allow-origin'] = corsOrigin;
       headers['vary'] = appendVary(headers['vary'], 'Origin');
+      // Data source provenance headers (Phase 5)
+      if (!headers['x-wm-data-source']) {
+        headers['x-wm-data-source'] = 'local-sidecar';
+      }
+      headers['x-wm-relay-mode'] = context.localFirst ? 'local-first' : 'sidecar-with-fallback';
 
       if (!skipRecord) {
         recordTraffic({
@@ -1045,6 +1254,21 @@ export async function createLocalApiServer(options = {}) {
       res.end(JSON.stringify({ error: 'Internal server error' }));
     }
   });
+
+  async function gracefulShutdown(signal) {
+    context.logger.log(`[local-api] ${signal} — shutting down gracefully`);
+    if (_aisRelayInstance) { try { _aisRelayInstance.stop(); } catch { /* ignore */ } }
+    if (_openSkyRelayInstance) { try { _openSkyRelayInstance.reset(); } catch { /* ignore */ } }
+    if (_localCache) { try { _localCache.persist(); } catch { /* ignore */ } }
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000).unref();
+  }
+
+  if (!process.exitHandlersInstalled) {
+    process.exitHandlersInstalled = true;
+    process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+    process.on('SIGINT',  () => void gracefulShutdown('SIGINT'));
+  }
 
   return {
     context,

@@ -17,7 +17,7 @@ import {
 } from '@/services/runtime-config';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
-import { isDesktopRuntime } from '@/services/runtime';
+import { isDesktopRuntime, getLocalFirstMode, setLocalFirstMode } from '@/services/runtime';
 import { t } from '@/services/i18n';
 import { trackFeatureToggle } from '@/services/analytics';
 
@@ -65,6 +65,7 @@ export class RuntimeConfigPanel extends Panel {
   private pendingSecrets = new Map<RuntimeSecretKey, string>();
   private validatedKeys = new Map<RuntimeSecretKey, boolean>();
   private validationMessages = new Map<RuntimeSecretKey, string>();
+  private localFirstEnabled = false;
 
   constructor(options: RuntimeConfigPanelOptions = {}) {
     super({ id: 'runtime-config', title: t('modals.runtimeConfig.title'), showCount: false });
@@ -72,6 +73,13 @@ export class RuntimeConfigPanel extends Panel {
     this.buffered = options.buffered ?? false;
     this.featureFilter = options.featureFilter;
     this.unsubscribe = subscribeRuntimeConfig(() => this.render());
+    // Load local-first state async; re-render once known
+    if (isDesktopRuntime()) {
+      void getLocalFirstMode().then((enabled) => {
+        this.localFirstEnabled = enabled;
+        this.render();
+      });
+    }
     this.render();
   }
 
@@ -254,10 +262,26 @@ export class RuntimeConfigPanel extends Panel {
       return;
     }
 
+    const localFirstSection = desktop ? `
+      <section class="runtime-feature local-first-section ${this.localFirstEnabled ? 'local-first-active' : ''}">
+        <header class="runtime-feature-header">
+          <label>
+            <input type="checkbox" data-local-first-toggle ${this.localFirstEnabled ? 'checked' : ''}>
+            <span>Local-First Mode</span>
+          </label>
+          <span class="runtime-pill ${this.localFirstEnabled ? 'ok' : ''}">
+            ${this.localFirstEnabled ? 'Active' : 'Off'}
+          </span>
+        </header>
+        ${this.localFirstEnabled ? '<p class="runtime-feature-fallback" style="color:var(--color-warn,#f59e0b)">&#9888; Cloud enrichment disabled — all data from local sidecar</p>' : '<p class="runtime-feature-fallback">Enable to operate without Vercel; direct outbound connections from your machine.</p>'}
+      </section>
+    ` : '';
+
     this.content.innerHTML = `
       <div class="runtime-config-summary">
         ${desktop ? t('modals.runtimeConfig.summary.desktop') : t('modals.runtimeConfig.summary.web')} · ${features.filter(f => isFeatureAvailable(f.id)).length}/${features.length} ${t('modals.runtimeConfig.summary.available')}
       </div>
+      ${localFirstSection}
       <div class="runtime-config-list">
         ${features.map(feature => this.renderFeature(feature)).join('')}
       </div>
@@ -388,6 +412,19 @@ export class RuntimeConfigPanel extends Panel {
         }
       });
       void this.fetchOllamaModels(modelSelect);
+    }
+
+    // Local-first mode toggle (desktop-only)
+    const localFirstToggle = this.content.querySelector<HTMLInputElement>('input[data-local-first-toggle]');
+    if (localFirstToggle) {
+      localFirstToggle.addEventListener('change', () => {
+        const enabled = localFirstToggle.checked;
+        this.localFirstEnabled = enabled;
+        void setLocalFirstMode(enabled).then(() => {
+          localStorage.setItem('wm-local-first-updated', String(Date.now()));
+          this.render();
+        });
+      });
     }
 
     this.content.querySelectorAll<HTMLInputElement>('input[data-toggle]').forEach((input) => {

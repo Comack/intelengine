@@ -583,6 +583,57 @@ fn close_settings_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+const RUNTIME_PREFS_FILE: &str = "runtime-prefs.json";
+
+fn runtime_prefs_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create app data directory {}: {e}", dir.display()))?;
+    Ok(dir.join(RUNTIME_PREFS_FILE))
+}
+
+fn read_runtime_prefs(app: &AppHandle) -> Map<String, Value> {
+    let Ok(path) = runtime_prefs_path(app) else { return Map::new() };
+    if !path.exists() { return Map::new() }
+    let Ok(contents) = std::fs::read_to_string(&path) else { return Map::new() };
+    serde_json::from_str::<Value>(&contents)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+fn write_runtime_prefs(app: &AppHandle, prefs: &Map<String, Value>) -> Result<(), String> {
+    let path = runtime_prefs_path(app)?;
+    let serialized = serde_json::to_string_pretty(&Value::Object(prefs.clone()))
+        .map_err(|e| format!("Failed to serialize runtime prefs: {e}"))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, &serialized)
+        .map_err(|e| format!("Failed to write prefs tmp {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path)
+        .map_err(|e| format!("Failed to rename prefs {}: {e}", path.display()))
+}
+
+#[tauri::command]
+fn get_local_first_mode(app: AppHandle) -> bool {
+    let prefs = read_runtime_prefs(&app);
+    prefs.get("localFirst")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_local_first_mode(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut prefs = read_runtime_prefs(&app);
+    prefs.insert("localFirst".to_string(), Value::Bool(enabled));
+    write_runtime_prefs(&app, &prefs)?;
+    // Restart sidecar with updated LOCAL_API_LOCAL_FIRST env var
+    stop_local_api(&app);
+    start_local_api(&app)
+}
+
 /// Fetch JSON from Polymarket Gamma API using native TLS (bypasses Cloudflare JA3 blocking).
 /// Called from frontend when browser CORS and sidecar Node.js TLS both fail.
 #[tauri::command]
@@ -1018,6 +1069,23 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         &format!("injected {secret_count} keychain secrets into sidecar env"),
     );
 
+    // Inject local-first mode preference into sidecar
+    let local_first = {
+        let prefs = read_runtime_prefs(app);
+        prefs.get("localFirst").and_then(|v| v.as_bool()).unwrap_or(false)
+    };
+    cmd.env("LOCAL_API_LOCAL_FIRST", if local_first { "true" } else { "false" });
+    append_desktop_log(
+        app,
+        "INFO",
+        &format!("local-first mode: {local_first}"),
+    );
+
+    // Inject self-URL for forensics worker (sidecar serves /internal/forensics endpoints)
+    cmd.env("FORENSICS_WORKER_URL", format!("http://127.0.0.1:{LOCAL_API_PORT}"));
+    // Reuse the session token as shared secret so callWorker() can authenticate
+    cmd.env("FORENSICS_WORKER_SHARED_SECRET", &local_api_token);
+
     // Inject build-time secrets (CI) with runtime env fallback (dev)
     if let Some(url) = option_env!("CONVEX_URL") {
         cmd.env("CONVEX_URL", url);
@@ -1037,11 +1105,35 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(unix)]
+fn graceful_kill(child: &mut std::process::Child) {
+    let pid = child.id() as libc::pid_t;
+    unsafe { libc::kill(pid, libc::SIGTERM); }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => { let _ = child.wait(); return; }
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            _ => break,
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[cfg(not(unix))]
+fn graceful_kill(child: &mut std::process::Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 fn stop_local_api(app: &AppHandle) {
     if let Ok(state) = app.try_state::<LocalApiState>().ok_or(()) {
         if let Ok(mut slot) = state.child.lock() {
             if let Some(mut child) = slot.take() {
-                let _ = child.kill();
+                graceful_kill(&mut child);
                 append_desktop_log(app, "INFO", "local API sidecar stopped");
             }
         }
@@ -1074,7 +1166,9 @@ fn main() {
             open_settings_window_command,
             close_settings_window,
             open_url,
-            fetch_polymarket
+            fetch_polymarket,
+            get_local_first_mode,
+            set_local_first_mode
         ])
         .setup(move |app| {
             let handle = app.handle();

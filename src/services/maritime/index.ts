@@ -190,6 +190,20 @@ function parseSnapshot(data: unknown): {
 async function fetchRawRelaySnapshot(includeCandidates: boolean): Promise<unknown> {
   const query = `?candidates=${includeCandidates ? 'true' : 'false'}`;
 
+  // Desktop sidecar: use embedded AIS relay directly (no Railway needed)
+  const { isDesktopRuntime, getApiBaseUrl } = await import('@/services/runtime');
+  if (isDesktopRuntime()) {
+    try {
+      const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+      const token = await tryInvokeTauri<string>('get_local_api_token');
+      const sidecarBase = getApiBaseUrl() || 'http://127.0.0.1:46123';
+      const sidecarHeaders: Record<string, string> = { Accept: 'application/json' };
+      if (token) sidecarHeaders['Authorization'] = `Bearer ${token}`;
+      const sidecarResp = await fetch(`${sidecarBase}/api/local-ais-snapshot${query}`, { headers: sidecarHeaders });
+      if (sidecarResp.ok) return sidecarResp.json();
+    } catch { /* sidecar not available — fall through */ }
+  }
+
   if (RAILWAY_SNAPSHOT_URL) {
     try {
       const railway = await fetch(`${RAILWAY_SNAPSHOT_URL}${query}`, { headers: { Accept: 'application/json' } });

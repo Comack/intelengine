@@ -18,7 +18,28 @@ function prefixKey(key: string): string {
   return `${cachedPrefix}${key}`;
 }
 
+async function getSidecarCachedJson(key: string): Promise<unknown | null> {
+  const mode = process.env.LOCAL_API_MODE || '';
+  if (!mode.includes('sidecar') && mode !== 'tauri-sidecar') return null;
+  const port = process.env.LOCAL_API_PORT || '46123';
+  try {
+    const resp = await fetch(
+      `http://127.0.0.1:${port}/api/local-cache?key=${encodeURIComponent(key)}`,
+      { signal: AbortSignal.timeout(500) },
+    );
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { value?: unknown };
+    return data.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getCachedJson(key: string): Promise<unknown | null> {
+  // In sidecar mode, probe local file-backed cache first (no Upstash needed)
+  const sidecarResult = await getSidecarCachedJson(key);
+  if (sidecarResult !== null) return sidecarResult;
+
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;

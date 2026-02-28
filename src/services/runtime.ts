@@ -193,7 +193,7 @@ export function installRuntimeFetchPatch(): void {
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
-    const debug = localStorage.getItem('wm-debug-log') === '1';
+    const debug = (() => { try { return localStorage.getItem('wm-debug-log') === '1'; } catch { return false; } })();
 
     if (!target?.startsWith('/api/')) {
       if (debug) {
@@ -219,6 +219,15 @@ export function installRuntimeFetchPatch(): void {
     const localUrl = `${localBase}${target}`;
     if (debug) console.log(`[fetch] intercept → ${target}`);
     let allowCloudFallback = !isLocalOnlyApiTarget(target);
+
+    if (allowCloudFallback) {
+      // Local-first mode completely disables cloud fallback regardless of key state
+      const localFirst = await getLocalFirstMode();
+      if (localFirst) {
+        allowCloudFallback = false;
+        if (debug) console.log(`[fetch] local-first mode — cloud fallback blocked for ${target}`);
+      }
+    }
 
     if (allowCloudFallback) {
       try {
@@ -254,6 +263,15 @@ export function installRuntimeFetchPatch(): void {
       const t0 = performance.now();
       const response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, localInit);
       if (debug) console.log(`[fetch] ${target} → ${response.status} (${Math.round(performance.now() - t0)}ms)`);
+
+      // Record data source from response header (Phase 5)
+      const dataSource = response.headers.get('x-wm-data-source');
+      if (dataSource === 'local-sidecar' || dataSource === 'cloud') {
+        void import('@/services/data-source-tracker').then(({ recordApiSource }) => {
+          recordApiSource(target, dataSource as 'local-sidecar' | 'cloud');
+        });
+      }
+
       if (!response.ok) {
         if (!allowCloudFallback) {
           if (debug) console.log(`[fetch] local-only endpoint ${target} returned ${response.status}; skipping cloud fallback`);
@@ -268,9 +286,50 @@ export function installRuntimeFetchPatch(): void {
       if (!allowCloudFallback) {
         throw error;
       }
-      return cloudFallback();
+      const cloudResp = await cloudFallback();
+      void import('@/services/data-source-tracker').then(({ recordApiSource }) => {
+        recordApiSource(target, 'cloud');
+      });
+      return cloudResp;
     }
   };
 
   (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
+}
+
+// ---- Local-First Mode ----
+
+let _localFirstCache: boolean | null = null;
+let _localFirstPending: Promise<boolean> | null = null;
+
+/**
+ * Returns true when local-first mode is enabled (all cloud fallback disabled).
+ * Result is cached per page load; call `setLocalFirstMode` to invalidate.
+ */
+export async function getLocalFirstMode(): Promise<boolean> {
+  if (_localFirstCache !== null) return _localFirstCache;
+  if (!isDesktopRuntime()) { _localFirstCache = false; return false; }
+  if (_localFirstPending) return _localFirstPending;
+  _localFirstPending = (async () => {
+    try {
+      const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+      const result = await tryInvokeTauri<boolean>('get_local_first_mode');
+      _localFirstCache = result ?? false;
+    } catch {
+      _localFirstCache = false;
+    }
+    _localFirstPending = null;
+    return _localFirstCache!;
+  })();
+  return _localFirstPending;
+}
+
+/**
+ * Enable or disable local-first mode. The Tauri command persists the setting
+ * to runtime-prefs.json and restarts the sidecar with the updated env var.
+ */
+export async function setLocalFirstMode(enabled: boolean): Promise<void> {
+  const { invokeTauri } = await import('@/services/tauri-bridge');
+  await invokeTauri('set_local_first_mode', { enabled });
+  _localFirstCache = enabled;
 }
