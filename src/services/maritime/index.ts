@@ -252,10 +252,6 @@ async function fetchSnapshotPayload(includeCandidates: boolean): Promise<unknown
 // ---- Callback Emission ----
 
 function pruneCallbackTimestampIndex(now: number): void {
-  if (lastCallbackTimestampByMmsi.size <= MAX_CALLBACK_TRACKED_VESSELS) {
-    return;
-  }
-
   const threshold = now - CALLBACK_RETENTION_MS;
   for (const [mmsi, ts] of lastCallbackTimestampByMmsi) {
     if (ts < threshold) {

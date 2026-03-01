@@ -30,6 +30,7 @@ const hasFlag = (name) => args.includes(`--${name}`);
 
 const os = getArg('os');
 const variant = getArg('variant') ?? 'full';
+const linuxBundle = getArg('linux-bundle') ?? 'appimage';
 const appImageRuntimeFileArg = getArg('appimage-runtime-file');
 const sign = hasFlag('sign');
 const skipNodeRuntime = hasFlag('skip-node-runtime');
@@ -37,8 +38,9 @@ const showHelp = hasFlag('help') || hasFlag('h');
 
 const validOs = new Set(['macos', 'windows', 'linux']);
 const validVariants = new Set(['full', 'tech', 'finance']);
+const validLinuxBundles = new Set(['appimage', 'deb', 'rpm', 'arch']);
 const usage =
-  'Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--skip-node-runtime] [--appimage-runtime-file <path>]';
+  'Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--linux-bundle <appimage|deb|rpm|arch>] [--sign] [--skip-node-runtime] [--appimage-runtime-file <path>]';
 
 if (showHelp) {
   console.log(usage);
@@ -55,6 +57,11 @@ if (!validVariants.has(variant)) {
   process.exit(1);
 }
 
+if (os === 'linux' && !validLinuxBundles.has(linuxBundle)) {
+  console.error(`Invalid --linux-bundle. Use one of: ${[...validLinuxBundles].join(', ')}`);
+  process.exit(1);
+}
+
 const syncVersionsResult = spawnSync(process.execPath, ['scripts/sync-desktop-version.mjs'], {
   stdio: 'inherit'
 });
@@ -66,7 +73,8 @@ if ((syncVersionsResult.status ?? 1) !== 0) {
   process.exit(syncVersionsResult.status ?? 1);
 }
 
-const bundles = os === 'macos' ? 'app,dmg' : os === 'linux' ? 'appimage' : 'nsis,msi';
+// 'arch' builds a deb as intermediate format, then scripts/arch-package.mjs converts it
+const bundles = os === 'macos' ? 'app,dmg' : os === 'linux' ? (linuxBundle === 'arch' ? 'deb' : linuxBundle) : 'nsis,msi';
 const env = {
   ...process.env,
   VITE_VARIANT: variant,
@@ -248,7 +256,9 @@ const ensureLinuxAppImageEnv = () => {
   console.log(`[desktop-package] Linux AppImage cache: ${tauriToolsDir}`);
 };
 
-ensureLinuxAppImageEnv();
+if (os === 'linux' && linuxBundle === 'appimage') {
+  ensureLinuxAppImageEnv();
+}
 
 if (!existsSync(tauriBin)) {
   console.error(
@@ -327,7 +337,7 @@ if (!skipNodeRuntime) {
   }
 }
 
-console.log(`[desktop-package] OS=${os} VARIANT=${variant} BUNDLES=${bundles} SIGN=${sign ? 'on' : 'off'}`);
+console.log(`[desktop-package] OS=${os} VARIANT=${variant} BUNDLES=${bundles}${linuxBundle === 'arch' ? ' (→ arch .pkg.tar.zst)' : ''} SIGN=${sign ? 'on' : 'off'}`);
 
 const result = spawnSync(tauriBin, cliArgs, {
   env,
@@ -340,4 +350,22 @@ if (result.error) {
   process.exit(1);
 }
 
-process.exit(result.status ?? 1);
+if ((result.status ?? 1) !== 0) {
+  process.exit(result.status ?? 1);
+}
+
+// For arch: convert the intermediate deb into a .pkg.tar.zst
+if (os === 'linux' && linuxBundle === 'arch') {
+  const archResult = spawnSync(
+    process.execPath,
+    ['scripts/arch-package.mjs', '--variant', variant],
+    { env, stdio: 'inherit' }
+  );
+  if (archResult.error) {
+    console.error(archResult.error.message);
+    process.exit(1);
+  }
+  process.exit(archResult.status ?? 1);
+}
+
+process.exit(0);

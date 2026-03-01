@@ -36,9 +36,15 @@ export async function invokeTauri<T>(
 export async function tryInvokeTauri<T>(
   command: string,
   payload?: Record<string, unknown>,
+  timeoutMs = 5000,
 ): Promise<T | null> {
   try {
-    return await invokeTauri<T>(command, payload);
+    return await Promise.race([
+      invokeTauri<T>(command, payload),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`[tauri-bridge] timeout: ${command}`)), timeoutMs)
+      ),
+    ]);
   } catch (error) {
     console.warn(`[tauri-bridge] Command failed: ${command}`, error);
     return null;

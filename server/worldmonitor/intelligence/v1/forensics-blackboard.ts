@@ -39,6 +39,8 @@ const historyMemory = new Map<string, number[]>();
 const timestampHistoryMemory = new Map<string, number[]>();
 const policyMemory = new Map<string, ForensicsPolicyEntry[]>();
 const topologyBaselineMemory = new Map<string, ForensicsTopologyBaselineEntry[]>();
+const _calibrationAppendLocks = new Map<string, Promise<number[]>>();
+const _calibrationTimestampAppendLocks = new Map<string, Promise<number[]>>();
 
 export interface ForensicsTopologyBaselineEntry {
   domain: string;
@@ -321,30 +323,38 @@ export async function appendCalibrationValue(metricKeyValue: string, value: numb
   if (!Number.isFinite(value)) {
     return getCalibrationHistory(metricKeyValue);
   }
-
-  const history = await getCalibrationHistory(metricKeyValue);
-  history.push(value);
-  if (history.length > HISTORY_MAX_LENGTH) {
-    history.splice(0, history.length - HISTORY_MAX_LENGTH);
-  }
-  historyMemory.set(metricKeyValue, history);
-  await setCachedJson(historyKey(metricKeyValue), history, HISTORY_TTL_SECONDS);
-  return [...history];
+  const gate = _calibrationAppendLocks.get(metricKeyValue) ?? Promise.resolve([] as number[]);
+  const next = gate.then(async () => {
+    const history = await getCalibrationHistory(metricKeyValue);
+    history.push(value);
+    if (history.length > HISTORY_MAX_LENGTH) {
+      history.splice(0, history.length - HISTORY_MAX_LENGTH);
+    }
+    historyMemory.set(metricKeyValue, history);
+    await setCachedJson(historyKey(metricKeyValue), history, HISTORY_TTL_SECONDS);
+    return [...history];
+  });
+  _calibrationAppendLocks.set(metricKeyValue, next.catch(() => [] as number[]));
+  return next;
 }
 
 export async function appendCalibrationTimestamp(metricKeyValue: string, observedAt: number): Promise<number[]> {
   if (!Number.isFinite(observedAt) || observedAt <= 0) {
     return getCalibrationTimestampHistory(metricKeyValue);
   }
-
-  const history = await getCalibrationTimestampHistory(metricKeyValue);
-  history.push(observedAt);
-  if (history.length > HISTORY_MAX_LENGTH) {
-    history.splice(0, history.length - HISTORY_MAX_LENGTH);
-  }
-  timestampHistoryMemory.set(metricKeyValue, history);
-  await setCachedJson(historyTimestampKey(metricKeyValue), history, HISTORY_TTL_SECONDS);
-  return [...history];
+  const gate = _calibrationTimestampAppendLocks.get(metricKeyValue) ?? Promise.resolve([] as number[]);
+  const next = gate.then(async () => {
+    const history = await getCalibrationTimestampHistory(metricKeyValue);
+    history.push(observedAt);
+    if (history.length > HISTORY_MAX_LENGTH) {
+      history.splice(0, history.length - HISTORY_MAX_LENGTH);
+    }
+    timestampHistoryMemory.set(metricKeyValue, history);
+    await setCachedJson(historyTimestampKey(metricKeyValue), history, HISTORY_TTL_SECONDS);
+    return [...history];
+  });
+  _calibrationTimestampAppendLocks.set(metricKeyValue, next.catch(() => [] as number[]));
+  return next;
 }
 
 export async function upsertForensicsPolicyEntry(entry: ForensicsPolicyEntry): Promise<void> {

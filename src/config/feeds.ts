@@ -1,5 +1,6 @@
 import type { Feed } from '@/types';
 import { SITE_VARIANT } from './variant';
+import { isDesktopRuntime } from '@/services/runtime';
 
 // Helper to create RSS proxy URL (Vercel)
 const rss = (url: string) => `/api/rss-proxy?url=${encodeURIComponent(url)}`;
@@ -11,7 +12,7 @@ const railwayBaseUrl = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '')
   : '';
 const railwayRss = (url: string) =>
-  railwayBaseUrl ? `${railwayBaseUrl}/rss?url=${encodeURIComponent(url)}` : rss(url);
+  (railwayBaseUrl && !isDesktopRuntime()) ? `${railwayBaseUrl}/rss?url=${encodeURIComponent(url)}` : rss(url);
 
 // Source tier system for prioritization (lower = more authoritative)
 // Tier 1: Wire services - fastest, most reliable breaking news

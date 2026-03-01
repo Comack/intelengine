@@ -469,6 +469,33 @@ fn apply_linux_webkit_env_policy() -> Option<LinuxWebkitEnvPolicy> {
     if policy.applied_dmabuf_disable {
         env::set_var(WEBKIT_DMABUF_ENV, "1");
     }
+    if policy.safe_mode_enabled {
+        // Always ensure sandbox is disabled on Wayland in safe mode.
+        if policy.session == "wayland" {
+            env::set_var("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS", "1");
+        }
+        // Clear ALL GStreamer path variables — both the plain names and the
+        // GStreamer 1.0-specific _1_0-suffixed names. The linuxdeploy GStreamer
+        // plugin hook sets the _1_0 variants; GStreamer reads those preferentially.
+        // Failing to clear them causes WebKit to find no plugins and crash.
+        for var in &[
+            "GST_PLUGIN_PATH",
+            "GST_PLUGIN_PATH_1_0",
+            "GST_PLUGIN_SCANNER",
+            "GST_PLUGIN_SCANNER_1_0",
+            "GST_REGISTRY_1_0",
+            "GST_PLUGIN_SYSTEM_PATH_1_0",
+            "GST_PTP_HELPER_1_0",
+            "GST_REGISTRY_REUSE_PLUGIN_SCANNER",
+        ] {
+            env::remove_var(var);
+        }
+    }
+
+    // Blacklist the ONNX GStreamer plugin — on Arch/CachyOS it fails to dlopen due to an
+    // ABI version mismatch with the installed libonnxruntime.so and emits a WARNING on every
+    // startup. The app's ML inference uses onnxruntime-web (WASM); the system library is unused.
+    env::set_var("GST_PLUGIN_BLACKLIST", "onnx");
 
     Some(policy)
 }

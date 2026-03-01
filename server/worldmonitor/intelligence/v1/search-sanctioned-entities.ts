@@ -22,7 +22,9 @@ export async function searchSanctionedEntities(
     const url = new URL(OPENSANCTIONS_API_URL + encodeURIComponent(query));
     url.searchParams.append('limit', limit.toString());
 
-    const response = await fetch(url.toString());
+    const response = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch from OpenSanctions: ${response.statusText}`);
     }

@@ -188,7 +188,17 @@ APPIMAGE_GTK_THEME="${APPIMAGE_GTK_THEME:-"Adwaita:$GTK_THEME_VARIANT"}" # Allow
 export APPDIR="${APPDIR:-"$(dirname "$(realpath "$0")")"}" # Workaround to run extracted AppImage
 export GTK_DATA_PREFIX="$APPDIR"
 export GTK_THEME="$APPIMAGE_GTK_THEME" # Custom themes are broken
-export GDK_BACKEND=x11 # Crash with Wayland backend on Wayland - We tested it without it and ended up with this: https://github.com/tauri-apps/tauri/issues/8541
+
+# Allow users to override GDK_BACKEND, but default to x11 to avoid #8541 if not set
+export GDK_BACKEND="${GDK_BACKEND:-x11}" 
+
+# WebKitGTK safeguards for AppImages, Wayland, and NVIDIA
+# 1. Disable sandbox because bwrap often fails inside AppImage mounts, causing WebProcess crashes (black screen + gtk_widget_hide errors)
+# Note: WEBKIT_FORCE_SANDBOX is deprecated in WebKit2GTK 6.0+ and generates a warning; omitted here.
+export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS="${WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS:-1}"
+# 2. Disable DMABUF renderer which crashes on NVIDIA Wayland
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+
 export XDG_DATA_DIRS="$APPDIR/usr/share:/usr/share:$XDG_DATA_DIRS" # g_get_system_data_dirs() from GLib
 EOF
 
@@ -329,5 +339,92 @@ cat >> "$HOOKFILE" <<EOF
 export GIO_EXTRA_MODULES="\$APPDIR/${gio_extras_dir#"$APPDIR"/}"
 EOF
 
-#binary patch absolute paths in libwebkit files
-find "$APPDIR"/usr/lib* -name 'libwebkit*' -exec sed -i -e "s|/usr|././|g" '{}' \;
+# Prevent bundling of WebKitGTK. linuxdeploy sometimes accidentally bundles it (especially 4.1),
+# but WebKit relies on separate subprocesses (WebKitWebProcess) and host-specific GPU/sandbox
+# configurations that break when isolated in an AppImage. We delete them to force fallback to host.
+find "$APPDIR"/usr/lib* -name 'libwebkit*' -delete 2>/dev/null || true
+find "$APPDIR"/usr/lib* -name 'libjavascriptcoregtk*' -delete 2>/dev/null || true
+
+# CRITICAL FIX for "gtk_widget_hide: assertion 'GTK_IS_WIDGET (widget)' failed" on Wayland/NVIDIA:
+# If we fall back to the host's WebKitGTK (because of sandbox/subprocess issues), we MUST ALSO
+# fall back to the host's core GTK3 and GLib libraries. Mixing a bundled libgtk-3.so with a 
+# host's WebKitWebProcess leads to severe memory corruption and widget assertion failures.
+find "$APPDIR"/usr/lib* -name 'libgtk-3*' -delete 2>/dev/null || true
+find "$APPDIR"/usr/lib* -name 'libgdk-3*' -delete 2>/dev/null || true
+find "$APPDIR"/usr/lib* -name 'libglib-2*' -delete 2>/dev/null || true
+find "$APPDIR"/usr/lib* -name 'libgobject-2*' -delete 2>/dev/null || true
+find "$APPDIR"/usr/lib* -name 'libgio-2*' -delete 2>/dev/null || true
+find "$APPDIR"/usr/lib* -name 'libgmodule-2*' -delete 2>/dev/null || true
+
+# Remove bundled GStreamer core libs. linuxdeploy pulls these in as transitive
+# deps of WebKit2GTK, but they are compiled for the build machine's distro
+# (Ubuntu/Debian) with a baked-in plugin scanner path of
+# /usr/lib/x86_64-linux-gnu/gstreamer-1.0/ — a path that does not exist on
+# Arch, Fedora, or other distros. Even after unsetting GST_PLUGIN_PATH at
+# runtime, GStreamer falls back to this compiled-in path and still cannot find
+# appsink/autoaudiosink. WebKit then crashes with GLib-GObject-CRITICAL NULL
+# pointer errors, killing the webview.
+# Removing these forces the host's own GStreamer to be used, which knows the
+# correct platform-specific plugin paths.
+find "$APPDIR"/usr/lib* -name 'libgst*-1.0.so*' -delete 2>/dev/null || true
+
+# Also delete GStreamer plugin subdirectories. linuxdeploy-plugin-gstreamer (if
+# invoked during the build) copies plugin .so files to $APPDIR/usr/lib/gstreamer-1.0/
+# and helper binaries to $APPDIR/usr/lib/gstreamer1.0/gstreamer-1.0/. These are
+# NOT matched by the libgst*-1.0.so* pattern (plugin files lack the -1.0 suffix).
+# Removing the directories ensures GStreamer only looks at host plugins.
+find "$APPDIR"/usr/lib* -type d -name 'gstreamer-1.0' -exec rm -rf {} + 2>/dev/null || true
+find "$APPDIR"/usr/lib* -type d -name 'gstreamer1.0' -exec rm -rf {} + 2>/dev/null || true
+
+# GStreamer: clear AppImage-overridden plugin paths so WebKitWebProcess discovers
+# system plugins. AppImage runtime sets GST_PLUGIN_PATH/GST_PLUGIN_SCANNER to the
+# bundled (incomplete) GStreamer directory, which lacks appsink and autoaudiosink.
+# Without these elements WebKit's media backend crashes with GLib-GObject-CRITICAL
+# NULL pointer errors, resulting in a black webview.
+cat >> "$HOOKFILE" <<'GSTEOF'
+
+# Nuclear GStreamer cleanup: unset ALL GStreamer env var names used by
+# linuxdeploy-plugin-gstreamer's hook — both the unprefixed names AND the
+# GStreamer 1.0-specific _1_0-suffixed names that GStreamer reads preferentially.
+# If any _1_0-suffixed var remains set pointing to AppDir paths (even absent ones),
+# GStreamer 1.0 follows it, finds no plugins, and WebKit crashes with NULL pointer.
+unset GST_PLUGIN_PATH GST_PLUGIN_PATH_1_0
+unset GST_PLUGIN_SCANNER GST_PLUGIN_SCANNER_1_0
+unset GST_REGISTRY_1_0
+unset GST_PLUGIN_SYSTEM_PATH_1_0
+unset GST_PTP_HELPER_1_0
+unset GST_REGISTRY_REUSE_PLUGIN_SCANNER
+
+# Positive host detection: find and SET GST_PLUGIN_PATH to the host's actual
+# GStreamer plugin directory. This is more reliable than relying on GStreamer's
+# compiled-in fallback path, which may not be reached correctly when gst-plugin-
+# scanner runs inside the AppImage's LD_LIBRARY_PATH environment.
+# Covers Arch (/usr/lib/gstreamer-1.0), Fedora (/usr/lib64/gstreamer-1.0),
+# Debian/Ubuntu (/usr/lib/x86_64-linux-gnu/gstreamer-1.0), etc.
+for _gst_dir in \
+    /usr/lib/gstreamer-1.0 \
+    /usr/lib64/gstreamer-1.0 \
+    /usr/lib/x86_64-linux-gnu/gstreamer-1.0 \
+    /usr/lib/aarch64-linux-gnu/gstreamer-1.0 \
+    /usr/lib/arm-linux-gnueabihf/gstreamer-1.0; do
+    if [ -f "${_gst_dir}/libgstcoreelements.so" ]; then
+        export GST_PLUGIN_PATH="${_gst_dir}"
+        break
+    fi
+done
+unset _gst_dir
+
+# Also point the scanner at the host's binary so it is not looked up via the
+# (potentially AppImage-modified) PATH or a stale compiled-in path.
+for _gst_scanner in \
+    /usr/lib/gstreamer-1.0/gst-plugin-scanner \
+    /usr/lib64/gstreamer-1.0/gst-plugin-scanner \
+    /usr/lib/x86_64-linux-gnu/gstreamer-1.0/gst-plugin-scanner \
+    /usr/lib/aarch64-linux-gnu/gstreamer-1.0/gst-plugin-scanner; do
+    if [ -x "$_gst_scanner" ]; then
+        export GST_PLUGIN_SCANNER="$_gst_scanner"
+        break
+    fi
+done
+unset _gst_scanner
+GSTEOF

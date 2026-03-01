@@ -97,9 +97,10 @@ export class LiveNewsPanel extends Panel {
   private readonly youtubeOrigin: string | null;
   private forceFallbackVideoForNextInit = false;
 
-  // Desktop fallback: embed via cloud bridge page to avoid YouTube 153.
-  // Starts false — try native JS API first; switches to true on Error 153.
-  private useDesktopEmbedProxy = false;
+  // Desktop: default to cloud embed proxy (Mode 2) because WebKit2GTK CSP
+  // silently blocks YouTube IFrame API inline scripts, causing black frames.
+  // On web, start with native JS API (Mode 1); switches to Mode 2 on Error 153.
+  private useDesktopEmbedProxy = isDesktopRuntime();
   private desktopEmbedIframe: HTMLIFrameElement | null = null;
   private desktopEmbedRenderToken = 0;
   private boundMessageHandler!: (e: MessageEvent) => void;
@@ -486,7 +487,6 @@ export class LiveNewsPanel extends Panel {
     iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
     iframe.allowFullscreen = true;
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
     iframe.setAttribute('loading', 'eager');
 
     this.playerContainer.appendChild(iframe);

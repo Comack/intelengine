@@ -498,7 +498,7 @@ export function deriveFinancialTopologySignals(
   const derivedSignals: ForensicsSignalInput[] = [];
 
   derivedSignals.push({
-    sourceId: `topology:tsi:\${domain}`,
+    sourceId: `topology:tsi:${domain}`,
     region: 'global',
     domain,
     signalType: 'topology_tsi',
@@ -509,7 +509,7 @@ export function deriveFinancialTopologySignals(
   });
 
   derivedSignals.push({
-    sourceId: `topology:beta1:\${domain}`,
+    sourceId: `topology:beta1:${domain}`,
     region: 'global',
     domain,
     signalType: 'topology_beta1',
@@ -587,7 +587,7 @@ export function deriveFinancialTopologySignals(
   for (const alert of regionAlerts) {
     if (alert.risk < 10) continue;
     derivedSignals.push({
-      sourceId: `topology:region:\${alert.region.toLowerCase()}`,
+      sourceId: `topology:region:${alert.region.toLowerCase()}`,
       region: alert.region,
       domain,
       signalType: 'topology_cycle_risk',
@@ -606,7 +606,7 @@ export function deriveFinancialTopologySignals(
     const avgSim = hyperedges.reduce((sum, h) => sum + h.avgPairwiseSimilarity, 0) / hyperedges.length;
 
     derivedSignals.push({
-      sourceId: `topology:hyperedge:\${domain}`,
+      sourceId: `topology:hyperedge:${domain}`,
       region: 'global',
       domain,
       signalType: 'topology_hyperedge_density',
@@ -617,7 +617,7 @@ export function deriveFinancialTopologySignals(
     });
 
     derivedSignals.push({
-      sourceId: `topology:crossdomain:\${domain}`,
+      sourceId: `topology:crossdomain:${domain}`,
       region: 'global',
       domain,
       signalType: 'topology_cross_domain_sync',
@@ -630,7 +630,7 @@ export function deriveFinancialTopologySignals(
 
   const dedupedByKey = new Map<string, ForensicsSignalInput>();
   for (const signal of derivedSignals) {
-    const key = `\${signal.sourceId}::\${signal.signalType}::\${signal.region || 'global'}`;
+    const key = `${signal.sourceId}::${signal.signalType}::${signal.region || 'global'}`;
     const existing = dedupedByKey.get(key);
     if (!existing || signal.value > existing.value) {
       dedupedByKey.set(key, signal);

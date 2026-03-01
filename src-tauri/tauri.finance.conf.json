@@ -18,7 +18,9 @@
       "dmg",
       "nsis",
       "msi",
-      "appimage"
+      "appimage",
+      "deb",
+      "rpm"
     ],
     "macOS": {
       "hardenedRuntime": true

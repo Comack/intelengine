@@ -229,7 +229,12 @@ export function installRuntimeFetchPatch(): void {
       }
     }
 
-    if (allowCloudFallback) {
+    // Only authenticated sebuf gRPC endpoints (/api/{domain}/v1/…) check
+    // X-WorldMonitor-Key on the server. Public endpoints like /api/rss-proxy
+    // and /api/youtube/* do not require a key, so blocking their cloud fallback
+    // when no key is configured would leave news and livestream with no recovery
+    // path when the local sidecar is unavailable.
+    if (allowCloudFallback && /^\/api\/[^/]+\/v1\//.test(target)) {
       try {
         const { getSecretState, secretsReady } = await import('@/services/runtime-config');
         await Promise.race([secretsReady, new Promise<void>(r => setTimeout(r, 2000))]);
