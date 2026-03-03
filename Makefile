@@ -55,6 +55,10 @@ lint: ## Lint protobuf files
 generate: clean ## Generate code from proto definitions
 	@mkdir -p $(GEN_CLIENT_DIR) $(GEN_SERVER_DIR) $(DOCS_API_DIR)
 	cd $(PROTO_DIR) && buf generate
+	@# The sebuf v0.7.0 generator produces enum-vs-string and string-to-string[]
+	@# patterns that TypeScript strict mode rejects. Suppress with @ts-nocheck since
+	@# these files are machine-generated and must not be hand-edited.
+	@find $(GEN_CLIENT_DIR) $(GEN_SERVER_DIR) -name "*.ts" | xargs -I{} sed -i '1s|^// Code generated|// @ts-nocheck\n// Code generated|' {}
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main
