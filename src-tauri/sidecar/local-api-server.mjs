@@ -475,6 +475,36 @@ const trafficLog = [];
 let verboseMode = false;
 let _verboseStatePath = null;
 
+// ── Embedded AIS relay ──────────────────────────────────────────────────
+// When AISSTREAM_API_KEY is set and WS_RELAY_URL is NOT set, the sidecar
+// maintains a direct WebSocket connection to aisstream.io and serves
+// /api/ais-snapshot from its in-process vessel cache.  When WS_RELAY_URL
+// IS configured, the bundled api/ais-snapshot.js handler (which proxies
+// to the external relay server) takes precedence instead.
+let _aisRelay = null;
+
+async function maybeStartAisRelay(logger = console) {
+  const apiKey = process.env.AISSTREAM_API_KEY;
+  const relayUrl = process.env.WS_RELAY_URL;
+  // Only use the embedded relay when no external relay URL is configured.
+  if (apiKey && !relayUrl) {
+    if (!_aisRelay) {
+      try {
+        const { createAisRelay } = await import('./ais-relay.mjs');
+        _aisRelay = createAisRelay({ logger });
+        _aisRelay.start();
+        logger.log('[local-api] embedded AIS relay started (direct aisstream.io connection)');
+      } catch (err) {
+        logger.warn('[local-api] could not start embedded AIS relay:', err.message);
+      }
+    }
+  } else if (_aisRelay && (!apiKey || relayUrl)) {
+    _aisRelay.stop();
+    _aisRelay = null;
+    logger.log('[local-api] embedded AIS relay stopped');
+  }
+}
+
 function loadVerboseState(dataDir) {
   _verboseStatePath = path.join(dataDir, 'verbose-mode.json');
   try {
@@ -998,7 +1028,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     }
 
     case 'AISSTREAM_API_KEY':
-      return ok('AISSTREAM key stored (live verification not available in sidecar)');
+      return ok('AISSTREAM key stored — embedded AIS relay will connect directly to aisstream.io (no relay server required)');
 
     case 'WTO_API_KEY':
       return ok('WTO API key stored (live verification not available in sidecar)');
@@ -1275,6 +1305,10 @@ async function dispatch(requestUrl, req, routes, context) {
             moduleCache.clear();
             failedImports.clear();
             cloudPreferred.clear();
+            // Restart/stop embedded AIS relay if the relevant keys changed.
+            if (key === 'AISSTREAM_API_KEY' || key === 'WS_RELAY_URL') {
+              maybeStartAisRelay(context.logger).catch(() => {});
+            }
             return json({ ok: true, key });
           }
           return json({ error: 'key not in allowlist' }, 403);
@@ -1307,6 +1341,19 @@ async function dispatch(requestUrl, req, routes, context) {
   if (context.cloudFallback && cloudPreferred.has(requestUrl.pathname)) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context);
     if (cloudResponse) return cloudResponse;
+  }
+
+  // Embedded AIS relay — serve /api/ais-snapshot directly from the in-process
+  // vessel cache when the relay is active (AISSTREAM_API_KEY set, no WS_RELAY_URL).
+  // If WS_RELAY_URL is configured the embedded relay is inactive and the request
+  // falls through to api/ais-snapshot.js which proxies to the external relay.
+  if (requestUrl.pathname === '/api/ais-snapshot' && _aisRelay) {
+    const includeCandidates = requestUrl.searchParams.get('candidates') === 'true';
+    const snapshot = _aisRelay.buildSnapshot();
+    if (includeCandidates) {
+      snapshot.candidateReports = _aisRelay.getCandidateReports();
+    }
+    return json(snapshot);
   }
 
   const modulePath = pickModule(requestUrl.pathname, routes);
@@ -1469,9 +1516,12 @@ export async function createLocalApiServer(options = {}) {
       }
 
       context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
+      // Start embedded AIS relay if AISSTREAM_API_KEY is already set in env.
+      await maybeStartAisRelay(context.logger);
       return { port: boundPort };
     },
     async close() {
+      if (_aisRelay) { _aisRelay.stop(); _aisRelay = null; }
       await new Promise((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });

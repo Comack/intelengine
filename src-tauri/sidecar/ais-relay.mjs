@@ -231,16 +231,14 @@ export function createAisRelay({ logger = console } = {}) {
       return;
     }
 
-    let WebSocketImpl;
-    try {
-      const wsModule = await import('ws').catch(() => null);
-      if (!wsModule) {
-        logger.warn('[ais-relay] ws package not available — AIS relay inactive');
-        return;
-      }
-      WebSocketImpl = wsModule.WebSocket || wsModule.default?.WebSocket || wsModule.default;
-    } catch {
-      logger.warn('[ais-relay] ws package not available — AIS relay inactive');
+    // Prefer native WebSocket (Node 22+ built-in, always available in the bundled
+    // sidecar runtime).  Fall back to the ws npm package for development environments
+    // that run an older Node version.
+    const WebSocketImpl = globalThis.WebSocket
+      ?? await import('ws').then((m) => m.WebSocket ?? m.default?.WebSocket ?? m.default).catch(() => null);
+
+    if (!WebSocketImpl) {
+      logger.warn('[ais-relay] WebSocket implementation not available — AIS relay inactive');
       return;
     }
 
@@ -252,7 +250,20 @@ export function createAisRelay({ logger = console } = {}) {
       return;
     }
 
-    upstreamSocket.on('open', () => {
+    // Support both ws package (.on) and native WHATWG WebSocket (addEventListener).
+    const on = (event, handler) => {
+      if (typeof upstreamSocket.on === 'function') {
+        upstreamSocket.on(event, handler);
+      } else {
+        upstreamSocket.addEventListener(event, (e) => {
+          if (event === 'message') handler(e.data);
+          else if (event === 'error') handler(e.error ?? e);
+          else handler(e);
+        });
+      }
+    };
+
+    on('open', () => {
       reconnectDelay = 2000;
       logger.log('[ais-relay] connected to aisstream.io');
       upstreamSocket.send(JSON.stringify({
@@ -262,19 +273,20 @@ export function createAisRelay({ logger = console } = {}) {
       }));
     });
 
-    upstreamSocket.on('message', (raw) => {
+    on('message', (raw) => {
       try {
-        const data = JSON.parse(raw.toString());
+        const text = typeof raw === 'string' ? raw : (raw instanceof ArrayBuffer ? new TextDecoder().decode(raw) : String(raw));
+        const data = JSON.parse(text);
         messageCount++;
         if (data?.Message?.PositionReport) processPositionReport(data);
       } catch { /* ignore parse errors */ }
     });
 
-    upstreamSocket.on('error', (err) => {
-      logger.warn('[ais-relay] WebSocket error', err.message);
+    on('error', (err) => {
+      logger.warn('[ais-relay] WebSocket error', err?.message ?? String(err));
     });
 
-    upstreamSocket.on('close', () => {
+    on('close', () => {
       logger.warn('[ais-relay] WebSocket closed');
       upstreamSocket = null;
       if (!stopped) scheduleReconnect();
