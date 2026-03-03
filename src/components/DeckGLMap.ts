@@ -339,6 +339,16 @@ export class DeckGLMap {
   private rafUpdateLayers: () => void;
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+  // Stored event handlers for cleanup
+  private handleThemeChanged: (e: Event) => void;
+  private handleWebGLContextLost!: (e: Event) => void;
+  private handleWebGLContextRestored!: () => void;
+  private handleMapMoveStart!: () => void;
+  private handleMapMoveEnd!: () => void;
+  private handleMapMove!: () => void;
+  private handleMapZoom!: () => void;
+  private handleMapZoomEnd!: () => void;
+
   constructor(container: HTMLElement, initialState: DeckMapState) {
     this.container = container;
     this.state = initialState;
@@ -360,13 +370,14 @@ export class DeckGLMap {
     this.setupDOM();
     this.popup = new MapPopup(container);
 
-    window.addEventListener('theme-changed', (e: Event) => {
+    this.handleThemeChanged = (e: Event) => {
       const theme = (e as CustomEvent).detail?.theme as 'dark' | 'light';
       if (theme) {
         this.switchBasemap(theme);
-        this.render(); // Rebuilds Deck.GL layers with new theme-aware colors
+        this.render();
       }
-    });
+    };
+    window.addEventListener('theme-changed', this.handleThemeChanged);
 
     this.initMapLibre();
 
@@ -422,16 +433,18 @@ export class DeckGLMap {
     });
 
     const canvas = this.maplibreMap.getCanvas();
-    canvas.addEventListener('webglcontextlost', (e) => {
+    this.handleWebGLContextLost = (e) => {
       e.preventDefault();
       this.webglLost = true;
       console.warn('[DeckGLMap] WebGL context lost — will restore when browser recovers');
-    });
-    canvas.addEventListener('webglcontextrestored', () => {
+    };
+    this.handleWebGLContextRestored = () => {
       this.webglLost = false;
       console.info('[DeckGLMap] WebGL context restored');
       this.maplibreMap?.triggerRepaint();
-    });
+    };
+    canvas.addEventListener('webglcontextlost', this.handleWebGLContextLost);
+    canvas.addEventListener('webglcontextrestored', this.handleWebGLContextRestored);
   }
 
   private initDeck(): void {
@@ -449,42 +462,47 @@ export class DeckGLMap {
 
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
 
-    this.maplibreMap.on('movestart', () => {
+    this.handleMapMoveStart = () => {
       if (this.moveTimeoutId) {
         clearTimeout(this.moveTimeoutId);
         this.moveTimeoutId = null;
       }
-    });
+    };
+    this.maplibreMap.on('movestart', this.handleMapMoveStart);
 
-    this.maplibreMap.on('moveend', () => {
+    this.handleMapMoveEnd = () => {
       this.lastSCZoom = -1;
       this.rafUpdateLayers();
-    });
+    };
+    this.maplibreMap.on('moveend', this.handleMapMoveEnd);
 
-    this.maplibreMap.on('move', () => {
+    this.handleMapMove = () => {
       if (this.moveTimeoutId) clearTimeout(this.moveTimeoutId);
       this.moveTimeoutId = setTimeout(() => {
         this.lastSCZoom = -1;
         this.rafUpdateLayers();
       }, 100);
-    });
+    };
+    this.maplibreMap.on('move', this.handleMapMove);
 
-    this.maplibreMap.on('zoom', () => {
+    this.handleMapZoom = () => {
       if (this.moveTimeoutId) clearTimeout(this.moveTimeoutId);
       this.moveTimeoutId = setTimeout(() => {
         this.lastSCZoom = -1;
         this.rafUpdateLayers();
       }, 100);
-    });
+    };
+    this.maplibreMap.on('zoom', this.handleMapZoom);
 
-    this.maplibreMap.on('zoomend', () => {
+    this.handleMapZoomEnd = () => {
       const currentZoom = Math.floor(this.maplibreMap?.getZoom() || 2);
       const thresholdCrossed = Math.abs(currentZoom - this.lastZoomThreshold) >= 1;
       if (thresholdCrossed) {
         this.lastZoomThreshold = currentZoom;
         this.debouncedRebuildLayers();
       }
-    });
+    };
+    this.maplibreMap.on('zoomend', this.handleMapZoomEnd);
   }
 
   private setupResizeObserver(): void {
@@ -4347,6 +4365,26 @@ export class DeckGLMap {
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
+    }
+
+    window.removeEventListener('theme-changed', this.handleThemeChanged);
+
+    // Remove WebGL context listeners from canvas before map removal
+    try {
+      const canvas = this.maplibreMap?.getCanvas();
+      if (canvas) {
+        canvas.removeEventListener('webglcontextlost', this.handleWebGLContextLost);
+        canvas.removeEventListener('webglcontextrestored', this.handleWebGLContextRestored);
+      }
+    } catch { /* canvas may already be gone */ }
+
+    // Remove MapLibre map event listeners
+    if (this.maplibreMap) {
+      this.maplibreMap.off('movestart', this.handleMapMoveStart);
+      this.maplibreMap.off('moveend', this.handleMapMoveEnd);
+      this.maplibreMap.off('move', this.handleMapMove);
+      this.maplibreMap.off('zoom', this.handleMapZoom);
+      this.maplibreMap.off('zoomend', this.handleMapZoomEnd);
     }
 
     this.layerCache.clear();

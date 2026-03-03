@@ -4,6 +4,12 @@ export const config = { runtime: 'edge' };
 const RELEASES_URL = 'https://api.github.com/repos/koala73/worldmonitor/releases/latest';
 const RELEASES_PAGE = 'https://github.com/koala73/worldmonitor/releases/latest';
 
+const ALLOWED_DOWNLOAD_HOSTS = new Set([
+  'github.com',
+  'objects.githubusercontent.com',
+  'github-releases.githubusercontent.com',
+]);
+
 const PLATFORM_PATTERNS = {
   'windows-exe': (name) => name.endsWith('_x64-setup.exe'),
   'windows-msi': (name) => name.endsWith('_x64_en-US.msi'),
@@ -64,10 +70,21 @@ export default async function handler(req) {
       return Response.redirect(RELEASES_PAGE, 302);
     }
 
+    let downloadUrl;
+    try {
+      downloadUrl = new URL(asset.browser_download_url);
+    } catch {
+      return new Response('Invalid download URL', { status: 502 });
+    }
+
+    if (!ALLOWED_DOWNLOAD_HOSTS.has(downloadUrl.hostname)) {
+      return new Response('Untrusted download domain', { status: 502 });
+    }
+
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': asset.browser_download_url,
+        'Location': downloadUrl.href,
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
       },
     });

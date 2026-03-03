@@ -144,10 +144,10 @@ export class Panel {
     this.element.appendChild(this.resizeHandle);
     this.setupResizeHandlers();
 
-    // Restore saved span
+    // Restore saved span — validate it is an integer in [1, 4] before applying
     const savedSpans = loadPanelSpans();
     const savedSpan = savedSpans[this.panelId];
-    if (savedSpan && savedSpan > 1) {
+    if (savedSpan !== undefined && Number.isInteger(savedSpan) && savedSpan >= 2 && savedSpan <= 4) {
       setSpanClass(this.element, savedSpan);
     }
 

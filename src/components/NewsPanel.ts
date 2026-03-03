@@ -379,11 +379,16 @@ export class NewsPanel extends Panel {
     if (this.useVirtualScroll && sorted.length > VIRTUAL_SCROLL_THRESHOLD && this.windowedList) {
       this.windowedList.setItems(prepared);
     } else {
-      // Direct render for small lists
+      // Direct render for small lists — preserve scroll position across re-renders
+      const savedScrollTop = this.content.scrollTop;
       const html = prepared
         .map(p => this.renderClusterHtmlSafely(p.cluster, p.isNew, p.shouldHighlight, p.showNewTag))
         .join('');
       this.setContent(html);
+      // setContent is debounced (150ms); restore scroll after the DOM settles
+      if (savedScrollTop > 0) {
+        setTimeout(() => { this.content.scrollTop = savedScrollTop; }, 200);
+      }
       this.bindRelatedAssetEvents();
     }
   }

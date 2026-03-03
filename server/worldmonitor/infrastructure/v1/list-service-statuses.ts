@@ -9,6 +9,21 @@ import type {
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 
+/** Run an array of task factories with at most `limit` concurrent executions. */
+async function withConcurrencyLimit<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let idx = 0;
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (idx < tasks.length) {
+      const i = idx++;
+      const task = tasks[i];
+      if (task) results[i] = await task();
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 // Minimal typed shapes for external status page API responses
 interface GcpIncident { end?: string; severity?: string }
 interface InStatusResponse { page?: { status?: string } }
@@ -303,7 +318,7 @@ export async function listServiceStatuses(
     const results = cached && Array.isArray(cached)
       ? cached
       : await (async () => {
-          const fresh = await Promise.all(SERVICES.map(checkServiceStatus));
+          const fresh = await withConcurrencyLimit(SERVICES.map(svc => () => checkServiceStatus(svc)), 5);
           await setCachedJson(INFRA_CACHE_KEY, fresh, INFRA_CACHE_TTL);
           return fresh;
         })();

@@ -129,10 +129,13 @@ const pkginfo = [
   // GStreamer deps — this is the whole point of the native package format:
   // the system package manager guarantees these are present before install.
   `depend = webkit2gtk-4.1`,
+  `depend = glib-networking`,   // Required for WebKit2GTK / libsoup TLS (HTTPS) requests
+  `depend = openssl`,           // Required for Rust native-tls and general crypto
   `depend = gstreamer`,
   `depend = gst-plugins-base`,
   `depend = gst-plugins-good`,
   `depend = gst-plugins-bad`,   // adaptivedemux2/DASH/HLS demuxers for YouTube adaptive streams
+  `depend = gst-plugins-ugly`,  // Additional codecs sometimes needed by WebKit (Arch only — omitted from deb/rpm due to patent/licensing restrictions)
   `depend = gst-libav`,         // H.264/AAC decoder (FFmpeg-based) for WebKit MSE
   `depend = gtk3`,
 ].join('\n') + '\n';

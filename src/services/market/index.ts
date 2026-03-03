@@ -19,7 +19,7 @@ import { createCircuitBreaker } from '@/utils';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new MarketServiceClient('', { fetch: (...args: Parameters<typeof fetch>) => fetch(...args) });
+const client = new MarketServiceClient('', { fetch: fetch.bind(globalThis) });
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: 0 });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes' });
 

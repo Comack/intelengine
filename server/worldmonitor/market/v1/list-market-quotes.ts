@@ -13,6 +13,18 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { YAHOO_ONLY_SYMBOLS, fetchFinnhubQuote, fetchYahooQuote } from './_shared';
 
+/** Fetch items with at most `limit` concurrent requests. */
+async function withConcurrencyLimit<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let idx = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+      while (idx < tasks.length) { const i = idx++; const t = tasks[i]; if (t) results[i] = await t(); }
+    }),
+  );
+  return results;
+}
+
 export async function listMarketQuotes(
   _ctx: ServerContext,
   req: ListMarketQuotesRequest,
@@ -27,10 +39,12 @@ export async function listMarketQuotes(
 
     const quotes: MarketQuote[] = [];
 
-    // Fetch Finnhub quotes (only if API key is set)
+    // Fetch Finnhub quotes (only if API key is set); limit to 3 concurrent
+    // requests to stay within Finnhub's 60 req/min free-tier rate limit.
     if (finnhubSymbols.length > 0 && apiKey) {
-      const results = await Promise.all(
-        finnhubSymbols.map((s) => fetchFinnhubQuote(s, apiKey)),
+      const results = await withConcurrencyLimit(
+        finnhubSymbols.map((s) => () => fetchFinnhubQuote(s, apiKey)),
+        3,
       );
       for (const r of results) {
         if (r) {

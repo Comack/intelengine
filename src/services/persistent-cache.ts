@@ -80,11 +80,12 @@ export async function getPersistentCache<T>(key: string): Promise<CacheEnvelope<
   }
 
   if (isIndexedDbAvailable()) {
+    const usedPromise = cacheDbPromise;
     try {
       return await getFromIndexedDb<T>(key);
     } catch (error) {
       console.warn('[persistent-cache] IndexedDB read failed; falling back to localStorage', error);
-      cacheDbPromise = null;
+      if (cacheDbPromise === usedPromise) cacheDbPromise = null;
     }
   }
 
@@ -109,13 +110,14 @@ export async function setPersistentCache<T>(key: string, data: T): Promise<void>
   }
 
   if (isIndexedDbAvailable() && !isStorageQuotaExceeded()) {
+    const usedPromise = cacheDbPromise;
     try {
       await setInIndexedDb(payload);
       return;
     } catch (error) {
       if (isQuotaError(error)) markStorageQuotaExceeded();
       else console.warn('[persistent-cache] IndexedDB write failed; falling back to localStorage', error);
-      cacheDbPromise = null;
+      if (cacheDbPromise === usedPromise) cacheDbPromise = null;
     }
   }
 

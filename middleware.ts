@@ -30,8 +30,10 @@ export default function middleware(request: Request) {
     });
   }
 
-  // No user-agent or suspiciously short — likely a script
-  if (!ua || ua.length < 10) {
+  // Block requests with no User-Agent header entirely.
+  // Avoid length-based checks: curl/7.9 (8 chars), wget/1.x (7 chars),
+  // and similar tools used in legitimate CI/CD pipelines are too short.
+  if (!ua) {
     return new Response('{"error":"Forbidden"}', {
       status: 403,
       headers: { 'Content-Type': 'application/json' },

@@ -50,6 +50,10 @@
     "resources": [
       "../api",
       "sidecar/local-api-server.mjs",
+      "sidecar/local-cache.mjs",
+      "sidecar/ais-relay.mjs",
+      "sidecar/opensky-relay.mjs",
+      "sidecar/forensics-worker.mjs",
       "sidecar/package.json",
       "sidecar/node",
       "../data",
@@ -65,21 +69,29 @@
     "linux": {
       "deb": {
         "depends": [
-          "libwebkit2gtk-4.1-0",
+          "libwebkit2gtk-4.1-0 (>= 2.42.0)",
+          "glib-networking (>= 2.70)",
           "libgstreamer1.0-0 (>= 1.18.0)",
           "libgst-plugins-base1.0-0 (>= 1.18.0)",
           "libgst-plugins-good1.0-0",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-libav",
           "libglib2.0-0",
-          "libgtk-3-0"
+          "libgtk-3-0",
+          "librsvg2-2"
         ]
       },
       "rpm": {
         "depends": [
-          "webkit2gtk4.1",
+          "webkit2gtk4.1 >= 2.42.0",
+          "glib-networking >= 2.70",
           "gstreamer1",
           "gstreamer1-plugins-base",
           "gstreamer1-plugins-good",
-          "gtk3"
+          "gstreamer1-plugins-bad-free",
+          "gstreamer1-libav",
+          "gtk3",
+          "librsvg2"
         ]
       }
     }

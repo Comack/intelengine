@@ -53,7 +53,8 @@ async function fetchFromGfw(
     .toISOString()
     .slice(0, 10);
 
-  const sql = `SELECT latitude, longitude, area__ha, alert_date, confidence, country_iso3, subnational1 FROM data WHERE alert_date >= '${thirtyDaysAgo}' ORDER BY area__ha DESC LIMIT ${req.limit || 50}`;
+  const safeLimit = Math.max(1, Math.min(500, Math.floor(Number(req.limit) || 50)));
+  const sql = `SELECT latitude, longitude, area__ha, alert_date, confidence, country_iso3, subnational1 FROM data WHERE alert_date >= '${thirtyDaysAgo}' ORDER BY area__ha DESC LIMIT ${safeLimit}`;
 
   const url = `${GFW_API_BASE}?sql=${encodeURIComponent(sql)}`;
 

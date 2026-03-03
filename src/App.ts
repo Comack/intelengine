@@ -276,6 +276,7 @@ export class App {
   private seenGeoAlerts: Set<string> = new Set();
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private refreshTimeoutIds: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private searchIndexDirty = true;
   private isDestroyed = false;
   private boundKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundFullscreenHandler: (() => void) | null = null;
@@ -283,6 +284,9 @@ export class App {
   private boundVisibilityHandler: (() => void) | null = null;
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
+  private boundFocalPointsHandler: (() => void) | null = null;
+  private boundThemeChangedHandler: (() => void) | null = null;
+  private panelViewObserver: IntersectionObserver | null = null;
   private isIdle = false;
   private readonly IDLE_PAUSE_MS = 2 * 60 * 1000; // 2 minutes - pause animations when idle
   private disabledSources: Set<string> = new Set();
@@ -555,6 +559,7 @@ export class App {
         // Wait for data to load, then open story
         let attempts = 0;
         const checkAndOpen = () => {
+          if (this.isDestroyed) return;
           if (dataFreshness.hasSufficientData() && this.latestClusters.length > 0) {
             this.openCountryStory(countryCode.toUpperCase(), countryName);
             return;
@@ -564,10 +569,12 @@ export class App {
             this.showToast('Data not available');
             return;
           } else {
-            setTimeout(checkAndOpen, DEEP_LINK_RETRY_INTERVAL_MS);
+            const tid = setTimeout(checkAndOpen, DEEP_LINK_RETRY_INTERVAL_MS);
+            this.refreshTimeoutIds.set(`deep-link-story-${attempts}`, tid);
           }
         };
-        setTimeout(checkAndOpen, DEEP_LINK_INITIAL_DELAY_MS);
+        const tid0 = setTimeout(checkAndOpen, DEEP_LINK_INITIAL_DELAY_MS);
+        this.refreshTimeoutIds.set('deep-link-story-0', tid0);
 
         // Update URL without reload
         history.replaceState(null, '', '/');
@@ -583,6 +590,7 @@ export class App {
       const cName = App.resolveCountryName(deepLinkCountry);
       let attempts = 0;
       const checkAndOpenBrief = () => {
+        if (this.isDestroyed) return;
         if (dataFreshness.hasSufficientData()) {
           this.openCountryBriefByCode(deepLinkCountry, cName);
           return;
@@ -592,16 +600,18 @@ export class App {
           this.showToast('Data not available');
           return;
         } else {
-          setTimeout(checkAndOpenBrief, DEEP_LINK_RETRY_INTERVAL_MS);
+          const tid = setTimeout(checkAndOpenBrief, DEEP_LINK_RETRY_INTERVAL_MS);
+          this.refreshTimeoutIds.set(`deep-link-brief-${attempts}`, tid);
         }
       };
-      setTimeout(checkAndOpenBrief, DEEP_LINK_INITIAL_DELAY_MS);
+      const tid0 = setTimeout(checkAndOpenBrief, DEEP_LINK_INITIAL_DELAY_MS);
+      this.refreshTimeoutIds.set('deep-link-brief-0', tid0);
     }
   }
 
   private setupPanelViewTracking(): void {
     const viewedPanels = new Set<string>();
-    const observer = new IntersectionObserver((entries) => {
+    this.panelViewObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
           const id = (entry.target as HTMLElement).dataset.panel;
@@ -617,7 +627,7 @@ export class App {
     if (grid) {
       for (const child of Array.from(grid.children)) {
         if ((child as HTMLElement).dataset.panel) {
-          observer.observe(child);
+          this.panelViewObserver.observe(child);
         }
       }
     }
@@ -1348,6 +1358,11 @@ export class App {
     });
 
     const terms = [...dedup];
+    // LRU-lite: evict oldest entry when cache exceeds 200 entries
+    if (App.otherCountryTermsCache.size >= 200) {
+      const oldest = App.otherCountryTermsCache.keys().next().value;
+      if (oldest !== undefined) App.otherCountryTermsCache.delete(oldest);
+    }
     App.otherCountryTermsCache.set(code, terms);
     return terms;
   }
@@ -1804,8 +1819,11 @@ export class App {
         if (this.searchModal?.isOpen()) {
           this.searchModal.close();
         } else {
-          // Update search index with latest data before opening
-          this.updateSearchIndex();
+          // Only rebuild the search index when data has changed since last open
+          if (this.searchIndexDirty) {
+            this.updateSearchIndex();
+            this.searchIndexDirty = false;
+          }
           this.searchModal?.open();
         }
       }
@@ -2051,7 +2069,6 @@ export class App {
       subtitle: n.source,
       data: n,
     }));
-    console.log(`[Search] Indexing ${newsItems.length} news items (allNews total: ${this.allNews.length})`);
     this.searchModal.registerSource('news', newsItems);
 
     // Update predictions if available
@@ -2166,6 +2183,7 @@ export class App {
       liquidity: 0,
     }));
     this.latestPredictions = predictions;
+    this.searchIndexDirty = true;
     (this.panels['polymarket'] as PredictionPanel).renderPredictions(predictions);
 
     this.map?.setHotspotLevels(snapshot.hotspotLevels);
@@ -2423,6 +2441,22 @@ export class App {
         document.removeEventListener(event, this.boundIdleResetHandler!);
       });
       this.boundIdleResetHandler = null;
+    }
+
+    // Clean up window event listeners
+    if (this.boundFocalPointsHandler) {
+      window.removeEventListener('focal-points-ready', this.boundFocalPointsHandler);
+      this.boundFocalPointsHandler = null;
+    }
+    if (this.boundThemeChangedHandler) {
+      window.removeEventListener('theme-changed', this.boundThemeChangedHandler);
+      this.boundThemeChangedHandler = null;
+    }
+
+    // Clean up IntersectionObserver
+    if (this.panelViewObserver) {
+      this.panelViewObserver.disconnect();
+      this.panelViewObserver = null;
     }
 
     // Clean up map and AIS
@@ -3110,15 +3144,17 @@ export class App {
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
     // Refresh CII when focal points are ready (ensures focal point urgency is factored in)
-    window.addEventListener('focal-points-ready', () => {
+    this.boundFocalPointsHandler = () => {
       (this.panels['cii'] as CIIPanel)?.refresh(true); // forceLocal to use focal point data
-    });
+    };
+    window.addEventListener('focal-points-ready', this.boundFocalPointsHandler);
 
     // Re-render components with baked getCSSColor() values on theme change
-    window.addEventListener('theme-changed', () => {
+    this.boundThemeChangedHandler = () => {
       this.map?.render();
       this.updateHeaderThemeIcon();
-    });
+    };
+    window.addEventListener('theme-changed', this.boundThemeChangedHandler);
 
     // Idle detection - pause animations after 2 minutes of inactivity
     this.setupIdleDetection();
@@ -3259,24 +3295,15 @@ export class App {
     let startY = 0;
     let startHeight = 0;
 
-    resizeHandle.addEventListener('mousedown', (e) => {
-      isResizing = true;
-      startY = e.clientY;
-      startHeight = mapSection.offsetHeight;
-      mapSection.classList.add('resizing');
-      document.body.style.cursor = 'ns-resize';
-      e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
+    const onMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
       const deltaY = e.clientY - startY;
       const newHeight = Math.max(getMinHeight(), Math.min(startHeight + deltaY, getMaxHeight()));
       mapSection.style.height = `${newHeight}px`;
       this.map?.render();
-    });
+    };
 
-    document.addEventListener('mouseup', () => {
+    const onMouseUp = () => {
       if (!isResizing) return;
       isResizing = false;
       mapSection.classList.remove('resizing');
@@ -3284,6 +3311,19 @@ export class App {
       // Save height preference
       localStorage.setItem('map-height', mapSection.style.height);
       this.map?.render();
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    resizeHandle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = mapSection.offsetHeight;
+      mapSection.classList.add('resizing');
+      document.body.style.cursor = 'ns-resize';
+      e.preventDefault();
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
     });
   }
 
@@ -3908,6 +3948,7 @@ export class App {
     }
 
     this.allNews = collectedNews;
+    this.searchIndexDirty = true;
     this.initialLoadComplete = true;
     maybeShowDownloadBanner();
     mountCommunityWidget();
@@ -3959,6 +4000,7 @@ export class App {
       const stocksResult = await fetchMultipleStocks(MARKET_SYMBOLS, {
         onBatch: (partialStocks) => {
           this.latestMarkets = partialStocks;
+          this.searchIndexDirty = true;
           (this.panels['markets'] as MarketPanel).renderMarkets(partialStocks);
         },
       });
@@ -4466,6 +4508,7 @@ export class App {
   ): void {
     const overlay = this.buildForensicsMapAnomalies(runId, anomalies, runCompletedAt);
     this.latestForensicsOverlay = overlay;
+    this.searchIndexDirty = true;
     this.map?.setForensicsAnomalies(overlay);
     this.map?.setLayerReady('forensics', overlay.length > 0);
     const insightsPanel = this.panels['insights'] as InsightsPanel | undefined;

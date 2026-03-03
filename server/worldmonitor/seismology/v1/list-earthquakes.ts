@@ -23,7 +23,7 @@ export const listEarthquakes: SeismologyServiceHandler['listEarthquakes'] = asyn
   _ctx: ServerContext,
   req: ListEarthquakesRequest,
 ): Promise<ListEarthquakesResponse> => {
-  const pageSize = req.pagination?.pageSize || 500;
+  const pageSize = Math.min(req.pagination?.pageSize || 500, 1000);
 
   // Check Redis cache first (H-4 fix) — cache stores full set, slice on read (C-4 fix)
   const cached = (await getCachedJson(CACHE_KEY)) as { earthquakes: ListEarthquakesResponse['earthquakes'] } | null;

@@ -33,11 +33,15 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
   // ApiError: has statusCode property (e.g., upstream returns 429, 403, etc.)
   if (error instanceof Error && 'statusCode' in error) {
     const statusCode = (error as Error & { statusCode: number }).statusCode;
-    // Only expose error.message for 4xx (client errors). Use generic message for 5xx
-    // to avoid leaking internal details like upstream URLs or API key fragments (H-3 fix).
+    // Use generic messages for all status codes to avoid leaking upstream domain
+    // names, endpoint paths, or API key fragments in error responses.
     const message = statusCode >= 400 && statusCode < 500
-      ? error.message
+      ? 'Upstream rejected request'
       : 'Internal server error';
+    if (statusCode >= 400 && statusCode < 500) {
+      // Log the full message server-side for debugging
+      console.error(`[error-mapper] ${statusCode}:`, error.message);
+    }
     const body: Record<string, unknown> = { message };
 
     // Rate limit: include retryAfter if present

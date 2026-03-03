@@ -263,13 +263,29 @@ function pruneCallbackTimestampIndex(now: number): void {
     return;
   }
 
-  const oldest = Array.from(lastCallbackTimestampByMmsi.entries())
-    .sort((a, b) => a[1] - b[1]);
   const toDelete = lastCallbackTimestampByMmsi.size - MAX_CALLBACK_TRACKED_VESSELS;
-  for (let i = 0; i < toDelete; i++) {
-    const entry = oldest[i];
-    if (!entry) break;
-    lastCallbackTimestampByMmsi.delete(entry[0]);
+  // O(n × toDelete) partial selection instead of O(n log n) full sort —
+  // much faster when only a handful of entries need eviction (common case).
+  const evict: [string, number][] = [];
+  let cutoff = -Infinity;
+  for (const [mmsi, ts] of lastCallbackTimestampByMmsi) {
+    if (evict.length < toDelete) {
+      evict.push([mmsi, ts]);
+      if (ts > cutoff) cutoff = ts;
+    } else if (ts < cutoff) {
+      let mi = 0;
+      for (let j = 1; j < evict.length; j++) {
+        if (evict[j]![1] > evict[mi]![1]) mi = j;
+      }
+      evict[mi] = [mmsi, ts];
+      cutoff = evict[0]![1];
+      for (let j = 1; j < evict.length; j++) {
+        if (evict[j]![1] > cutoff) cutoff = evict[j]![1];
+      }
+    }
+  }
+  for (const [mmsi] of evict) {
+    lastCallbackTimestampByMmsi.delete(mmsi);
   }
 }
 

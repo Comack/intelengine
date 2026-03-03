@@ -1,5 +1,8 @@
 // Algorithmic Scraper / Content Retrieval
 
+/** Cap input size to prevent ReDoS on malformed HTML */
+const MAX_HTML_SIZE = 2 * 1024 * 1024; // 2 MB
+
 /**
  * Extracts structured JSON-LD data from the HTML if available.
  * News sites and organizations often publish rich metadata here.
@@ -154,6 +157,10 @@ export async function scrapeUrl(url: string): Promise<ScrapedContent> {
     description = descMatch[1].trim();
   }
   description = description.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+
+  if (html.length > MAX_HTML_SIZE) {
+    html = html.slice(0, MAX_HTML_SIZE);
+  }
 
   const metadata = extractJsonLd(html);
   const content = extractMainText(html);

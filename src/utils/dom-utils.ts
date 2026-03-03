@@ -89,7 +89,7 @@ export function safeHtml(html: string): DocumentFragment {
         // Sanitize href to prevent javascript: URIs
         if (el.hasAttribute('href')) {
           const href = el.getAttribute('href') || '';
-          if (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#')) {
+          if (href.startsWith('//') || (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#'))) {
             el.removeAttribute('href');
           }
         }

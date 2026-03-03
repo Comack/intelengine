@@ -172,6 +172,7 @@ export class ExportPanel {
   private element: HTMLElement;
   private isOpen = false;
   private getData: () => ExportData;
+  private cleanupController = new AbortController();
 
   constructor(getDataFn: () => ExportData) {
     this.getData = getDataFn;
@@ -202,7 +203,7 @@ export class ExportPanel {
         this.isOpen = false;
         menu.classList.add('hidden');
       }
-    });
+    }, { signal: this.cleanupController.signal });
 
     this.element.querySelectorAll('.export-option').forEach(option => {
       option.addEventListener('click', () => {
@@ -228,5 +229,9 @@ export class ExportPanel {
 
   public getElement(): HTMLElement {
     return this.element;
+  }
+
+  public destroy(): void {
+    this.cleanupController.abort();
   }
 }

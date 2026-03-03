@@ -2,9 +2,8 @@ import type { ServerContext, IngestEvidenceRequest, IngestEvidenceResponse, Evid
 import { setCachedJson, getCachedJson } from '../../../_shared/redis';
 import { scrapeUrl } from '../../../_shared/scraper';
 
-// Simple UUID generator since we don't have crypto.randomUUID everywhere in edge
 function generateId(): string {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return crypto.randomUUID();
 }
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -26,7 +25,7 @@ Return ONLY valid JSON matching this structure:
 }
 
 Metadata:
-${description ? `Description: ${description}\n` : ''}${metadata && metadata.length > 0 ? `JSON-LD: ${JSON.stringify(metadata)}\n` : ''}
+${description ? `Description: ${JSON.stringify(description)}\n` : ''}${metadata && metadata.length > 0 ? `JSON-LD: ${JSON.stringify(metadata)}\n` : ''}
 
 Text to analyze:
 ${text}`;
@@ -55,7 +54,14 @@ ${text}`;
     const content = data.choices[0]?.message.content;
     if (!content) throw new Error('Empty response from LLM');
 
-    return JSON.parse(content) as POLEGraph;
+    let parsed: POLEGraph;
+    try {
+      parsed = JSON.parse(content) as POLEGraph;
+    } catch (parseErr) {
+      console.warn('[ingest-evidence] LLM returned malformed JSON, using empty POLE graph:', parseErr);
+      return { persons: [], objects: [], locations: [], events: [] };
+    }
+    return parsed;
   } catch (err) {
     console.error('[ingest-evidence] LLM error:', err);
     throw err;

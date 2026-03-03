@@ -92,7 +92,11 @@ export default async function handler(request: Request): Promise<Response> {
   try {
     corsHeaders = getCorsHeaders(request);
   } catch {
-    corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+    // Fail closed: if CORS logic throws, do not serve with open CORS
+    return new Response(JSON.stringify({ error: 'Internal error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   // OPTIONS preflight

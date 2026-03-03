@@ -97,7 +97,7 @@ export function createAisRelay({ logger = console } = {}) {
     cell.vessels.add(mmsi);
     cell.lastUpdate = now;
 
-    if (isLikelyMilitaryCandidate(meta)) {
+    if (isLikelyMilitaryCandidate(meta) && candidateReports.size < MAX_CANDIDATE_REPORTS) {
       candidateReports.set(mmsi, {
         mmsi, name: meta.ShipName || '', lat, lon,
         shipType: meta.ShipType, heading: pos.TrueHeading, speed: pos.Sog, course: pos.Cog,

@@ -48,10 +48,11 @@ async function withTransaction<T>(
   extractResult?: boolean,
 ): Promise<T> {
   for (let attempt = 0; attempt < 2; attempt++) {
+    let database: IDBDatabase | null = null;
     try {
-      const database = await initDB();
+      database = await initDB();
       return await new Promise<T>((resolve, reject) => {
-        const tx = database.transaction(storeName, mode);
+        const tx = database!.transaction(storeName, mode);
         const store = tx.objectStore(storeName);
         const request = fn(store, tx);
         if (request && extractResult !== false) {
@@ -64,7 +65,7 @@ async function withTransaction<T>(
       });
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'InvalidStateError') {
-        db = null;
+        if (db === database) db = null;
         if (attempt === 0) continue;
         console.warn('[Storage] IndexedDB connection closing after retry');
         if (mode === 'readwrite') throw new DOMException('IndexedDB write failed — connection closing', 'InvalidStateError');

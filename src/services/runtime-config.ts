@@ -39,7 +39,8 @@ export type RuntimeFeatureId =
   | 'openskyRelay'
   | 'finnhubMarkets'
   | 'nasaFirms'
-  | 'aiOllama';
+  | 'aiOllama'
+  | 'ucdpConflicts';
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -80,6 +81,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   finnhubMarkets: true,
   nasaFirms: true,
   aiOllama: true,
+  ucdpConflicts: true,
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -189,6 +191,13 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Fire Information for Resource Management System satellite data.',
     requiredSecrets: ['NASA_FIRMS_API_KEY'],
     fallback: 'FIRMS fire layer uses public VIIRS feed.',
+  },
+  {
+    id: 'ucdpConflicts',
+    name: 'UCDP conflict database',
+    description: 'Uppsala Conflict Data Program armed-conflict event data.',
+    requiredSecrets: ['UC_DP_KEY'],
+    fallback: 'UCDP conflict events panel is hidden.',
   },
 ];
 

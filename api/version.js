@@ -33,6 +33,8 @@ export default async function handler() {
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
+        // Intentionally public (`*`): unauthenticated version-check called by
+        // desktop auto-updater and arbitrary origins; no secrets are exposed.
         'Access-Control-Allow-Origin': '*',
       },
     });

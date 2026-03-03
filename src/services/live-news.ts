@@ -2,6 +2,7 @@ import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 
 const liveVideoCache = new Map<string, { videoId: string | null; timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const MAX_CACHE_SIZE = 200;
 
 export async function fetchLiveVideoId(channelHandle: string): Promise<string | null> {
   const cached = liveVideoCache.get(channelHandle);
@@ -15,6 +16,10 @@ export async function fetchLiveVideoId(channelHandle: string): Promise<string | 
     if (!res.ok) throw new Error('API error');
     const data = await res.json();
     const videoId = data.videoId || null;
+    if (liveVideoCache.size >= MAX_CACHE_SIZE) {
+      const oldest = liveVideoCache.keys().next().value;
+      if (oldest !== undefined) liveVideoCache.delete(oldest);
+    }
     liveVideoCache.set(channelHandle, { videoId, timestamp: Date.now() });
     return videoId;
   } catch (error) {

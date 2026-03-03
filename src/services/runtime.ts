@@ -173,6 +173,11 @@ async function fetchLocalWithStartupRetry(
         break;
       }
 
+      // Check abort before sleeping to avoid unnecessary retry delay.
+      if (init?.signal?.aborted) {
+        throw error;
+      }
+
       await sleep(125 * attempt);
     }
   }
@@ -182,10 +187,19 @@ async function fetchLocalWithStartupRetry(
     : new Error('Local API unavailable');
 }
 
+// Lazily cached dynamic imports to avoid per-fetch import() overhead.
+let _tauriBridge: typeof import('./tauri-bridge') | null = null;
+let _runtimeConfig: typeof import('./runtime-config') | null = null;
+let _dataSourceTracker: typeof import('./data-source-tracker') | null = null;
+
 export function installRuntimeFetchPatch(): void {
   if (!isDesktopRuntime() || typeof window === 'undefined' || (window as unknown as Record<string, unknown>).__wmFetchPatched) {
     return;
   }
+
+  // Set flag synchronously before any async work to prevent concurrent calls
+  // from re-entering and overwriting the patched fetch / token.
+  (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 
   const nativeFetch = window.fetch.bind(window);
   const localBase = getApiBaseUrl();
@@ -205,8 +219,8 @@ export function installRuntimeFetchPatch(): void {
 
     if (!localApiToken) {
       try {
-        const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-        localApiToken = await tryInvokeTauri<string>('get_local_api_token');
+        if (!_tauriBridge) _tauriBridge = await import('@/services/tauri-bridge');
+        localApiToken = await _tauriBridge.tryInvokeTauri<string>('get_local_api_token');
       } catch { /* token unavailable — sidecar may not require it */ }
     }
 
@@ -236,9 +250,9 @@ export function installRuntimeFetchPatch(): void {
     // path when the local sidecar is unavailable.
     if (allowCloudFallback && /^\/api\/[^/]+\/v1\//.test(target)) {
       try {
-        const { getSecretState, secretsReady } = await import('@/services/runtime-config');
-        await Promise.race([secretsReady, new Promise<void>(r => setTimeout(r, 2000))]);
-        const wmKeyState = getSecretState('WORLDMONITOR_API_KEY');
+        if (!_runtimeConfig) _runtimeConfig = await import('@/services/runtime-config');
+        await Promise.race([_runtimeConfig.secretsReady, new Promise<void>(r => setTimeout(r, 2000))]);
+        const wmKeyState = _runtimeConfig.getSecretState('WORLDMONITOR_API_KEY');
         if (!wmKeyState.present || !wmKeyState.valid) {
           allowCloudFallback = false;
         }
@@ -255,8 +269,8 @@ export function installRuntimeFetchPatch(): void {
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
       const cloudHeaders = new Headers(init?.headers);
       if (/^\/api\/[^/]+\/v1\//.test(target)) {
-        const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
-        const wmKeyValue = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
+        if (!_runtimeConfig) _runtimeConfig = await import('@/services/runtime-config');
+        const wmKeyValue = _runtimeConfig.getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
         if (wmKeyValue) {
           cloudHeaders.set('X-WorldMonitor-Key', wmKeyValue);
         }
@@ -272,9 +286,10 @@ export function installRuntimeFetchPatch(): void {
       // Record data source from response header (Phase 5)
       const dataSource = response.headers.get('x-wm-data-source');
       if (dataSource === 'local-sidecar' || dataSource === 'cloud') {
-        void import('@/services/data-source-tracker').then(({ recordApiSource }) => {
-          recordApiSource(target, dataSource as 'local-sidecar' | 'cloud');
-        });
+        void (async () => {
+          if (!_dataSourceTracker) _dataSourceTracker = await import('@/services/data-source-tracker');
+          _dataSourceTracker.recordApiSource(target, dataSource as 'local-sidecar' | 'cloud');
+        })();
       }
 
       if (!response.ok) {
@@ -292,14 +307,14 @@ export function installRuntimeFetchPatch(): void {
         throw error;
       }
       const cloudResp = await cloudFallback();
-      void import('@/services/data-source-tracker').then(({ recordApiSource }) => {
-        recordApiSource(target, 'cloud');
-      });
+      void (async () => {
+        if (!_dataSourceTracker) _dataSourceTracker = await import('@/services/data-source-tracker');
+        _dataSourceTracker.recordApiSource(target, 'cloud');
+      })();
       return cloudResp;
     }
   };
 
-  (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 }
 
 // ---- Local-First Mode ----
@@ -317,8 +332,8 @@ export async function getLocalFirstMode(): Promise<boolean> {
   if (_localFirstPending) return _localFirstPending;
   _localFirstPending = (async () => {
     try {
-      const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-      const result = await tryInvokeTauri<boolean>('get_local_first_mode');
+      if (!_tauriBridge) _tauriBridge = await import('@/services/tauri-bridge');
+      const result = await _tauriBridge.tryInvokeTauri<boolean>('get_local_first_mode');
       _localFirstCache = result ?? false;
     } catch {
       _localFirstCache = false;
@@ -334,7 +349,7 @@ export async function getLocalFirstMode(): Promise<boolean> {
  * to runtime-prefs.json and restarts the sidecar with the updated env var.
  */
 export async function setLocalFirstMode(enabled: boolean): Promise<void> {
-  const { invokeTauri } = await import('@/services/tauri-bridge');
-  await invokeTauri('set_local_first_mode', { enabled });
+  if (!_tauriBridge) _tauriBridge = await import('@/services/tauri-bridge');
+  await _tauriBridge.invokeTauri('set_local_first_mode', { enabled });
   _localFirstCache = enabled;
 }

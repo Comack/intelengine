@@ -32,7 +32,7 @@ function brotliPrecompressPlugin(): Plugin {
         const compressedBuffer = await brotliCompressAsync(sourceBuffer);
         await mkdir(dirname(compressedPath), { recursive: true });
         await writeFile(compressedPath, compressedBuffer);
-      }));
+      }).map(p => p.catch(err => console.warn('[brotli] failed to compress file:', err))));
     },
   };
 }

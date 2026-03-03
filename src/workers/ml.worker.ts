@@ -85,6 +85,8 @@ type MLWorkerMessage =
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const loadedPipelines = new Map<string, any>();
 const loadingPromises = new Map<string, Promise<void>>();
+// Reference counting: tracks how many in-flight operations use each model
+const pipelineRefCount = new Map<string, number>();
 
 function getModelConfig(modelId: string): ModelConfig | undefined {
   return MODEL_CONFIGS.find(m => m.id === modelId);
@@ -122,72 +124,107 @@ async function loadModel(modelId: string): Promise<void> {
     });
 
     loadedPipelines.set(modelId, pipe);
-    loadingPromises.delete(modelId);
     console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
 
     // Notify manager that model is now available (no id = unsolicited notification)
     self.postMessage({ type: 'model-loaded', modelId });
-  })();
+  })().finally(() => {
+    loadingPromises.delete(modelId);
+  });
 
   loadingPromises.set(modelId, loadPromise);
   return loadPromise;
 }
 
-function unloadModel(modelId: string): void {
+function acquirePipeline(modelId: string): void {
+  pipelineRefCount.set(modelId, (pipelineRefCount.get(modelId) ?? 0) + 1);
+}
+
+function releasePipeline(modelId: string): void {
+  const count = (pipelineRefCount.get(modelId) ?? 1) - 1;
+  if (count <= 0) {
+    pipelineRefCount.delete(modelId);
+  } else {
+    pipelineRefCount.set(modelId, count);
+  }
+}
+
+function unloadModel(modelId: string): boolean {
+  const refCount = pipelineRefCount.get(modelId) ?? 0;
+  if (refCount > 0) {
+    console.warn(`[MLWorker] Cannot unload model ${modelId}: ${refCount} operation(s) in progress`);
+    return false;
+  }
   const pipe = loadedPipelines.get(modelId);
   if (pipe) {
     loadedPipelines.delete(modelId);
     console.log(`[MLWorker] Unloaded model: ${modelId}`);
   }
+  return true;
 }
 
 async function embedTexts(texts: string[]): Promise<number[][]> {
   await loadModel('embeddings');
-  const pipe = loadedPipelines.get('embeddings')!;
+  acquirePipeline('embeddings');
+  try {
+    const pipe = loadedPipelines.get('embeddings')!;
 
-  const results: number[][] = [];
-  for (const text of texts) {
-    const output = await pipe(text, { pooling: 'mean', normalize: true });
-    results.push(Array.from(output.data as Float32Array));
+    const results: number[][] = [];
+    for (const text of texts) {
+      const output = await pipe(text, { pooling: 'mean', normalize: true });
+      results.push(Array.from(output.data as Float32Array));
+    }
+
+    return results;
+  } finally {
+    releasePipeline('embeddings');
   }
-
-  return results;
 }
 
 async function summarizeTexts(texts: string[], modelId = 'summarization'): Promise<string[]> {
   await loadModel(modelId);
-  const pipe = loadedPipelines.get(modelId)!;
+  acquirePipeline(modelId);
+  try {
+    const pipe = loadedPipelines.get(modelId)!;
 
-  const results: string[] = [];
-  for (const text of texts) {
-    const output = await pipe(`summarize: ${text}`, {
-      max_new_tokens: 64,
-      min_length: 10,
-    });
-    const result = (output as Array<{ generated_text: string }>)[0];
-    results.push(result?.generated_text ?? '');
+    const results: string[] = [];
+    for (const text of texts) {
+      const output = await pipe(`summarize: ${text}`, {
+        max_new_tokens: 64,
+        min_length: 10,
+      });
+      const result = (output as Array<{ generated_text: string }>)[0];
+      results.push(result?.generated_text ?? '');
+    }
+
+    return results;
+  } finally {
+    releasePipeline(modelId);
   }
-
-  return results;
 }
 
 async function classifySentiment(texts: string[]): Promise<Array<{ label: string; score: number }>> {
   await loadModel('sentiment');
-  const pipe = loadedPipelines.get('sentiment')!;
+  acquirePipeline('sentiment');
+  try {
+    const pipe = loadedPipelines.get('sentiment')!;
 
-  const results: Array<{ label: string; score: number }> = [];
-  for (const text of texts) {
-    const output = await pipe(text);
-    const result = (output as Array<{ label: string; score: number }>)[0];
-    if (result) {
-      results.push({
-        label: result.label.toLowerCase() === 'positive' ? 'positive' : 'negative',
-        score: result.score,
-      });
+    const results: Array<{ label: string; score: number }> = [];
+    for (const text of texts) {
+      const output = await pipe(text);
+      const result = (output as Array<{ label: string; score: number }>)[0];
+      if (result) {
+        results.push({
+          label: result.label.toLowerCase() === 'positive' ? 'positive' : 'negative',
+          score: result.score,
+        });
+      }
     }
-  }
 
-  return results;
+    return results;
+  } finally {
+    releasePipeline('sentiment');
+  }
 }
 
 interface NEREntity {
@@ -200,28 +237,33 @@ interface NEREntity {
 
 async function extractEntities(texts: string[]): Promise<NEREntity[][]> {
   await loadModel('ner');
-  const pipe = loadedPipelines.get('ner')!;
+  acquirePipeline('ner');
+  try {
+    const pipe = loadedPipelines.get('ner')!;
 
-  const results: NEREntity[][] = [];
-  for (const text of texts) {
-    const output = await pipe(text);
-    const entities = (output as Array<{
-      entity_group: string;
-      score: number;
-      word: string;
-      start: number;
-      end: number;
-    }>).map(e => ({
-      text: e.word,
-      type: e.entity_group,
-      confidence: e.score,
-      start: e.start,
-      end: e.end,
-    }));
-    results.push(entities);
+    const results: NEREntity[][] = [];
+    for (const text of texts) {
+      const output = await pipe(text);
+      const entities = (output as Array<{
+        entity_group: string;
+        score: number;
+        word: string;
+        start: number;
+        end: number;
+      }>).map(e => ({
+        text: e.word,
+        type: e.entity_group,
+        confidence: e.score,
+        start: e.start,
+        end: e.end,
+      }));
+      results.push(entities);
+    }
+
+    return results;
+  } finally {
+    releasePipeline('ner');
   }
-
-  return results;
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -299,22 +341,26 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
       }
 
       case 'unload-model': {
-        unloadModel(message.modelId);
+        const unloaded = unloadModel(message.modelId);
         self.postMessage({
           type: 'model-unloaded',
           id: message.id,
           modelId: message.modelId,
+          skipped: !unloaded,
         });
         break;
       }
 
       case 'embed': {
         const embeddings = await embedTexts(message.texts);
-        self.postMessage({
+        const flat = new Float32Array(embeddings.flat());
+        const response = {
           type: 'embed-result',
           id: message.id,
           embeddings,
-        });
+          embeddingBuffer: flat,
+        };
+        self.postMessage(response, [flat.buffer]);
         break;
       }
 
@@ -369,6 +415,8 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
 
       case 'reset': {
         loadedPipelines.clear();
+        loadingPromises.clear();
+        pipelineRefCount.clear();
         self.postMessage({ type: 'reset-complete' });
         break;
       }

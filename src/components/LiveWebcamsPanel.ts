@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { isDesktopRuntime, toRuntimeUrl } from '@/services/runtime';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 import { trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
@@ -160,13 +160,12 @@ export class LiveWebcamsPanel extends Panel {
 
   private buildEmbedUrl(videoId: string): string {
     if (isDesktopRuntime()) {
-      const remoteBase = getRemoteApiBaseUrl();
       const params = new URLSearchParams({
         videoId,
         autoplay: '1',
         mute: '1',
       });
-      return `${remoteBase}/api/youtube/embed?${params.toString()}`;
+      return toRuntimeUrl(`/api/youtube/embed?${params.toString()}`);
     }
     return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0`;
   }

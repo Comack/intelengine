@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { fetchLiveVideoId } from '@/services/live-news';
-import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
+import { isDesktopRuntime, toRuntimeUrl, getApiBaseUrl } from '@/services/runtime';
 import { t } from '../services/i18n';
 
 // YouTube IFrame Player API types
@@ -119,14 +119,14 @@ export class LiveNewsPanel extends Panel {
   }
 
   private get embedOrigin(): string {
-    try { return new URL(getRemoteApiBaseUrl()).origin; } catch { return 'https://worldmonitor.app'; }
+    try { return new URL(getApiBaseUrl() || window.location.origin).origin; } catch { return 'https://worldmonitor.app'; }
   }
 
   private setupBridgeMessageListener(): void {
     this.boundMessageHandler = (e: MessageEvent) => {
       if (e.source !== this.desktopEmbedIframe?.contentWindow) return;
       const expected = this.embedOrigin;
-      if (e.origin !== expected && e.origin !== 'http://127.0.0.1:46123') return;
+      if (e.origin !== expected) return;
       const msg = e.data;
       if (!msg || typeof msg !== 'object' || !msg.type) return;
       if (msg.type === 'yt-ready') {
@@ -420,7 +420,7 @@ export class LiveNewsPanel extends Panel {
       mute: this.isMuted ? '1' : '0',
     });
     if (origin) params.set('origin', origin);
-    return `/api/youtube/embed?${params.toString()}`;
+    return toRuntimeUrl(`/api/youtube/embed?${params.toString()}`);
   }
 
 
@@ -468,10 +468,9 @@ export class LiveNewsPanel extends Panel {
 
     this.playerContainer.innerHTML = '';
 
-    // Always use cloud URL for iframe embeds — the local sidecar requires
-    // an Authorization header that iframe src requests cannot carry.
-    const remoteBase = getRemoteApiBaseUrl();
-    const embedUrl = `${remoteBase}${this.buildDesktopEmbedPath(videoId)}`;
+    // The local sidecar handles the proxy without requiring Authorization headers
+    // because /api/youtube/* is configured to be publicly accessible locally.
+    const embedUrl = this.buildDesktopEmbedPath(videoId);
 
     if (renderToken !== this.desktopEmbedRenderToken) {
       return;
