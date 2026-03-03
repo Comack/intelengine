@@ -115,6 +115,7 @@ const FULL_MAP_LAYERS: MapLayers = {
   deforestationAlerts: true,
   acarsMessages: true,
   whaleTransfers: false,
+  navWarnings: true,
   dayNight: false,
 };
 
@@ -176,6 +177,7 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 
@@ -278,6 +280,7 @@ const TECH_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 
@@ -339,6 +342,7 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 
@@ -439,6 +443,7 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: true,
+  navWarnings: false,
   dayNight: false,
 };
 
@@ -500,6 +505,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 
@@ -577,6 +583,7 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 
@@ -638,6 +645,7 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 

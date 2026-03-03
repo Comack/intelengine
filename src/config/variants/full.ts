@@ -108,6 +108,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 
@@ -169,6 +170,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 

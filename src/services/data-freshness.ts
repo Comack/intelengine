@@ -46,7 +46,8 @@ export type DataSourceId =
   | 'air_quality'         // Air quality (AQI)
   | 'deforestation_alerts' // Deforestation alerts
   | 'acars_messages'      // ACARS military messages
-  | 'whale_transfers';    // Crypto whale transfers
+  | 'whale_transfers'     // Crypto whale transfers
+  | 'nav_warnings';       // Navigational warnings
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -123,6 +124,7 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   deforestation_alerts: { name: 'Deforestation Alerts', requiredForRisk: false, panelId: 'map' },
   acars_messages: { name: 'ACARS Military Messages', requiredForRisk: false, panelId: 'map' },
   whale_transfers: { name: 'Crypto Whale Transfers', requiredForRisk: false, panelId: 'map' },
+  nav_warnings: { name: 'Navigational Warnings', requiredForRisk: false, panelId: 'map' },
 };
 
 class DataFreshnessTracker {
@@ -392,6 +394,7 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   deforestation_alerts: 'Deforestation alert data unavailable—forest loss events undetected',
   acars_messages: 'ACARS military message data unavailable—aviation intelligence reduced',
   whale_transfers: 'Crypto whale transfer data unavailable—large capital movement undetected',
+  nav_warnings: 'Navigational warning data unavailable—maritime hazards may be undetected',
 };
 
 /**

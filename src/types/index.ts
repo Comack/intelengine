@@ -569,6 +569,8 @@ export interface MapLayers {
   acarsMessages: boolean;
   // Large on-chain transfers (Whale Alert)
   whaleTransfers: boolean;
+  // Navigational warnings (maritime authorities)
+  navWarnings: boolean;
   // Overlay layers
   dayNight: boolean;
 }

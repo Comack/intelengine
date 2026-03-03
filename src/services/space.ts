@@ -3,7 +3,10 @@ import {
   type GetSpaceWeatherResponse,
   type ListSatellitesResponse,
   type SatelliteCategory,
+  type SpaceWeatherStatus,
 } from '@/generated/client/worldmonitor/space/v1/service_client';
+
+export type { SpaceWeatherStatus };
 
 const client = new SpaceServiceClient('', { fetch: fetch.bind(globalThis) });
 

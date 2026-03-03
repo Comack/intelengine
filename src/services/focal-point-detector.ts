@@ -31,6 +31,7 @@ const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
   acars_alert: 'ACARS alert',
   port_congestion: 'port congestion',
   whale_transfer: 'whale transfer',
+  nav_warning: 'navigational warning',
 };
 
 const SIGNAL_TYPE_ICONS: Record<SignalType, string> = {
@@ -51,6 +52,7 @@ const SIGNAL_TYPE_ICONS: Record<SignalType, string> = {
   acars_alert: '📡',
   port_congestion: '🚢',
   whale_transfer: '🐋',
+  nav_warning: '⚓',
 };
 
 class FocalPointDetector {

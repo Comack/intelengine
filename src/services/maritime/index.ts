@@ -5,13 +5,14 @@ import {
   type GetVesselSnapshotResponse,
   type SarDarkShip,
   type PortCongestionStatus,
+  type NavigationalWarning,
 } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import type { AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import { dataFreshness } from '../data-freshness';
 import { isFeatureAvailable } from '../runtime-config';
 
-export type { SarDarkShip, PortCongestionStatus };
+export type { SarDarkShip, PortCongestionStatus, NavigationalWarning };
 
 // ---- Proto fallback (desktop safety when relay URL is unavailable) ----
 
@@ -474,6 +475,19 @@ const portBreaker = createCircuitBreaker<PortCongestionStatus[]>({ name: 'Port C
 export async function fetchPortCongestion(): Promise<PortCongestionStatus[]> {
   return portBreaker.execute(
     () => client.getPortCongestion({}).then((r) => r.ports),
+    [],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Navigational warnings
+// ---------------------------------------------------------------------------
+
+const navWarningsBreaker = createCircuitBreaker<NavigationalWarning[]>({ name: 'Nav Warnings', cacheTtlMs: 30 * 60 * 1000, persistCache: false });
+
+export async function fetchNavWarnings(pageSize = 200): Promise<NavigationalWarning[]> {
+  return navWarningsBreaker.execute(
+    () => client.listNavigationalWarnings({ pageSize, cursor: '', area: '' }).then((r) => r.warnings),
     [],
   );
 }

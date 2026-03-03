@@ -25,6 +25,7 @@ import type { SpeciesComebackPanel } from '@/components/SpeciesComebackPanel';
 import type { RenewableEnergyPanel } from '@/components/RenewableEnergyPanel';
 import type { TvModeController } from '@/services/tv-mode';
 import type { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
+import type { SpaceWeatherStatus } from '@/services/space';
 
 export interface CountryBriefSignals {
   criticalNews: number;
@@ -60,6 +61,7 @@ export interface IntelligenceCache {
   iranEvents?: IranEvent[];
   orefAlerts?: { alertCount: number; historyCount24h: number };
   advisories?: SecurityAdvisory[];
+  spaceWeather?: SpaceWeatherStatus;
 }
 
 export interface AppModule {

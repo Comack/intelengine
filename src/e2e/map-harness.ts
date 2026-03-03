@@ -188,6 +188,7 @@ const allLayersEnabled: MapLayers = {
   deforestationAlerts: true,
   acarsMessages: true,
   whaleTransfers: true,
+  navWarnings: false,
   dayNight: true,
 };
 
@@ -244,6 +245,7 @@ const allLayersDisabled: MapLayers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 

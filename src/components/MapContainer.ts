@@ -30,7 +30,7 @@ import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
-import type { SarDarkShip, PortCongestionStatus } from '@/services/maritime';
+import type { SarDarkShip, PortCongestionStatus, NavigationalWarning } from '@/services/maritime';
 import type { GridZone, RoutingAnomaly, RadiationReading } from '@/services/infrastructure';
 import type { AirQualityReading, DeforestationAlert } from '@/services/climate';
 import type { WhaleTransfer } from '@/services/market';
@@ -42,6 +42,7 @@ import type { HappinessData } from '@/services/happiness-data';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
 import type { GpsJamHex } from '@/services/gps-interference';
+import type { SpaceWeatherStatus } from '@/services/space';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -78,6 +79,7 @@ export class MapContainer {
   private svgMap: MapComponent | null = null;
   private initialState: MapContainerState;
   private useDeckGL: boolean;
+  private kpBadge: HTMLElement | null = null;
 
   constructor(container: HTMLElement, initialState: MapContainerState) {
     this.container = container;
@@ -384,6 +386,29 @@ export class MapContainer {
 
   public setWhaleTransfers(data: WhaleTransfer[]): void {
     if (this.useDeckGL) this.deckGLMap?.setWhaleTransfers(data);
+  }
+
+  public setNavWarnings(data: NavigationalWarning[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setNavWarnings(data);
+  }
+
+  public setSpaceWeather(status: SpaceWeatherStatus): void {
+    if (!this.kpBadge) {
+      this.kpBadge = document.createElement('div');
+      this.kpBadge.className = 'kp-index-badge';
+      this.kpBadge.title = 'Geomagnetic Activity (Kp Index)';
+      this.container.appendChild(this.kpBadge);
+    }
+    const kp = Math.round(status.kpIndex);
+    const color = kp >= 7 ? '#ff2d55' : kp >= 5 ? '#ff9f0a' : kp >= 3 ? '#ffd60a' : '#34c759';
+    this.kpBadge.style.cssText = `
+      position:absolute;bottom:48px;left:8px;z-index:1000;
+      background:${color}22;border:1px solid ${color}88;
+      color:${color};font-size:11px;font-weight:600;
+      padding:3px 7px;border-radius:4px;pointer-events:none;
+      font-family:monospace;letter-spacing:0.5px;
+    `;
+    this.kpBadge.textContent = `Kp ${status.kpIndex.toFixed(1)} ${status.kpLevel || ''}`.trim();
   }
 
   public setCyberThreats(threats: CyberThreat[]): void {

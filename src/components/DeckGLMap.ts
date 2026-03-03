@@ -42,7 +42,7 @@ import type { GpsJamHex } from '@/services/gps-interference';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
-import type { SarDarkShip, PortCongestionStatus } from '@/services/maritime';
+import type { SarDarkShip, PortCongestionStatus, NavigationalWarning } from '@/services/maritime';
 import type { GridZone, RoutingAnomaly, RadiationReading } from '@/services/infrastructure';
 import type { AirQualityReading, DeforestationAlert } from '@/services/climate';
 import type { WhaleTransfer } from '@/services/market';
@@ -318,6 +318,7 @@ export class DeckGLMap {
   private deforestationAlerts: DeforestationAlert[] = [];
   private acarsMessages: AcarsMessage[] = [];
   private whaleTransfers: WhaleTransfer[] = [];
+  private navWarnings: NavigationalWarning[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
@@ -1354,6 +1355,9 @@ export class DeckGLMap {
     }
     if (mapLayers.whaleTransfers && this.whaleTransfers.length > 0) {
       layers.push(this.createWhaleTransfersLayer());
+    }
+    if (mapLayers.navWarnings && this.navWarnings.length > 0) {
+      layers.push(this.createNavWarningsLayer());
     }
 
     // News geo-locations (always shown if data exists)
@@ -2945,6 +2949,23 @@ export class DeckGLMap {
     });
   }
 
+  private createNavWarningsLayer(): ScatterplotLayer {
+    const withCoords = this.navWarnings.filter(w => w.location?.latitude && w.location?.longitude);
+    return new ScatterplotLayer({
+      id: 'nav-warnings-layer',
+      data: withCoords,
+      getPosition: (d: NavigationalWarning) => [d.location!.longitude, d.location!.latitude],
+      getRadius: 40000,
+      getFillColor: [255, 165, 0, 200] as [number, number, number, number],
+      radiusMinPixels: 5,
+      radiusMaxPixels: 18,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 120] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
@@ -3145,6 +3166,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>📡 ACARS</strong><br/>${text(obj.tailNumber || obj.flightNumber)}<br/>Type: ${text(obj.messageType)}<br/>Category: ${text(obj.milCategory?.replace('ACARS_MIL_CATEGORY_', '') || 'Unknown')}</div>` };
       case 'whale-transfers-layer':
         return { html: `<div class="deckgl-tooltip"><strong>🐋 Whale Transfer</strong><br/>${text(obj.blockchain)} · $${((obj.amountUsd || 0) / 1e6).toFixed(1)}M<br/>${text(obj.fromLabel)} → ${text(obj.toLabel)}<br/>Type: ${text(obj.transferType?.replace('WHALE_TRANSFER_TYPE_', '') || '')}</div>` };
+      case 'nav-warnings-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>⚓ Nav Warning</strong><br/>${text(obj.title)}<br/>Area: ${text(obj.area)}<br/>Authority: ${text(obj.authority)}</div>` };
       default:
         return null;
     }
@@ -3564,6 +3587,7 @@ export class DeckGLMap {
         { key: 'deforestationAlerts', label: 'Deforestation', icon: '&#127795;' },
         { key: 'acarsMessages', label: 'ACARS Messages', icon: '&#128225;' },
         { key: 'whaleTransfers', label: 'Whale Transfers', icon: '&#128011;' },
+        { key: 'navWarnings', label: 'Nav Warnings', icon: '&#128270;' },
         { key: 'dayNight', label: t('components.deckgl.layers.dayNight'), icon: '&#127763;' },
       ];
 
@@ -4334,6 +4358,11 @@ export class DeckGLMap {
 
   public setWhaleTransfers(data: WhaleTransfer[]): void {
     this.whaleTransfers = data;
+    this.render();
+  }
+
+  public setNavWarnings(data: NavigationalWarning[]): void {
+    this.navWarnings = data;
     this.render();
   }
 

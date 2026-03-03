@@ -137,6 +137,7 @@ const layers = {
   deforestationAlerts: false,
   acarsMessages: false,
   whaleTransfers: false,
+  navWarnings: false,
   dayNight: false,
 };
 

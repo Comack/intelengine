@@ -72,10 +72,11 @@ import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies, fetchAirQualityReadings, fetchDeforestationAlerts } from '@/services/climate';
-import { fetchSarDetections, fetchPortCongestion } from '@/services/maritime';
+import { fetchSarDetections, fetchPortCongestion, fetchNavWarnings } from '@/services/maritime';
 import { fetchGridStatus, fetchRoutingAnomalies, fetchRadiationReadings } from '@/services/infrastructure';
 import { fetchWhaleTransfers } from '@/services/market';
 import { fetchAcarsMessages } from '@/services/military';
+import { getSpaceWeather } from '@/services/space';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
@@ -369,6 +370,8 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.deforestationAlerts) tasks.push({ name: 'deforestationAlerts', task: runGuarded('deforestationAlerts', () => this.loadDeforestationAlerts()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.acarsMessages) tasks.push({ name: 'acarsMessages', task: runGuarded('acarsMessages', () => this.loadAcarsMessages()) });
     if ((SITE_VARIANT === 'finance' || SITE_VARIANT === 'full') && this.ctx.mapLayers.whaleTransfers) tasks.push({ name: 'whaleTransfers', task: runGuarded('whaleTransfers', () => this.loadWhaleTransfers()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.navWarnings) tasks.push({ name: 'navWarnings', task: runGuarded('navWarnings', () => this.loadNavWarnings()) });
+    if (SITE_VARIANT !== 'happy') tasks.push({ name: 'spaceWeather', task: runGuarded('spaceWeather', () => this.loadSpaceWeather()) });
 
     if (SITE_VARIANT === 'tech') {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
@@ -467,6 +470,9 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'whaleTransfers':
           await this.loadWhaleTransfers();
+          break;
+        case 'navWarnings':
+          await this.loadNavWarnings();
           break;
       }
     } finally {
@@ -2436,6 +2442,31 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordUpdate('whale_transfers', data.length);
     } catch {
       this.ctx.map?.setLayerReady('whaleTransfers', false);
+    }
+  }
+
+  async loadNavWarnings(): Promise<void> {
+    try {
+      const data = await fetchNavWarnings();
+      this.ctx.map?.setNavWarnings(data);
+      this.ctx.map?.setLayerReady('navWarnings', data.length > 0);
+      signalAggregator.ingestNavWarnings(data);
+      dataFreshness.recordUpdate('nav_warnings', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('navWarnings', false);
+    }
+  }
+
+  async loadSpaceWeather(): Promise<void> {
+    try {
+      const result = await getSpaceWeather();
+      if (result.status) {
+        this.ctx.intelligenceCache.spaceWeather = result.status;
+        this.ctx.map?.setSpaceWeather(result.status);
+        dataFreshness.recordUpdate('gpsjam', 1); // reuse gpsjam freshness slot for space weather
+      }
+    } catch {
+      // Space weather is best-effort — no error propagation needed
     }
   }
 }

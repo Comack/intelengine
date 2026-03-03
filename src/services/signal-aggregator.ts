@@ -11,7 +11,7 @@ import type {
   SocialUnrestEvent,
   AisDisruptionEvent,
 } from '@/types';
-import type { SarDarkShip, PortCongestionStatus } from './maritime';
+import type { SarDarkShip, PortCongestionStatus, NavigationalWarning } from './maritime';
 import type { GridZone, RoutingAnomaly, RadiationReading } from './infrastructure';
 import type { AirQualityReading, DeforestationAlert } from './climate';
 import type { WhaleTransfer } from './market';
@@ -36,6 +36,7 @@ export type SignalType =
   | 'acars_alert'           // Military ACARS message (ADSB.lol)
   | 'port_congestion'       // Port congestion (Kpler/marine APIs)
   | 'whale_transfer'        // Large on-chain crypto transfer (Whale Alert)
+  | 'nav_warning'           // Navigational warning (maritime authorities)
 
 export interface GeoSignal {
   type: SignalType;
@@ -599,6 +600,25 @@ class SignalAggregator {
     this.pruneOld();
   }
 
+  ingestNavWarnings(warnings: NavigationalWarning[]): void {
+    this.clearSignalType('nav_warning');
+    for (const w of warnings) {
+      if (!w.location?.latitude || !w.location?.longitude) continue;
+      const code = this.coordsToCountry(w.location.latitude, w.location.longitude);
+      this.signals.push({
+        type: 'nav_warning',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: w.location.latitude,
+        lon: w.location.longitude,
+        severity: 'low',
+        title: `NavWarn: ${w.title} (${w.authority})`,
+        timestamp: new Date(w.issuedAt),
+      });
+    }
+    this.pruneOld();
+  }
+
   private pruneOld(): void {
     const cutoff = Date.now() - this.WINDOW_MS;
     this.signals = this.signals.filter(s => s.timestamp.getTime() > cutoff);
@@ -673,6 +693,7 @@ class SignalAggregator {
           acars_alert: 'ACARS alerts',
           port_congestion: 'port congestion',
           whale_transfer: 'whale transfers',
+          nav_warning: 'navigational warnings',
         };
 
         const typeDescriptions = [...allTypes].map(t => typeLabels[t]).join(', ');
@@ -738,6 +759,7 @@ class SignalAggregator {
       acars_alert: 0,
       port_congestion: 0,
       whale_transfer: 0,
+      nav_warning: 0,
     };
 
     for (const s of this.signals) {
