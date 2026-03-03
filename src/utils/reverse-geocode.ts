@@ -57,7 +57,13 @@ export async function reverseGeocode(lat: number, lon: number): Promise<GeoResul
       return null;
     }
 
-    const data = await res.json();
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      setGeocodeCache(key, null);
+      return null;
+    }
     const country = data.address?.country;
     const code = data.address?.country_code?.toUpperCase();
 

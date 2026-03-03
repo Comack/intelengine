@@ -31,6 +31,7 @@ let flightCache: { data: MilitaryFlight[]; timestamp: number } | null = null;
 // Track flight history for trails
 const flightHistory = new Map<string, { positions: [number, number][]; lastUpdate: number }>();
 const HISTORY_MAX_POINTS = 20;
+const MAX_TRACKED_FLIGHTS = 5000;
 const HISTORY_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
 let historyCleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -210,6 +211,10 @@ function parseOpenSkyResponse(data: OpenSkyResponse): MilitaryFlight[] {
     if (!history) {
       history = { positions: [], lastUpdate: Date.now() };
       flightHistory.set(historyKey, history);
+      if (flightHistory.size > MAX_TRACKED_FLIGHTS) {
+        const firstKey = flightHistory.keys().next().value;
+        if (firstKey !== undefined) flightHistory.delete(firstKey);
+      }
     }
 
     // Add position to history

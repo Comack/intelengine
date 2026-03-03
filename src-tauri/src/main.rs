@@ -206,7 +206,8 @@ fn generate_local_token() -> String {
             .unwrap_or_default()
             .as_nanos();
         let pid = std::process::id() as u128;
-        let tid = unsafe { libc::syscall(libc::SYS_gettid) } as u128;
+        let tid_raw = unsafe { libc::syscall(libc::SYS_gettid) };
+        let tid = if tid_raw >= 0 { tid_raw as u128 } else { 0u128 };
         let ptr_entropy = (&buf as *const _ as usize) as u128;
         let sources: [u128; 4] = [ts, pid, tid, ptr_entropy];
         for (i, b) in buf.iter_mut().enumerate() {

@@ -504,6 +504,7 @@ function rssProxyPlugin(): Plugin {
           res.setHeader('Content-Type', 'application/xml');
           res.setHeader('Cache-Control', 'public, max-age=300');
           res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Vary', 'Origin');
           res.end(data);
         } catch (error: any) {
           console.error('[rss-proxy]', feedUrl, error.message);

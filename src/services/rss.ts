@@ -138,6 +138,7 @@ export function getFeedFailures(): Map<string, { count: number; cooldownUntil: n
 function extractImageUrl(item: Element): string | undefined {
   const MRSS_NS = 'http://search.yahoo.com/mrss/';
   const IMG_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?|$)/i;
+  const isSafeUrl = (u: string) => /^https?:\/\//i.test(u);
 
   try {
     // 1. media:content with MRSS namespace
@@ -150,7 +151,7 @@ function extractImageUrl(item: Element): string | undefined {
       const type = el.getAttribute('type');
       // Accept if medium is image, type contains image, URL looks like image, or no type specified
       if (medium === 'image' || type?.startsWith('image/') || IMG_EXTENSIONS.test(url) || (!type && !medium)) {
-        return url;
+        return isSafeUrl(url) ? url : undefined;
       }
     }
   } catch {
@@ -162,7 +163,7 @@ function extractImageUrl(item: Element): string | undefined {
     const thumbnails = item.getElementsByTagNameNS(MRSS_NS, 'thumbnail');
     for (let i = 0; i < thumbnails.length; i++) {
       const url = thumbnails[i]!.getAttribute('url');
-      if (url) return url;
+      if (url && isSafeUrl(url)) return url;
     }
   } catch {
     // Fall through
@@ -175,7 +176,7 @@ function extractImageUrl(item: Element): string | undefined {
       const el = enclosures[i]!;
       const type = el.getAttribute('type');
       const url = el.getAttribute('url');
-      if (url && type?.startsWith('image/')) return url;
+      if (url && type?.startsWith('image/') && isSafeUrl(url)) return url;
     }
   } catch {
     // Fall through
@@ -188,7 +189,7 @@ function extractImageUrl(item: Element): string | undefined {
     const contentText = contentEncoded.length > 0 ? (contentEncoded[0]!.textContent || '') : '';
     const htmlContent = contentText || description;
     const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"']+)["']/);
-    if (imgMatch?.[1]) return imgMatch[1];
+    if (imgMatch?.[1] && isSafeUrl(imgMatch[1])) return imgMatch[1];
   } catch {
     // Fall through
   }

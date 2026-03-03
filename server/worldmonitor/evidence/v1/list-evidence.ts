@@ -11,7 +11,7 @@ export async function listEvidence(
     index = [];
   }
 
-  const limit = req.limit || 20;
+  const limit = Math.max(1, Math.min(req.limit || 20, 100));
   const startIndex = req.nextToken ? parseInt(req.nextToken, 10) : 0;
   if (isNaN(startIndex)) throw new Error('Invalid nextToken');
 

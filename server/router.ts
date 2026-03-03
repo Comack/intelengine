@@ -49,8 +49,10 @@ export function createRouter(allRoutes: RouteDescriptor[]): Router {
   }
 
   function normalizePath(raw: string): string {
-    if (raw.includes('..') || raw.includes('//')) {
-      raw = new URL('http://x' + raw).pathname;
+    let decoded = raw;
+    try { decoded = decodeURIComponent(raw); } catch { /* malformed encoding */ }
+    if (decoded.includes('..') || decoded.includes('//')) {
+      raw = new URL('http://x' + raw).pathname.replace(/\/+/g, '/');
     }
     return raw.length > 1 && raw.endsWith('/') ? raw.slice(0, -1) : raw;
   }

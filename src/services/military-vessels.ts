@@ -22,6 +22,7 @@ let vesselCache: { data: MilitaryVessel[]; timestamp: number } | null = null;
 const trackedVessels = new Map<string, MilitaryVessel>();
 const vesselHistory = new Map<string, { positions: [number, number][]; lastUpdate: number }>();
 const HISTORY_MAX_POINTS = 30;
+const MAX_TRACKED_VESSELS = 5000;
 const HISTORY_CLEANUP_INTERVAL = 10 * 60 * 1000; // 10 minutes
 const VESSEL_STALE_TIME = 60 * 60 * 1000; // 1 hour - consider vessel stale
 
@@ -352,6 +353,10 @@ function processAisPosition(data: AisPositionData): void {
   if (!history) {
     history = { positions: [], lastUpdate: now };
     vesselHistory.set(mmsi, history);
+    if (vesselHistory.size > MAX_TRACKED_VESSELS) {
+      const firstKey = vesselHistory.keys().next().value;
+      if (firstKey !== undefined) vesselHistory.delete(firstKey);
+    }
   }
   history.positions.push([lat, lon]);
   if (history.positions.length > HISTORY_MAX_POINTS) {

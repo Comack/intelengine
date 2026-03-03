@@ -67,61 +67,53 @@ export function parseFaaXml(xml: string): Map<string, FAADelayInfo> {
 
   for (const dt of delayTypes) {
     // Ground Delays
-    if (dt.Ground_Delay_List?.Ground_Delay) {
-      for (const gd of dt.Ground_Delay_List.Ground_Delay) {
-        if (gd.ARPT) {
-          delays.set(gd.ARPT, {
-            airport: gd.ARPT,
-            reason: gd.Reason || 'Ground delay',
-            avgDelay: gd.Avg ? parseInt(gd.Avg, 10) : 30,
-            type: 'ground_delay',
-          });
-        }
+    for (const gd of dt.Ground_Delay_List?.Ground_Delay ?? []) {
+      if (gd.ARPT) {
+        delays.set(gd.ARPT, {
+          airport: gd.ARPT,
+          reason: gd.Reason || 'Ground delay',
+          avgDelay: gd.Avg ? parseInt(gd.Avg, 10) : 30,
+          type: 'ground_delay',
+        });
       }
     }
     // Ground Stops
-    if (dt.Ground_Stop_List?.Ground_Stop) {
-      for (const gs of dt.Ground_Stop_List.Ground_Stop) {
-        if (gs.ARPT) {
-          delays.set(gs.ARPT, {
-            airport: gs.ARPT,
-            reason: gs.Reason || 'Ground stop',
-            avgDelay: 60,
-            type: 'ground_stop',
-          });
-        }
+    for (const gs of dt.Ground_Stop_List?.Ground_Stop ?? []) {
+      if (gs.ARPT) {
+        delays.set(gs.ARPT, {
+          airport: gs.ARPT,
+          reason: gs.Reason || 'Ground stop',
+          avgDelay: 60,
+          type: 'ground_stop',
+        });
       }
     }
     // Arrival/Departure Delays
-    if (dt.Arrival_Departure_Delay_List?.Delay) {
-      for (const d of dt.Arrival_Departure_Delay_List.Delay) {
-        if (d.ARPT) {
-          const min = parseInt(d.Arrival_Delay?.Min || d.Departure_Delay?.Min || '15', 10);
-          const max = parseInt(d.Arrival_Delay?.Max || d.Departure_Delay?.Max || '30', 10);
-          const existing = delays.get(d.ARPT);
-          // Don't downgrade ground_stop to lesser delay
-          if (!existing || existing.type !== 'ground_stop') {
-            delays.set(d.ARPT, {
-              airport: d.ARPT,
-              reason: d.Reason || 'Delays',
-              avgDelay: Math.round((min + max) / 2),
-              type: parseDelayTypeFromReason(d.Reason || ''),
-            });
-          }
+    for (const d of dt.Arrival_Departure_Delay_List?.Delay ?? []) {
+      if (d.ARPT) {
+        const min = parseInt(d.Arrival_Delay?.Min || d.Departure_Delay?.Min || '15', 10);
+        const max = parseInt(d.Arrival_Delay?.Max || d.Departure_Delay?.Max || '30', 10);
+        const existing = delays.get(d.ARPT);
+        // Don't downgrade ground_stop to lesser delay
+        if (!existing || existing.type !== 'ground_stop') {
+          delays.set(d.ARPT, {
+            airport: d.ARPT,
+            reason: d.Reason || 'Delays',
+            avgDelay: Math.round((min + max) / 2),
+            type: parseDelayTypeFromReason(d.Reason || ''),
+          });
         }
       }
     }
     // Airport Closures
-    if (dt.Airport_Closure_List?.Airport) {
-      for (const ac of dt.Airport_Closure_List.Airport) {
-        if (ac.ARPT && FAA_AIRPORTS.includes(ac.ARPT)) {
-          delays.set(ac.ARPT, {
-            airport: ac.ARPT,
-            reason: 'Airport closure',
-            avgDelay: 120,
-            type: 'ground_stop',
-          });
-        }
+    for (const ac of dt.Airport_Closure_List?.Airport ?? []) {
+      if (ac.ARPT && FAA_AIRPORTS.includes(ac.ARPT)) {
+        delays.set(ac.ARPT, {
+          airport: ac.ARPT,
+          reason: 'Airport closure',
+          avgDelay: 120,
+          type: 'ground_stop',
+        });
       }
     }
   }

@@ -156,6 +156,7 @@ export class MapComponent {
     base: new Set(),
     nuclear: new Set(),
   };
+  private resizeObserver: ResizeObserver | null = null;
   private boundVisibilityHandler!: () => void;
   private renderScheduled = false;
   private lastRenderTime = 0;
@@ -212,7 +213,7 @@ export class MapComponent {
   private setupResizeObserver(): void {
     let lastWidth = 0;
     let lastHeight = 0;
-    const resizeObserver = new ResizeObserver((entries) => {
+    this.resizeObserver = new ResizeObserver((entries) => {
       if (this.isResizing) return;
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
@@ -223,7 +224,7 @@ export class MapComponent {
         }
       }
     });
-    resizeObserver.observe(this.container);
+    this.resizeObserver.observe(this.container);
 
     // Re-render when page becomes visible again (after browser throttling)
     this.boundVisibilityHandler = () => {
@@ -243,6 +244,10 @@ export class MapComponent {
   }
 
   public destroy(): void {
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     if (this.healthCheckIntervalId) {
       clearInterval(this.healthCheckIntervalId);

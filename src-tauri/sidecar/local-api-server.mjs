@@ -93,7 +93,11 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       });
     });
     req.on('error', reject);
-    if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
+    if (init?.signal) {
+      const abortHandler = () => req.destroy();
+      init.signal.addEventListener('abort', abortHandler);
+      req.once('close', () => init.signal.removeEventListener('abort', abortHandler));
+    }
     if (body != null) req.write(body);
     req.end();
   });
