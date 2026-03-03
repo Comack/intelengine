@@ -3780,48 +3780,188 @@ See [ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md) for the full proto workflow.
 
 ## API Dependencies
 
-The dashboard fetches data from various public APIs and data sources:
+The dashboard integrates 50+ external APIs across all domains. All sources degrade gracefully: when an API key is absent or a request fails, the handler returns static fallback data or an empty response so the dashboard continues to operate.
 
-| Service | Data | Auth Required |
-|---------|------|---------------|
-| RSS2JSON | News feed parsing | No |
-| Finnhub | Stock quotes (primary) | Yes (free) |
-| Yahoo Finance | Stock indices & commodities (backup) | No |
-| CoinGecko | Cryptocurrency prices | No |
-| USGS | Earthquake data | No |
-| NASA EONET | Natural events (storms, fires, volcanoes, floods) | No |
-| NWS | Weather alerts | No |
-| FRED | Economic indicators (Fed data) | No |
-| EIA | Oil analytics (prices, production, inventory) | Yes (free) |
-| USASpending.gov | Federal government contracts & awards | No |
-| Polymarket | Prediction markets | No |
-| ACLED | Armed conflict & protest data | Yes (free) |
-| GDELT Geo | News-derived event geolocation + tensions | No |
-| GDELT Doc | Topic-based intelligence feeds (cyber, military, nuclear) | No |
-| FAA NASSTATUS | Airport delay status | No |
-| Cloudflare Radar | Internet outage data | Yes (free) |
-| AISStream | Live vessel positions | Yes (relay) |
-| OpenSky Network | Military aircraft tracking | Yes (free) |
-| Wingbits | Aircraft enrichment (owner, operator) | Yes (free) |
-| PizzINT | Pentagon-area activity metrics | No |
+### Complete External API Reference
+
+#### Aviation
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **FAA NASSTATUS** | `https://nasstatus.faa.gov/api/airport-status-information` | — | None | Airport ground delays and ground stops (US only) |
+| **AviationStack** | `https://api.aviationstack.com/v1/flights` | `AVIATIONSTACK_API` | Key | Global flight status with airline/route details; used for international airport delays |
+| **ICAO NOTAM API** | `https://dataservices.icao.int/api/notams-realtime-list` | `ICAO_API_KEY` | Key | ICAO real-time NOTAMs; used to detect airport closures and airspace restrictions |
+
+#### Climate & Environment
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **Open-Meteo** | `https://api.open-meteo.com/v1/forecast` (+ archive) | — | None | Weather forecast and historical temperature/precipitation for climate anomaly scoring |
+| **NASA FIRMS** | `https://firms.modaps.eosdis.nasa.gov/api/area/csv/...` | `NASA_FIRMS_API_KEY` | Key | VIIRS SNPP Near-Real-Time fire/hotspot detections across 9 monitored regions |
+| **Global Forest Watch** | `https://data-api.globalforestwatch.org/dataset/gfw_integrated_alerts/latest/query` | — | None | Tropical deforestation alerts (GLAD-S2 + RADD integrated alert system) |
+| **WAQI** | `https://api.waqi.info/map/bounds/` | `WAQI_TOKEN` | Key | World Air Quality Index — 10 000+ monitoring stations, 5 strategic bounding boxes queried |
+
+#### Conflict & Security
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **ACLED** | `https://acleddata.com/api/acled/read` | `ACLED_ACCESS_TOKEN` | Key | Armed Conflict Location & Event Data — protests, battles, explosions, civilian targeting |
+| **GDELT** | `https://api.gdeltproject.org/api/v2/doc/doc` + geo | — | None | Global Database of Events, Language, and Tone — topic feeds + geolocation |
+| **UCDP** | `https://ucdpapi.pcr.uu.se/api/gedevents/...` | — | None | Uppsala Conflict Data Program — georeferenced armed conflict events |
+| **HAPI** | `https://hapi.humdata.org/api/v2/coordination-context/conflict-events` | — | None | Humanitarian Data Exchange API — political violence event counts and fatalities per country |
+| **ReliefWeb** | `https://api.reliefweb.int/v2/reports` | — | None | UN OCHA situation reports and humanitarian updates |
+
+#### Cyber Threat Intelligence
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **Feodo Tracker** (abuse.ch) | `https://feodotracker.abuse.ch/downloads/ipblocklist.json` | — | None | C2 botnet command-and-control IP blocklist; refreshed daily |
+| **URLHaus** (abuse.ch) | `https://urlhaus-api.abuse.ch/v1/urls/recent/limit/...` | `URLHAUS_AUTH_KEY` | Optional | Malicious URLs (malware distribution, phishing); auth upgrades rate limit |
+| **C2IntelFeeds** | `https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv` | — | None | 30-day C2 IP feed from GitHub (community threat intelligence) |
+| **OTX AlienVault** | `https://otx.alienvault.com/api/v1/indicators/export?type=IPv4` | `OTX_API_KEY` | Key | AT&T/AlienVault Open Threat Exchange — IP indicators of compromise |
+| **AbuseIPDB** | `https://api.abuseipdb.com/api/v2/blacklist` | `ABUSEIPDB_API_KEY` | Key | Crowdsourced IP abuse reports with confidence scores |
+| **CISA KEV** | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | — | None | CISA Known Exploited Vulnerabilities catalog (CVE-ID, vendor, product, due date) |
+| **Wikipedia Revision API** | `https://en.wikipedia.org/w/api.php?action=query` | — | None | Revision history for 18 geopolitical watchlist pages; revert-war and rapid-edit detection |
+| **GPSJam** | `https://gpsjam.org/data` | — | None | GPS jamming prevalence from ADS-B receiver reports; H3 hex grid at resolution 4 |
+
+#### Displacement & Humanitarian
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **UNHCR Population API** | `https://api.unhcr.org/population/v1/population/` | — | None | Annual refugee and displaced person statistics by country of origin and asylum |
+
+#### Economic & Financial
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **FRED** (St. Louis Fed) | `https://api.stlouisfed.org/fred/...` | `FRED_API_KEY` | Key | Federal Reserve Economic Data — yield curves, M2, unemployment, GDP, DXY |
+| **EIA** | `https://api.eia.gov/v2/...` | `EIA_API_KEY` | Key | US Energy Information Administration — WTI/Brent crude, Henry Hub gas, energy capacity |
+| **World Bank** | `https://api.worldbank.org/v2/country/.../indicator/...` | — | None | GDP, inflation, trade balance, debt-to-GDP ratios for 50+ countries |
+| **BIS SDMX API** | `https://stats.bis.org/api/v1/data/...` | — | None | Bank for International Settlements — credit-to-GDP ratios, exchange rates, policy rates |
+| **WTO Time Series** | `https://api.wto.org/timeseries/v1` | `WTO_API_KEY` | Key | World Trade Organization trade flow and tariff data |
+| **SEC EDGAR** | `https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&output=atom` | — | None | Real-time SEC filings (8-K, 10-K, 13F) for tracked companies |
+| **Trading Economics** | `https://api.tradingeconomics.com/markets/symbol/BALTIC` | `TRADING_ECONOMICS_API_KEY` | Key | Baltic Dry Index — global dry bulk shipping cost benchmark |
+| **Mempool.space** | `https://mempool.space/api/v1/mining/hashrate/1m` | — | None | Bitcoin network hash rate (1-month history); used in macro crypto signals |
+| **Alternative.me** | `https://api.alternative.me/fng/?limit=30` | — | None | Crypto Fear & Greed Index (30-day history); used in macro sentiment signals |
+| **GoldAPI** | `https://www.goldapi.io/api/XAU/USD` + `/XAG/USD` | `GOLD_API_KEY` | Key | Real-time gold (XAU) and silver (XAG) spot prices |
+
+#### Infrastructure
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **Cloudflare Radar** | `https://api.cloudflare.com/client/v4/radar/annotations/outages` | `CLOUDFLARE_API_TOKEN` | Key | Internet outage annotations from Cloudflare network telemetry |
+| **Safecast** | `https://api.safecast.org/measurements.json` | — | None | Crowdsourced radiation monitoring (CPM) from distributed Geiger counters |
+| **NGA MSI** | `https://msi.nga.mil/api/publications/broadcast-warn?output=json&status=A` | — | None | US National Geospatial-Intelligence Agency maritime safety broadcast warnings; used for both navigational warnings and submarine cable fault detection |
+| **BGPStream (CAIDA)** | `https://bgpstream.caida.org/api/v2/events` | — | None | BGP hijack and route-leak events from CAIDA / Route Views / RIPE RIS feeds |
+| **Electricity Maps** | `https://api.electricitymap.org/v3/power-breakdown/latest` | `ELECTRICITY_MAPS_API_KEY` | Key | Real-time carbon intensity and renewable percentage for 8 strategic grid zones |
+| **Service Status Pages** | AWS, Azure, GCP, GitHub, Cloudflare, Discord, Slack, Stripe, etc. | — | None | ~20 Statuspage.io/custom status APIs polled for cloud provider incident detection |
+
+#### Maritime
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **AISStream.io** | WebSocket `wss://stream.aisstream.io/v0/stream` | `AISSTREAM_API_KEY` | Key | Real-time AIS vessel position feed via WebSocket relay; terrestrial receiver network |
+| **Global Fishing Watch** | `https://gateway.api.globalfishingwatch.org/v3/events` | `GLOBAL_FISHING_WATCH_API_KEY` | Key | SAR satellite dark-ship detections cross-referenced against AIS transponder data |
+| **Portcast** | `https://api.portcast.io/v1/port/<CODE>/congestion` | `PORTCAST_API_KEY` | Key | Live port congestion enrichment for 15 strategic ports; supplements static baseline |
+| **NGA MSI** | (see Infrastructure above) | — | None | Also serves navigational warnings (broadcast warns) for the maritime domain |
+
+#### Military & Intelligence
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **OpenSky Network** | `https://opensky-network.org/api/states/all` | `OPENSKY_CLIENT_ID` / `OPENSKY_CLIENT_SECRET` | Free account | ADS-B aircraft state vectors; cloud IPs are blocked — requires relay with credentials |
+| **Wingbits** | `https://customer-api.wingbits.com/v1/flights` + `/details/<icao24>` | `WINGBITS_API_KEY` | Key | Aircraft owner/operator enrichment data cross-referenced against ICAO hex ranges |
+| **AviationStack** | (see Aviation above) | `AVIATIONSTACK_API` | Key | Also used for military flight schedule and route data |
+| **ICAO NOTAM API** | (see Aviation above) | `ICAO_API_KEY` | Key | Real-time NOTAMs; military airspace restrictions and exercise notices |
+| **Airframes.io** | WS relay `{WS_RELAY_URL}/acars/recent` | `AIRFRAMES_API_KEY` | Key | VHF/HF ACARS message feed; military message classification by keyword pattern |
+| **PizzINT** | `https://www.pizzint.watch/api/dashboard-data` | — | None | Pentagon-area foot traffic and activity metrics from Google Popular Times data |
+| **GDELT** | (see Conflict above) | — | None | Also powers intelligence topic feeds (military, cyber, nuclear, sanctions) |
+
+#### Market & Financial
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **Finnhub** | `https://finnhub.io/api/v1/quote` | `FINNHUB_API_KEY` | Key | Real-time stock quotes; primary provider for individual equities |
+| **Yahoo Finance** | `https://query1.finance.yahoo.com/v8/finance/chart/...` | — | None | Stock charts and commodity futures (backup to Finnhub); no official API |
+| **CoinGecko** | `https://api.coingecko.com/api/v3/coins/markets` | — | None | Cryptocurrency prices (BTC, ETH, SOL and others); no key on free tier |
+| **Polymarket** | `https://gamma-api.polymarket.com/...` | — | None | Prediction market probabilities for geopolitical and macro events |
+| **Whale Alert** | `https://api.whale-alert.io/v1/transactions` | `WHALE_ALERT_API_KEY` | Key | Large on-chain transfers (Bitcoin, Ethereum, stablecoins) ≥ $500 k USD |
+| **GoldAPI** | (see Economic above) | `GOLD_API_KEY` | Key | Spot gold and silver prices for the precious metals panel |
+
+#### News & Social
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **RSS feeds** | Various (BBC, Reuters, Al Jazeera, FP, Breaking Defense, etc.) | — | None | ~60 curated RSS/Atom feeds aggregated and cached by the news handler |
+| **Bluesky AT Protocol** | `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts` | — | None | Direct social search API; relay also connects to Bluesky Jetstream (`wss://jetstream2.us-east.bsky.network`) for real-time firehose |
+| **Hacker News** | `https://hacker-news.firebaseio.com/v0/...` | — | None | Firebase JSON API for top/new/best/ask/show story IDs and items |
+
+#### Research & Tech
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **arXiv** | `https://export.arxiv.org/api/query` | — | None | Atom XML search API for AI/ML and security research papers |
+| **GitHub API** | `https://api.github.com/repos/.../events` | `GITHUB_TOKEN` | Optional | Repository event feeds for tech ecosystem activity; unauthenticated requests rate-limited |
+| **GitHub Trending** | `https://gh-trending-api.herokuapp.com/repositories/...` | — | None | Unofficial trending repositories API; used for tech momentum scoring |
+
+#### Seismology
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **USGS Earthquake Feed** | `https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson` | — | None | Real-time M4.5+ earthquake feed (GeoJSON); updated every 1–5 minutes |
+| **NWS / Weather.gov** | `https://api.weather.gov/alerts/active?event=Tsunami+Warning,...` | — | None | Active tsunami warnings, watches, and advisories from the National Weather Service |
+
+#### Space
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **NOAA SWPC** | `https://services.swpc.noaa.gov/json/planetary_k_index_1m.json` (+ xray + alerts) | — | None | Space Weather Prediction Center — Kp index, GOES X-ray flux, geomagnetic alerts |
+| **CelesTrak** | `https://celestrak.org/NORAD/elements/gp.php` | — | None | NORAD two-line element sets (TLEs) for satellite orbit propagation (Starlink, GPS, ISS, etc.) |
+
+#### Sanctions & Entities
+
+| Service | Endpoint | Env Var | Auth | Notes |
+|---------|----------|---------|------|-------|
+| **OpenSanctions** | `https://api.opensanctions.org/search/` | — | None | Unified sanctions database (OFAC, EU, UN, national lists); free for non-commercial use |
+
+---
 
 ### Optional API Keys
 
-Some features require API credentials. Without them, the corresponding layer is hidden:
+The following environment variables configure paid or registration-required features. All have graceful fallbacks — the dashboard remains fully functional without any of them, though relevant data layers will use static or empty data.
 
-| Variable | Service | How to Get |
-|----------|---------|------------|
-| `FINNHUB_API_KEY` | Stock quotes (primary) | Free registration at [finnhub.io](https://finnhub.io/) |
-| `EIA_API_KEY` | Oil analytics | Free registration at [eia.gov/opendata](https://www.eia.gov/opendata/) |
-| `VITE_WS_RELAY_URL` | AIS vessel tracking | Deploy AIS relay or use hosted service |
-| `VITE_OPENSKY_RELAY_URL` | Military aircraft | Deploy relay with OpenSky credentials |
-| `OPENSKY_CLIENT_ID` | OpenSky auth (relay) | Free registration at [opensky-network.org](https://opensky-network.org) |
-| `OPENSKY_CLIENT_SECRET` | OpenSky auth (relay) | API key from OpenSky account settings |
-| `CLOUDFLARE_API_TOKEN` | Internet outages | Free Cloudflare account with Radar access |
-| `ACLED_ACCESS_TOKEN` | Protest data (server-side) | Free registration at acleddata.com |
-| `WINGBITS_API_KEY` | Aircraft enrichment | Contact [Wingbits](https://wingbits.com) for API access |
+| Variable | Service | Domain | How to Get |
+|----------|---------|--------|------------|
+| `FINNHUB_API_KEY` | Finnhub stock quotes | market | Free at [finnhub.io](https://finnhub.io/) |
+| `EIA_API_KEY` | US energy prices (WTI, Brent, gas) | economic | Free at [eia.gov/opendata](https://www.eia.gov/opendata/) |
+| `FRED_API_KEY` | Federal Reserve economic data | economic | Free at [fred.stlouisfed.org/docs/api/api_key.html](https://fred.stlouisfed.org/docs/api/api_key.html) |
+| `CLOUDFLARE_API_TOKEN` | Internet outage data | infrastructure | Free Cloudflare account → Radar read permission |
+| `ACLED_ACCESS_TOKEN` | Armed conflict & protest events | conflict | Free registration at [acleddata.com](https://acleddata.com) |
+| `AISSTREAM_API_KEY` | Live AIS vessel positions | maritime | Free registration at [aisstream.io](https://aisstream.io) |
+| `WS_RELAY_URL` | Relay server URL (AIS, ACARS, Bluesky) | multiple | Deploy `ais-relay.cjs` to Railway/Fly/Render |
+| `OPENSKY_CLIENT_ID` + `OPENSKY_CLIENT_SECRET` | Military aircraft ADS-B | military | Free registration at [opensky-network.org](https://opensky-network.org) |
+| `WINGBITS_API_KEY` | Aircraft owner/operator enrichment | military | Contact [wingbits.com](https://wingbits.com) |
+| `AVIATIONSTACK_API` | International flight status | aviation | Free tier at [aviationstack.com](https://aviationstack.com) |
+| `ICAO_API_KEY` | Real-time NOTAMs | aviation | Requires ICAO developer account |
+| `AIRFRAMES_API_KEY` | ACARS message feed | military | Registration at [airframes.io](https://airframes.io) |
+| `GLOBAL_FISHING_WATCH_API_KEY` | SAR dark-ship detections | maritime | Free registration at [globalfishingwatch.org](https://globalfishingwatch.org/our-apis/) |
+| `ELECTRICITY_MAPS_API_KEY` | Grid carbon intensity + stress | infrastructure | Free tier at [electricitymaps.com](https://www.electricitymaps.com/free-tier-api) |
+| `PORTCAST_API_KEY` | Live port congestion enrichment | maritime | Contact [portcast.io](https://portcast.io) |
+| `NASA_FIRMS_API_KEY` | Wildfire / hotspot detections | wildfire | Free at [firms.modaps.eosdis.nasa.gov/api/](https://firms.modaps.eosdis.nasa.gov/api/) |
+| `WHALE_ALERT_API_KEY` | On-chain whale transfers | market | Free tier at [whale-alert.io](https://whale-alert.io) |
+| `WAQI_TOKEN` | Air quality (PM2.5, AQI) | climate | Free registration at [aqicn.org/data-platform/token/](https://aqicn.org/data-platform/token/) |
+| `OTX_API_KEY` | AlienVault OTX threat indicators | cyber | Free at [otx.alienvault.com](https://otx.alienvault.com) |
+| `ABUSEIPDB_API_KEY` | AbuseIPDB IP blacklist | cyber | Free tier at [abuseipdb.com](https://www.abuseipdb.com/api) |
+| `URLHAUS_AUTH_KEY` | URLHaus malicious URL feed | cyber | Registration at [urlhaus-api.abuse.ch](https://urlhaus-api.abuse.ch) |
+| `GOLD_API_KEY` | Gold and silver spot prices | market | Free tier at [goldapi.io](https://www.goldapi.io) |
+| `TRADING_ECONOMICS_API_KEY` | Baltic Dry Index | economic | [tradingeconomics.com/api/](https://tradingeconomics.com/api/) |
+| `WTO_API_KEY` | Trade flows and tariff data | trade | [developer.wto.org](https://developer.wto.org) |
+| `GITHUB_TOKEN` | GitHub repo events | research | Personal access token from [github.com/settings/tokens](https://github.com/settings/tokens) |
+| `GROQ_API_KEY` | AI summarization (primary) | intelligence | Free tier at [console.groq.com](https://console.groq.com) |
+| `OPENROUTER_API_KEY` | AI summarization (fallback) | intelligence | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| `OLLAMA_HOST` / `OLLAMA_API_URL` | Local LLM inference | intelligence | Run [Ollama](https://ollama.ai) locally |
 
-The dashboard functions fully without these keys—affected layers simply don't appear. Core functionality (news, markets, earthquakes, weather) requires no configuration.
+The dashboard functions with zero configuration for core features (news, earthquakes, weather, GDELT events, USGS, NOAA SWPC, BGPStream, UNHCR, ReliefWeb, CISA KEV, Safecast, NGA MSI, arXiv, Hacker News, Polymarket, Mempool.space, Fear & Greed Index, BIS, World Bank, SEC EDGAR, OpenSanctions, CelesTrak, GPSJam). Only the services listed above with `Auth Required = Key` need credentials.
 
 ## Project Structure
 

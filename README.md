@@ -1530,9 +1530,13 @@ The `.env.example` file documents every variable with descriptions and registrat
 | **AI (Local)**    | `OLLAMA_API_URL`, `OLLAMA_MODEL`                                           | Free (runs on your hardware)               |
 | **AI (Cloud)**    | `GROQ_API_KEY`, `OPENROUTER_API_KEY`                                       | 14,400 req/day (Groq), 50/day (OpenRouter) |
 | **Cache**         | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`                       | 10K commands/day                           |
-| **Markets**       | `FINNHUB_API_KEY`, `FRED_API_KEY`, `EIA_API_KEY`                           | All free tier                              |
-| **Tracking**      | `WINGBITS_API_KEY`, `AISSTREAM_API_KEY`                                    | Free                                       |
-| **Geopolitical**  | `ACLED_ACCESS_TOKEN`, `CLOUDFLARE_API_TOKEN`, `NASA_FIRMS_API_KEY`         | Free for researchers                       |
+| **Markets**       | `FINNHUB_API_KEY`, `FRED_API_KEY`, `EIA_API_KEY`, `GOLD_API_KEY`, `TRADING_ECONOMICS_API_KEY`, `WHALE_ALERT_API_KEY` | All free tier (except Trading Econ) |
+| **Tracking**      | `WINGBITS_API_KEY`, `AISSTREAM_API_KEY`, `AIRFRAMES_API_KEY`               | Free                                       |
+| **Geopolitical**  | `ACLED_ACCESS_TOKEN`, `CLOUDFLARE_API_TOKEN`, `NASA_FIRMS_API_KEY`, `WAQI_TOKEN`, `WTO_API_KEY` | Free for researchers |
+| **Cyber Intel**   | `OTX_API_KEY`, `ABUSEIPDB_API_KEY`, `URLHAUS_AUTH_KEY`                    | Free tier                                  |
+| **Maritime**      | `GLOBAL_FISHING_WATCH_API_KEY`, `PORTCAST_API_KEY`                        | GFW free with registration                 |
+| **Aviation**      | `AVIATIONSTACK_API`, `ICAO_API_KEY`                                        | AviationStack free tier                    |
+| **Grid / Energy** | `ELECTRICITY_MAPS_API_KEY`                                                 | Free tier available                        |
 | **Relay**         | `WS_RELAY_URL`, `VITE_WS_RELAY_URL`, `OPENSKY_CLIENT_ID/SECRET`            | Self-hosted                                |
 | **UI**            | `VITE_VARIANT`, `VITE_MAP_INTERACTION_MODE` (`flat` or `3d`, default `3d`) | N/A                                        |
 | **Observability** | `VITE_SENTRY_DSN` (optional, empty disables reporting)                     | N/A                                        |
