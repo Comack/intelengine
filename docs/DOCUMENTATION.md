@@ -2191,6 +2191,287 @@ This transparency enables informed interpretation of the dashboard data.
 
 ---
 
+## Forensics Intelligence Engine
+
+The Forensics Intelligence Engine is a multi-phase shadow analytics pipeline that runs asynchronously alongside the live dashboard. It is designed for operators who need to move beyond surface-level feeds and interrogate the underlying statistical structure of incoming signals — detecting anomalies, discovering causal chains, and building a continuously updating model of systemic risk.
+
+It operates entirely server-side and is exposed through nine RPC endpoints under `/api/intelligence/v1/`. The `ForensicsPanel` UI provides a read-only operator console with live streaming results and a feedback loop that adjusts calibration weights over time.
+
+### Overview
+
+| Aspect | Detail |
+|--------|--------|
+| **Entry point** | `server/worldmonitor/intelligence/v1/forensics-orchestrator.ts` (982 lines) |
+| **UI panel** | `src/components/ForensicsPanel.ts` (1122 lines) |
+| **Signal construction** | `src/services/forensics-signal-builder.ts` (1418 lines) |
+| **State store** | Redis blackboard (`server/worldmonitor/intelligence/v1/forensics-blackboard.ts`) |
+| **Supported domains** | Any domain exposing `ForensicsSignalInput[]` records |
+| **Trigger** | On-demand via `RunForensicsShadow` RPC; results are persisted and queryable |
+
+---
+
+### Four-Phase Shadow Pipeline
+
+The orchestrator executes four phases in sequence. Each phase writes its output to the Redis blackboard keyed by `runId`.
+
+#### Phase 1 — Signal Normalization
+
+Raw `ForensicsSignalInput[]` records are validated before any computation touches them. The normalization step is intentionally strict: **invalid signals are silently dropped** rather than propagated as noise.
+
+Required fields and their validation rules:
+
+| Field | Type | Rule |
+|-------|------|------|
+| `sourceId` | string | Non-empty |
+| `region` | string | Non-empty |
+| `domain` | string | Non-empty |
+| `signalType` | string | Non-empty |
+| `value` | number | Must be finite (`isFinite`) |
+| `confidence` | number | Clamped to `[0, 1]` |
+| `observedAt` | number | Unix epoch milliseconds |
+| `evidenceIds` | string[] | Optional; defaults to `[]` |
+
+#### Phase 2 — Weak Supervision EM Fusion (`runWeakSupervisionFusion`)
+
+Aggregates multiple heterogeneous signals into a single fused probability estimate using an expectation-maximisation algorithm with Platt scaling calibration.
+
+**Algorithm:**
+
+```
+1. Random initialization of latent binary labels Y_i ∈ {0, 1}
+2. Repeat until convergence:
+   E-step: posterior[i] = P(Y=1 | x_i, weights)
+              = sigmoid(Σ_j weights[j] × x_i[j])
+   M-step: weights[j] += learningRate × Σ_i (posterior[i] - Y_i) × x_i[j]
+              (log-likelihood gradient ascent)
+3. Platt scaling: calibrated_prob = sigmoid(A × raw_logit + B)
+4. 5-sample bootstrap → confidence_lower, confidence_upper
+5. Human-facing score = round(calibrated_prob × 100)
+```
+
+Output per fused signal (`ForensicsFusedSignal`):
+
+| Field | Description |
+|-------|-------------|
+| `probability` | Calibrated posterior probability `[0, 1]` |
+| `score` | Human-facing integer `[0, 100]` |
+| `confidence_lower` | 5-bootstrap lower bound |
+| `confidence_upper` | 5-bootstrap upper bound |
+| `contributors[]` | Per-source `{ signal_type, contribution, learned_weight }` |
+
+#### Phase 3 — Conformal Anomaly Detection (`runConformalAnomalies`)
+
+Uses distribution-free conformal prediction against a rolling calibration history to flag statistically unusual signals without assuming Gaussianity.
+
+**Calibration store:** up to 512 historical samples per metric key `{domain}:{region}:{signalType}`, persisted in Redis with a 30-day TTL. Falls back to an in-memory `Map` if Redis is unavailable.
+
+**Detection logic:**
+
+```
+non_conformity_value  = |value − median(calibration_history)|
+p_value_value         = fraction of calibration scores ≥ non_conformity_value
+
+non_conformity_timing = |log(Δt) − median(log_interval_history)|
+p_value_timing        = fraction of log-interval scores ≥ non_conformity_timing
+
+combined_p_value      = min(p_value_value, p_value_timing)
+anomaly               = (combined_p_value ≤ α),  α = 0.05
+```
+
+Severity tiers:
+
+| Tier | p-value threshold |
+|------|-------------------|
+| **critical** | ≤ 0.01 |
+| **high** | ≤ 0.03 |
+| **medium** | ≤ 0.05 |
+
+Each anomaly record includes **counterfactual levers** — explanations of which signal changes would push the p-value back above the significance threshold:
+
+| Lever field | Description |
+|-------------|-------------|
+| `direction` | `increase` or `decrease` |
+| `required_delta` | Magnitude of change needed |
+| `lever_impact` | Effect size estimate `[0, 1]` |
+
+#### Phase 4 — Causal Discovery (`forensics-causal.ts`)
+
+Builds a directed causal graph over signal types using a Minimum Description Length (MDL) scoring criterion applied across three temporal horizons.
+
+**Temporal horizons:**
+
+| Horizon | Bucket size | Lookback | Effective window |
+|---------|-------------|----------|-----------------|
+| tactical | 15 min | 8 buckets | 2 hours |
+| operational | 6 hours | 12 buckets | 3 days |
+| strategic | 24 hours | 30 buckets | 30 days |
+
+**Scoring:**
+
+```
+active(signal, bucket) = value ≥ 70th-percentile of signal's historical values
+
+conditional_lift       = P(B active | A active) / P(B active baseline)
+
+mdl_causal_score       = sigmoid(lift − 1)
+                         × support_weight
+                         × causal_vs_correlation_ratio
+
+Emit edge A → B when:
+  support_count ≥ 4 co-activations
+  mdl_causal_score ≥ 0.15
+  total edges ≤ 40 (top-k by score)
+
+delay_ms = median bucket-offset between A activations and B activations
+```
+
+Output per edge (`ForensicsCausalEdge`):
+
+| Field | Description |
+|-------|-------------|
+| `cause_signal_type` | Source signal type |
+| `effect_signal_type` | Target signal type |
+| `causal_score` | MDL score `[0, 1]` |
+| `delay_ms` | Estimated propagation delay |
+| `support_count` | Co-activation count |
+| `conditional_lift` | P(B\|A) / P(B) ratio |
+| `horizon` | `tactical` / `operational` / `strategic` |
+
+---
+
+### Financial Topology Analysis
+
+`financial-topology.ts` constructs a correlation graph specifically for financial-domain signals (`domain ∈ {market, prediction, finance, economic}`).
+
+**Graph construction:**
+
+```
+edge(A, B) = cosine_similarity(normalize(A.values), normalize(B.values)) ≥ 0.55
+```
+
+**Derived topology metrics:**
+
+| Metric | Formula | Interpretation |
+|--------|---------|----------------|
+| **Beta-1** | avg_node_degree − 1 | Systemic connectivity; high values indicate dense coupling |
+| **TSI** (Topological Stress Index) | `density × beta1² / sqrt(nodeCount)` | Composite stress proxy for financial contagion risk |
+
+**Hyperedge detection:** cliques of 3 or more nodes where every pairwise cosine similarity exceeds the 0.55 threshold. Hyperedges are surfaced in the topology drilldown view as multi-asset stress clusters.
+
+The topology analysis derives up to **80 synthetic signals** from the graph structure for use as additional inputs to the EM fusion phase, improving fused coverage when raw signal counts are low.
+
+---
+
+### Redis Blackboard State Store
+
+All run artifacts are written to a structured Redis keyspace. Every key family has an in-memory `Map` fallback so the pipeline operates in zero-Redis deployments.
+
+| Key pattern | Contents | Max entries | TTL |
+|-------------|----------|-------------|-----|
+| `forensics:run:{runId}` | Full run object (all phase outputs) | — | 7 days |
+| `forensics:runs:{domain}` | Ordered run-ID history list per domain | 1 000 | 7 days |
+| `forensics:latest:{domain}` | Latest runId for a domain | — | 7 days |
+| `forensics:hist:{domain}:{region}:{signalType}` | Rolling calibration values | 512 samples | 30 days |
+| `forensics:hist_ts:{domain}:{region}:{signalType}` | Calibration observation timestamps | 512 samples | 30 days |
+| `forensics:policy:{domain}` | Q-table entries (RL phase selection) | 4 000 rows | 30 days |
+| `forensics:topology_baseline:{domain}:{region}:{signalType}` | Topology baseline windows | 2 000 rows | 90 days |
+
+Old entries beyond the per-key maximum are evicted with a LIFO trim on every write.
+
+---
+
+### Policy Learning (Q-Table)
+
+The orchestrator includes a lightweight reinforcement learning layer that adaptively reorders or prioritises pipeline phases over time.
+
+**State representation:** a hash fingerprint derived from `domain` + recent anomaly counts per severity tier + last-run phase outcome map.
+
+**Action space:** pipeline phase names (`normalize`, `fuse`, `anomaly`, `causal`).
+
+**Q-value update rule (Bellman):**
+
+```
+Q(s, a) += learningRate × (reward + γ × max_a' Q(s', a') − Q(s, a))
+```
+
+**Reward signal:** inverse of observed phase wall-clock duration. Phases that complete quickly score higher when their informativeness (anomaly yield) is comparable. This biases the policy toward efficient execution paths without sacrificing detection quality.
+
+Q-tables are persisted at `forensics:policy:{domain}` and queried via the `GetForensicsPolicy` RPC.
+
+---
+
+### ForensicsSignalBuilder
+
+`src/services/forensics-signal-builder.ts` constructs `ForensicsSignalInput[]` arrays from live dashboard data stores. It is the primary consumer-side adapter between domain service caches and the forensics pipeline.
+
+Each signal source has a **freshness profile** controlling how quickly a signal ages out:
+
+| Profile | `maxAgeMs` | `halfLifeMs` | Applies to |
+|---------|-----------|-------------|------------|
+| FAST | 2 hours | 30 min | AIS, flights, vessels, market prices |
+| SLOW | 24 hours | 6 hours | Prediction markets, space weather |
+| CONFLICT | 6 hours | 2 hours | Conflict/security events |
+
+Signal types produced per data domain:
+
+| Data domain | Signal type(s) | Notes |
+|-------------|---------------|-------|
+| AIS | `ais_gaps` | Disruption events with freshness decay |
+| Military vessels | `military_vessel_density` | NavyField + AIS, aggregated per region |
+| Military flights | `military_flight_activity` | OpenSky + Wingbits, per country |
+| Market prices | `market_volatility`, `price_momentum` | Stock returns + rolling vol |
+| BTC / crypto | `btc_volatility`, `etf_flow_conviction`, `stablecoin_stress` | Price, ETF flows, stablecoin deviations |
+| Baltic Dry Index | `freight_stress` | BDI z-score |
+| Prediction markets | `prediction_shift` | Polymarket probability delta |
+| Oil / energy | `oil_price_stress` | WTI/Brent spread + move |
+| FRED economic | `economic_stress` | GDP surprise, unemployment delta |
+| Space weather | `space_weather_kp`, `solar_xray` | Kp index, X-ray flux class |
+| Cyber / BGP | `bgp_anomaly` | Prefix hijack / route leak signals |
+| Dark ships (AIS) | `dark_vessel` | AIS gap + satellite cross-reference |
+| Port congestion | `port_stress` | Wait-time deviation at major ports |
+| ACARS | `acars_activity` | Aircraft message rate anomalies |
+| Air quality | `air_quality_aqi` | AQI threshold breaches |
+| Whale transactions | `crypto_whale_flow` | On-chain large transfers |
+| SAR dark vessels | `sar_dark_vessel` | Satellite radar dark-ship detections |
+
+---
+
+### ForensicsPanel UI
+
+`src/components/ForensicsPanel.ts` renders the operator console for the pipeline. All views are read-only except the feedback control.
+
+| View | Description |
+|------|-------------|
+| **Run History** | Per-domain run list with trend sparklines: anomaly count trend, min p-value trend, max fused score trend |
+| **Live Anomaly Monitor** | Streaming anomaly feed grouped by category (market / maritime / cyber / security / infrastructure / other); shows near-live count, total flagged, min p-value |
+| **Fused Signal Leaderboard** | Ranked list of fused signals with probability value and confidence-interval bar visualisation |
+| **Phase Trace** | DAG execution timeline; each phase shows status, wall-clock duration, and parent-phase dependencies |
+| **Causal DAG** | D3 force-directed graph; nodes = signal types, edges = causal relationships coloured by horizon (tactical / operational / strategic) |
+| **AIS Trajectory Cards** | Per-vessel anomaly cards with severity badge (critical / high / medium) |
+| **Topology Drilldown** | Window comparison table (short-window mean vs. long-window mean, delta, slope, latestValue); topology drift state per signal: `stable` / `watch` / `critical` (z-score-based) |
+
+**Feedback loop:** each anomaly card exposes a thumbs-up / thumbs-down control. Submitting feedback calls the `SubmitForensicsFeedback` RPC, which adjusts per-signal calibration weights stored in the Redis blackboard. Positive feedback reinforces the anomaly's weight; negative feedback attenuates it.
+
+---
+
+### RPC Endpoints
+
+All endpoints are `POST` under `/api/intelligence/v1/` and follow the standard sebuf request/response envelope.
+
+| Endpoint | RPC name | Purpose |
+|----------|----------|---------|
+| `/run-forensics-shadow` | `RunForensicsShadow` | Trigger a new pipeline run for a domain |
+| `/list-fused-signals` | `ListFusedSignals` | Retrieve EM fusion outputs for a run/domain |
+| `/list-calibrated-anomalies` | `ListCalibratedAnomalies` | Retrieve conformal anomaly outputs |
+| `/get-forensics-trace` | `GetForensicsTrace` | Phase execution trace (DAG + durations) for a run |
+| `/get-forensics-run` | `GetForensicsRun` | Full run data bundle (all phases) |
+| `/list-forensics-runs` | `ListForensicsRuns` | Run history list for a domain |
+| `/get-forensics-policy` | `GetForensicsPolicy` | Current Q-table entries for a domain |
+| `/get-forensics-topology-summary` | `GetForensicsTopologySummary` | Topology baseline diagnostics |
+| `/submit-forensics-feedback` | `SubmitForensicsFeedback` | Submit thumbs-up/down feedback on an anomaly |
+
+---
+
 ## Data Freshness Tracking
 
 Beyond simple "online/offline" status, the system tracks fine-grained freshness for each data source to indicate data reliability and staleness.
@@ -3324,6 +3605,8 @@ make generate   # regenerate TypeScript clients, servers, and OpenAPI docs
 
 See [ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md) for the full proto workflow.
 
+> **Arch Linux users**: See [ARCH_LINUX.md](ARCH_LINUX.md) for Arch-specific build dependencies, `.pkg.tar.zst` packaging, AppStream metadata, and desktop integration troubleshooting.
+
 ## API Dependencies
 
 The dashboard fetches data from various public APIs and data sources:
@@ -4029,6 +4312,33 @@ See **[docs/ADDING_ENDPOINTS.md](ADDING_ENDPOINTS.md)** for the complete guide c
 - Browser DevTools → Network tab for API issues
 - Console logs prefixed with `[ServiceName]` for easy filtering
 - Circuit breaker status visible in browser console
+
+---
+
+## Celebration Service
+
+The Celebration Service (`src/services/celebration.ts`) adds ambient positive feedback for environmental milestone events — a lightweight canvas-confetti integration designed for the Happy/full variant.
+
+**Milestone detection** runs after each data load cycle via `checkMilestones()`, called from `src/app/data-loader.ts`. It checks:
+
+| Milestone type | Trigger condition |
+|---|---|
+| Species recovery | Any species with status `"recovered"` or `"stabilized"` |
+| Renewable energy record | Each new 5% threshold crossed (e.g., 40%, 45%, 50%...) |
+| New species count | Any positive `newSpeciesCount` value |
+
+Only the **first matching milestone per call** fires a celebration (subsequent matches are skipped) to prevent overlapping confetti bursts.
+
+**Session deduplication** — a `Set<string>` keyed by `"species:{name}"`, `"renewable:{threshold}"`, or `"species-count:{count}"` ensures the same milestone is never celebrated twice per browser session.
+
+**Two celebration types:**
+
+- `'milestone'` — 40 particles, single burst, `origin.y = 0.7`
+- `'record'` — 80 particles, two bursts 300 ms apart, `origin.y = 0.6`
+
+**Color palette** — nature-inspired warm tones: forest green `#6B8F5E`, sage green `#8BAF7A`, antique gold `#C4A35A`, warm gold `#E8B96E`, sky blue `#7BA5C4`, teal blue `#7FC4C4`.
+
+**Accessibility** — `prefers-reduced-motion` is checked once at module load. When the media query matches, all `celebrate()` calls return immediately with no visual output. The `disableForReducedMotion: true` flag is also passed to canvas-confetti as a secondary guard.
 
 ---
 
