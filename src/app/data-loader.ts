@@ -2505,7 +2505,7 @@ export class DataLoaderManager implements AppModule {
       if (result.status) {
         this.ctx.intelligenceCache.spaceWeather = result.status;
         this.ctx.map?.setSpaceWeather(result.status);
-        dataFreshness.recordUpdate('gpsjam', 1); // reuse gpsjam freshness slot for space weather
+        dataFreshness.recordUpdate('space_weather', 1);
       }
     } catch {
       // Space weather is best-effort — no error propagation needed

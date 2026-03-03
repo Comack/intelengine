@@ -545,7 +545,7 @@ class SignalAggregator {
   ingestAcarsMessages(messages: AcarsMessage[]): void {
     this.clearSignalType('acars_alert');
     for (const m of messages) {
-      if (!m.lat || !m.lon) continue;
+      if (m.lat === 0 && m.lon === 0) continue;
       const code = this.coordsToCountry(m.lat, m.lon);
       const isMedEvac = m.milCategory === 'ACARS_MIL_CATEGORY_MEDICAL_EVAC';
       this.signals.push({
@@ -584,7 +584,7 @@ class SignalAggregator {
   ingestWhaleTransfers(transfers: WhaleTransfer[]): void {
     this.clearSignalType('whale_transfer');
     for (const t of transfers) {
-      if (!t.lat || !t.lon) continue;
+      if (t.lat === 0 && t.lon === 0) continue;
       const code = this.coordsToCountry(t.lat, t.lon);
       this.signals.push({
         type: 'whale_transfer',
@@ -603,7 +603,7 @@ class SignalAggregator {
   ingestNavWarnings(warnings: NavigationalWarning[]): void {
     this.clearSignalType('nav_warning');
     for (const w of warnings) {
-      if (!w.location?.latitude || !w.location?.longitude) continue;
+      if (!w.location || (w.location.latitude === 0 && w.location.longitude === 0)) continue;
       const code = this.coordsToCountry(w.location.latitude, w.location.longitude);
       this.signals.push({
         type: 'nav_warning',

@@ -2912,7 +2912,7 @@ export class DeckGLMap {
   private createAcarsMessagesLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'acars-messages-layer',
-      data: this.acarsMessages.filter(m => m.lat && m.lon),
+      data: this.acarsMessages.filter(m => m.lat !== 0 || m.lon !== 0),
       getPosition: (d: AcarsMessage) => [d.lon, d.lat],
       getRadius: 12000,
       getFillColor: (d: AcarsMessage) => d.milCategory === 'ACARS_MIL_CATEGORY_MEDICAL_EVAC'
@@ -2932,7 +2932,7 @@ export class DeckGLMap {
   private createWhaleTransfersLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'whale-transfers-layer',
-      data: this.whaleTransfers.filter(t => t.lat && t.lon),
+      data: this.whaleTransfers.filter(t => t.lat !== 0 || t.lon !== 0),
       getPosition: (d: WhaleTransfer) => [d.lon, d.lat],
       getRadius: (d: WhaleTransfer) => Math.min(80000, 10000 + Math.sqrt(d.amountUsd) * 2),
       getFillColor: (d: WhaleTransfer) => d.amountUsd > 50_000_000
@@ -2950,7 +2950,7 @@ export class DeckGLMap {
   }
 
   private createNavWarningsLayer(): ScatterplotLayer {
-    const withCoords = this.navWarnings.filter(w => w.location?.latitude && w.location?.longitude);
+    const withCoords = this.navWarnings.filter(w => w.location != null && (w.location.latitude !== 0 || w.location.longitude !== 0));
     return new ScatterplotLayer({
       id: 'nav-warnings-layer',
       data: withCoords,
