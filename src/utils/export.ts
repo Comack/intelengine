@@ -145,9 +145,11 @@ export class ExportPanel {
   private element: HTMLElement;
   private isOpen = false;
   private getData: () => ExportData;
+  private clickAbort: AbortController;
 
   constructor(getDataFn: () => ExportData) {
     this.getData = getDataFn;
+    this.clickAbort = new AbortController();
     this.element = document.createElement('div');
     this.element.className = 'export-panel-container';
     this.element.innerHTML = `
@@ -175,7 +177,7 @@ export class ExportPanel {
         this.isOpen = false;
         menu.classList.add('hidden');
       }
-    });
+    }, { signal: this.clickAbort.signal });
 
     this.element.querySelectorAll('.export-option').forEach(option => {
       option.addEventListener('click', () => {
@@ -201,5 +203,9 @@ export class ExportPanel {
 
   public getElement(): HTMLElement {
     return this.element;
+  }
+
+  public destroy(): void {
+    this.clickAbort.abort();
   }
 }

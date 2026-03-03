@@ -41,7 +41,7 @@ type WorkerResult =
   | { type: 'model-loaded'; id: string; modelId: string }
   | { type: 'model-unloaded'; id: string; modelId: string }
   | { type: 'model-progress'; modelId: string; progress: number }
-  | { type: 'embed-result'; id: string; embeddings: number[][] }
+  | { type: 'embed-result'; id: string; embeddingData: Float32Array; embeddingDim: number; embeddingCount: number }
   | { type: 'summarize-result'; id: string; summaries: string[] }
   | { type: 'sentiment-result'; id: string; results: SentimentResult[] }
   | { type: 'entities-result'; id: string; entities: NEREntity[][] }
@@ -151,7 +151,11 @@ class MLWorkerManager {
               this.loadedModels.delete(data.modelId);
               pending.resolve(true);
             } else if (data.type === 'embed-result') {
-              pending.resolve(data.embeddings);
+              const embeddings: number[][] = [];
+              for (let i = 0; i < data.embeddingCount; i++) {
+                embeddings.push(Array.from(data.embeddingData.subarray(i * data.embeddingDim, (i + 1) * data.embeddingDim)));
+              }
+              pending.resolve(embeddings);
             } else if (data.type === 'summarize-result') {
               pending.resolve(data.summaries);
             } else if (data.type === 'sentiment-result') {

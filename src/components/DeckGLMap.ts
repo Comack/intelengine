@@ -370,6 +370,16 @@ export class DeckGLMap {
   private rafUpdateLayers: (() => void) & { cancel(): void };
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
+  // Stored handler refs for cleanup
+  private boundThemeHandler: ((e: Event) => void) | null = null;
+  private boundContextLost: ((e: Event) => void) | null = null;
+  private boundContextRestored: (() => void) | null = null;
+  private boundMoveStart: (() => void) | null = null;
+  private boundMoveEnd: (() => void) | null = null;
+  private boundMove: (() => void) | null = null;
+  private boundZoom: (() => void) | null = null;
+  private boundZoomEnd: (() => void) | null = null;
+
   constructor(container: HTMLElement, initialState: DeckMapState) {
     this.container = container;
     this.state = initialState;
@@ -389,13 +399,14 @@ export class DeckGLMap {
     this.setupDOM();
     this.popup = new MapPopup(container);
 
-    window.addEventListener('theme-changed', (e: Event) => {
+    this.boundThemeHandler = (e: Event) => {
       const theme = (e as CustomEvent).detail?.theme as 'dark' | 'light';
       if (theme) {
         this.switchBasemap(theme);
-        this.render(); // Rebuilds Deck.GL layers with new theme-aware colors
+        this.render();
       }
-    });
+    };
+    window.addEventListener('theme-changed', this.boundThemeHandler);
 
     this.initMapLibre();
 
@@ -482,16 +493,18 @@ export class DeckGLMap {
     });
 
     const canvas = this.maplibreMap.getCanvas();
-    canvas.addEventListener('webglcontextlost', (e) => {
+    this.boundContextLost = (e) => {
       e.preventDefault();
       this.webglLost = true;
       console.warn('[DeckGLMap] WebGL context lost — will restore when browser recovers');
-    });
-    canvas.addEventListener('webglcontextrestored', () => {
+    };
+    this.boundContextRestored = () => {
       this.webglLost = false;
       console.info('[DeckGLMap] WebGL context restored');
       this.maplibreMap?.triggerRepaint();
-    });
+    };
+    canvas.addEventListener('webglcontextlost', this.boundContextLost);
+    canvas.addEventListener('webglcontextrestored', this.boundContextRestored);
   }
 
   private initDeck(): void {
@@ -509,38 +522,42 @@ export class DeckGLMap {
 
     this.maplibreMap.addControl(this.deckOverlay as unknown as maplibregl.IControl);
 
-    this.maplibreMap.on('movestart', () => {
+    this.boundMoveStart = () => {
       if (this.moveTimeoutId) {
         clearTimeout(this.moveTimeoutId);
         this.moveTimeoutId = null;
       }
-    });
+    };
+    this.maplibreMap.on('movestart', this.boundMoveStart);
 
-    this.maplibreMap.on('moveend', () => {
+    this.boundMoveEnd = () => {
       this.lastSCZoom = -1;
       this.rafUpdateLayers();
       this.debouncedFetchBases();
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.state);
-    });
+    };
+    this.maplibreMap.on('moveend', this.boundMoveEnd);
 
-    this.maplibreMap.on('move', () => {
+    this.boundMove = () => {
       if (this.moveTimeoutId) clearTimeout(this.moveTimeoutId);
       this.moveTimeoutId = setTimeout(() => {
         this.lastSCZoom = -1;
         this.rafUpdateLayers();
       }, 100);
-    });
+    };
+    this.maplibreMap.on('move', this.boundMove);
 
-    this.maplibreMap.on('zoom', () => {
+    this.boundZoom = () => {
       if (this.moveTimeoutId) clearTimeout(this.moveTimeoutId);
       this.moveTimeoutId = setTimeout(() => {
         this.lastSCZoom = -1;
         this.rafUpdateLayers();
       }, 100);
-    });
+    };
+    this.maplibreMap.on('zoom', this.boundZoom);
 
-    this.maplibreMap.on('zoomend', () => {
+    this.boundZoomEnd = () => {
       const currentZoom = Math.floor(this.maplibreMap?.getZoom() || 2);
       const thresholdCrossed = Math.abs(currentZoom - this.lastZoomThreshold) >= 1;
       if (thresholdCrossed) {
@@ -549,7 +566,8 @@ export class DeckGLMap {
       }
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.state);
-    });
+    };
+    this.maplibreMap.on('zoomend', this.boundZoomEnd);
   }
 
   private setupResizeObserver(): void {
@@ -4580,6 +4598,37 @@ export class DeckGLMap {
 
     this.stopPulseAnimation();
     this.stopDayNightTimer();
+
+    // Remove window listeners
+    if (this.boundThemeHandler) {
+      window.removeEventListener('theme-changed', this.boundThemeHandler);
+      this.boundThemeHandler = null;
+    }
+
+    // Remove WebGL context listeners from canvas
+    if (this.maplibreMap) {
+      const canvas = this.maplibreMap.getCanvas();
+      if (this.boundContextLost) {
+        canvas.removeEventListener('webglcontextlost', this.boundContextLost);
+        this.boundContextLost = null;
+      }
+      if (this.boundContextRestored) {
+        canvas.removeEventListener('webglcontextrestored', this.boundContextRestored);
+        this.boundContextRestored = null;
+      }
+
+      // Remove MapLibre event listeners
+      if (this.boundMoveStart) this.maplibreMap.off('movestart', this.boundMoveStart);
+      if (this.boundMoveEnd) this.maplibreMap.off('moveend', this.boundMoveEnd);
+      if (this.boundMove) this.maplibreMap.off('move', this.boundMove);
+      if (this.boundZoom) this.maplibreMap.off('zoom', this.boundZoom);
+      if (this.boundZoomEnd) this.maplibreMap.off('zoomend', this.boundZoomEnd);
+    }
+    this.boundMoveStart = null;
+    this.boundMoveEnd = null;
+    this.boundMove = null;
+    this.boundZoom = null;
+    this.boundZoomEnd = null;
 
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();

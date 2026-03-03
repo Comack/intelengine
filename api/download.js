@@ -70,10 +70,17 @@ export default async function handler(req) {
       return Response.redirect(RELEASES_PAGE, 302);
     }
 
+    const downloadUrl = String(asset.browser_download_url || '');
+    let downloadHost;
+    try { downloadHost = new URL(downloadUrl).hostname; } catch { downloadHost = ''; }
+    if (downloadHost !== 'github.com' && downloadHost !== 'objects.githubusercontent.com') {
+      return Response.redirect(RELEASES_PAGE, 302);
+    }
+
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': asset.browser_download_url,
+        'Location': downloadUrl,
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
       },
     });

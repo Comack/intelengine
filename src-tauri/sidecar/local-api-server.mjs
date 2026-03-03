@@ -110,6 +110,79 @@ const ALLOWED_ENV_KEYS = new Set([
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+// ── RSS allowed domains (mirrors api/rss-proxy.js) ──────────────────────
+// Only allow RSS proxy to fetch from known feed domains.
+const RSS_ALLOWED_DOMAINS = new Set([
+  'feeds.bbci.co.uk','www.theguardian.com','feeds.npr.org','news.google.com',
+  'www.aljazeera.com','www.aljazeera.net','rss.cnn.com','hnrss.org',
+  'feeds.arstechnica.com','www.theverge.com','www.cnbc.com','feeds.marketwatch.com',
+  'www.defenseone.com','breakingdefense.com','www.bellingcat.com','techcrunch.com',
+  'huggingface.co','www.technologyreview.com','rss.arxiv.org','export.arxiv.org',
+  'www.federalreserve.gov','www.sec.gov','www.whitehouse.gov','www.state.gov',
+  'www.defense.gov','home.treasury.gov','www.justice.gov','tools.cdc.gov',
+  'www.fema.gov','www.dhs.gov','www.thedrive.com','krebsonsecurity.com',
+  'finance.yahoo.com','thediplomat.com','venturebeat.com','foreignpolicy.com',
+  'www.ft.com','openai.com','www.reutersagency.com','feeds.reuters.com',
+  'rsshub.app','asia.nikkei.com','www.cfr.org','www.csis.org','www.politico.com',
+  'www.brookings.edu','layoffs.fyi','www.defensenews.com','www.militarytimes.com',
+  'taskandpurpose.com','news.usni.org','www.oryxspioenkop.com','www.gov.uk',
+  'www.foreignaffairs.com','www.atlanticcouncil.org','www.zdnet.com',
+  'www.techmeme.com','www.darkreading.com','www.schneier.com','www.ransomware.live',
+  'rss.politico.com','www.anandtech.com','www.tomshardware.com','www.semianalysis.com',
+  'feed.infoq.com','thenewstack.io','devops.com','dev.to','lobste.rs','changelog.com',
+  'seekingalpha.com','news.crunchbase.com','www.saastr.com','feeds.feedburner.com',
+  'www.producthunt.com','www.axios.com','api.axios.com','github.blog','githubnext.com',
+  'mshibanami.github.io','www.engadget.com','news.mit.edu','dev.events',
+  'www.ycombinator.com','a16z.com','review.firstround.com','www.sequoiacap.com',
+  'www.nfx.com','www.aaronsw.com','bothsidesofthetable.com','www.lennysnewsletter.com',
+  'stratechery.com','www.eu-startups.com','tech.eu','sifted.eu','www.techinasia.com',
+  'kr-asia.com','techcabal.com','disrupt-africa.com','lavca.org','contxto.com',
+  'inc42.com','yourstory.com','pitchbook.com','www.cbinsights.com','www.techstars.com',
+  'asharqbusiness.com','asharq.com','www.omanobserver.om','english.alarabiya.net',
+  'www.arabnews.com','www.timesofisrael.com','www.haaretz.com','www.scmp.com',
+  'kyivindependent.com','www.themoscowtimes.com','feeds.24.com','feeds.news24.com',
+  'feeds.capi24.com','www.france24.com','www.euronews.com','de.euronews.com',
+  'es.euronews.com','fr.euronews.com','it.euronews.com','pt.euronews.com',
+  'ru.euronews.com','www.lemonde.fr','rss.dw.com','www.bild.de','www.africanews.com',
+  'fr.africanews.com','www.premiumtimesng.com','www.vanguardngr.com',
+  'www.channelstv.com','dailytrust.com','www.thisdaylive.com','www.naftemporiki.gr',
+  'www.in.gr','www.iefimerida.gr','www.lasillavacia.com','www.channelnewsasia.com',
+  'japantoday.com','www.thehindu.com','indianexpress.com','www.twz.com','gcaptain.com',
+  'news.un.org','www.iaea.org','www.who.int','www.cisa.gov','www.crisisgroup.org',
+  'rusi.org','warontherocks.com','www.aei.org','responsiblestatecraft.org','www.fpri.org',
+  'jamestown.org','www.chathamhouse.org','ecfr.eu','www.gmfus.org','www.wilsoncenter.org',
+  'www.lowyinstitute.org','www.mei.edu','www.stimson.org','www.cnas.org',
+  'carnegieendowment.org','www.rand.org','fas.org','www.armscontrol.org','www.nti.org',
+  'thebulletin.org','www.iss.europa.eu','www.fao.org','worldbank.org','www.imf.org',
+  'www.bbc.com','www.spiegel.de','www.tagesschau.de','newsfeed.zeit.de',
+  'feeds.elpais.com','e00-elmundo.uecdn.es','www.repubblica.it','www.ansa.it',
+  'xml2.corriereobjects.it','feeds.nos.nl','www.nrc.nl','www.telegraaf.nl','www.dn.se',
+  'www.svd.se','www.svt.se','www.asahi.com','www.clarin.com','oglobo.globo.com',
+  'feeds.folha.uol.com.br','www.eltiempo.com','www.eluniversal.com.mx',
+  'www.jeuneafrique.com','www.lorientlejour.com','www.hurriyet.com.tr','tvn24.pl',
+  'www.polsatnews.pl','www.rp.pl','meduza.io','novayagazeta.eu','www.bangkokpost.com',
+  'vnexpress.net','www.abc.net.au','islandtimes.org','www.brasilparalelo.com.br',
+  'mexiconewsdaily.com','animalpolitico.com','www.proceso.com.mx','www.milenio.com',
+  'insightcrime.org','news.ycombinator.com','www.coindesk.com','cointelegraph.com',
+  'travel.state.gov','www.smartraveller.gov.au','www.safetravel.govt.nz',
+  'th.usembassy.gov','ae.usembassy.gov','de.usembassy.gov','ua.usembassy.gov',
+  'mx.usembassy.gov','in.usembassy.gov','pk.usembassy.gov','co.usembassy.gov',
+  'pl.usembassy.gov','bd.usembassy.gov','it.usembassy.gov','do.usembassy.gov',
+  'mm.usembassy.gov','wwwnc.cdc.gov','www.ecdc.europa.eu','www.afro.who.int',
+  'www.goodnewsnetwork.org','www.positive.news','reasonstobecheerful.world',
+  'www.optimistdaily.com','www.upworthy.com','www.dailygood.org','www.goodgoodgood.co',
+  'www.good.is','www.sunnyskyz.com','thebetterindia.com','singularityhub.com',
+  'humanprogress.org','greatergood.berkeley.edu','www.onlygoodnewsdaily.com',
+  'www.sciencedaily.com','feeds.nature.com','www.nature.com','www.livescience.com',
+  'www.newscientist.com',
+]);
+
+function isAllowedRssDomain(hostname) {
+  const bare = hostname.replace(/^www\./, '');
+  const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
+  return RSS_ALLOWED_DOMAINS.has(hostname) || RSS_ALLOWED_DOMAINS.has(bare) || RSS_ALLOWED_DOMAINS.has(withWww);
+}
+
 // ── SSRF protection ──────────────────────────────────────────────────────
 // Block requests to private/reserved IP ranges to prevent the RSS proxy
 // from being used as a localhost pivot or internal network scanner.
@@ -1044,12 +1117,14 @@ async function dispatch(requestUrl, req, routes, context) {
   // other local processes, malicious browser scripts, and rogue extensions
   // from accessing the sidecar API without the per-session token.
   const expectedToken = process.env.LOCAL_API_TOKEN;
-  if (expectedToken) {
-    const authHeader = req.headers.authorization || '';
-    if (authHeader !== `Bearer ${expectedToken}`) {
-      context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
-      return json({ error: 'Unauthorized' }, 401);
-    }
+  if (!expectedToken) {
+    context.logger.warn(`[local-api] LOCAL_API_TOKEN not set — rejecting request to ${requestUrl.pathname}`);
+    return json({ error: 'Unauthorized – no session token configured' }, 401);
+  }
+  const authHeader = req.headers.authorization || '';
+  if (authHeader !== `Bearer ${expectedToken}`) {
+    context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
+    return json({ error: 'Unauthorized' }, 401);
   }
 
   if (requestUrl.pathname === '/api/local-status') {
@@ -1131,6 +1206,17 @@ async function dispatch(requestUrl, req, routes, context) {
   if (requestUrl.pathname === '/api/rss-proxy') {
     const feedUrl = requestUrl.searchParams.get('url');
     if (!feedUrl) return json({ error: 'Missing url parameter' }, 400);
+
+    // Domain allowlist: only fetch from known RSS feed domains
+    try {
+      const feedHost = new URL(feedUrl).hostname;
+      if (!isAllowedRssDomain(feedHost)) {
+        context.logger.warn(`[local-api] rss-proxy domain not allowed: ${feedHost}`);
+        return json({ error: 'Domain not allowed' }, 403);
+      }
+    } catch {
+      return json({ error: 'Invalid URL' }, 400);
+    }
 
     // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
     const safety = await isSafeUrl(feedUrl);

@@ -7,6 +7,7 @@ interface LiveVideoInfo {
 
 const liveVideoCache = new Map<string, { videoId: string | null; hlsUrl: string | null; timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const MAX_CACHE_SIZE = 100;
 
 export async function fetchLiveVideoInfo(channelHandle: string): Promise<LiveVideoInfo> {
   const cached = liveVideoCache.get(channelHandle);
@@ -22,6 +23,12 @@ export async function fetchLiveVideoInfo(channelHandle: string): Promise<LiveVid
     const videoId = data.videoId || null;
     const hlsUrl = data.hlsUrl || null;
     liveVideoCache.set(channelHandle, { videoId, hlsUrl, timestamp: Date.now() });
+    // Evict oldest entries if cache exceeds max size (Map iterates in insertion order)
+    while (liveVideoCache.size > MAX_CACHE_SIZE) {
+      const oldest = liveVideoCache.keys().next().value;
+      if (oldest !== undefined) liveVideoCache.delete(oldest);
+      else break;
+    }
     return { videoId, hlsUrl };
   } catch (error) {
     console.warn(`[LiveNews] Failed to fetch live info for ${channelHandle}:`, error);

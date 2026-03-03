@@ -70,6 +70,13 @@ export class EventHandlerManager implements AppModule {
   private boundVisibilityHandler: (() => void) | null = null;
   private boundDesktopExternalLinkHandler: ((e: MouseEvent) => void) | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
+  private boundFocalPointsHandler: (() => void) | null = null;
+  private boundThemeChangedHandler: (() => void) | null = null;
+  private boundResizeMouseMove: ((e: MouseEvent) => void) | null = null;
+  private boundResizeMouseUp: (() => void) | null = null;
+  private boundResizeBlur: (() => void) | null = null;
+  private boundResizeVisibility: (() => void) | null = null;
+  private panelViewObserver: IntersectionObserver | null = null;
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -168,6 +175,36 @@ export class EventHandlerManager implements AppModule {
       clearInterval(this.clockIntervalId);
       this.clockIntervalId = null;
     }
+    if (this.boundFocalPointsHandler) {
+      window.removeEventListener('focal-points-ready', this.boundFocalPointsHandler);
+      this.boundFocalPointsHandler = null;
+    }
+    if (this.boundThemeChangedHandler) {
+      window.removeEventListener('theme-changed', this.boundThemeChangedHandler);
+      this.boundThemeChangedHandler = null;
+    }
+    if (this.panelViewObserver) {
+      this.panelViewObserver.disconnect();
+      this.panelViewObserver = null;
+    }
+    if (this.boundResizeMouseMove) {
+      document.removeEventListener('mousemove', this.boundResizeMouseMove);
+      this.boundResizeMouseMove = null;
+    }
+    if (this.boundResizeMouseUp) {
+      document.removeEventListener('mouseup', this.boundResizeMouseUp);
+      this.boundResizeMouseUp = null;
+    }
+    if (this.boundResizeBlur) {
+      window.removeEventListener('blur', this.boundResizeBlur);
+      this.boundResizeBlur = null;
+    }
+    if (this.boundResizeVisibility) {
+      document.removeEventListener('visibilitychange', this.boundResizeVisibility);
+      this.boundResizeVisibility = null;
+    }
+    this.ctx.exportPanel?.destroy();
+    this.ctx.exportPanel = null;
     this.ctx.tvMode?.destroy();
     this.ctx.tvMode = null;
     this.ctx.unifiedSettings?.destroy();
@@ -269,14 +306,16 @@ export class EventHandlerManager implements AppModule {
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
-    window.addEventListener('focal-points-ready', () => {
+    this.boundFocalPointsHandler = () => {
       (this.ctx.panels['cii'] as CIIPanel)?.refresh(true);
-    });
+    };
+    window.addEventListener('focal-points-ready', this.boundFocalPointsHandler);
 
-    window.addEventListener('theme-changed', () => {
+    this.boundThemeChangedHandler = () => {
       this.ctx.map?.render();
       this.updateHeaderThemeIcon();
-    });
+    };
+    window.addEventListener('theme-changed', this.boundThemeChangedHandler);
 
     if (this.ctx.isDesktopApp) {
       if (this.boundDesktopExternalLinkHandler) {
@@ -698,7 +737,7 @@ export class EventHandlerManager implements AppModule {
 
   setupPanelViewTracking(): void {
     const viewedPanels = new Set<string>();
-    const observer = new IntersectionObserver((entries) => {
+    this.panelViewObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
           const id = (entry.target as HTMLElement).dataset.panel;
@@ -714,7 +753,7 @@ export class EventHandlerManager implements AppModule {
     if (grid) {
       for (const child of Array.from(grid.children)) {
         if ((child as HTMLElement).dataset.panel) {
-          observer.observe(child);
+          this.panelViewObserver.observe(child);
         }
       }
     }
@@ -820,18 +859,22 @@ export class EventHandlerManager implements AppModule {
       setTimeout(onEnd, 500);
     });
 
-    document.addEventListener('mousemove', (e) => {
+    this.boundResizeMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
       const deltaY = e.clientY - startY;
       const newHeight = Math.max(getMinHeight(), Math.min(startHeight + deltaY, getMaxHeight()));
       mapContainer.style.height = `${newHeight}px`;
-    });
-
-    document.addEventListener('mouseup', endResize);
-    window.addEventListener('blur', endResize);
-    document.addEventListener('visibilitychange', () => {
+    };
+    this.boundResizeMouseUp = endResize;
+    this.boundResizeBlur = endResize;
+    this.boundResizeVisibility = () => {
       if (document.hidden) endResize();
-    });
+    };
+
+    document.addEventListener('mousemove', this.boundResizeMouseMove);
+    document.addEventListener('mouseup', this.boundResizeMouseUp);
+    window.addEventListener('blur', this.boundResizeBlur);
+    document.addEventListener('visibilitychange', this.boundResizeVisibility);
   }
 
   setupMapPin(): void {

@@ -1,11 +1,13 @@
 import type {
   ExplainAnomalyRequest,
   ExplainAnomalyResponse,
+  ServerContext,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import type { Evidence } from '../../../../src/generated/server/worldmonitor/evidence/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
 
 export async function explainAnomaly(
+  _ctx: ServerContext,
   req: ExplainAnomalyRequest,
 ): Promise<ExplainAnomalyResponse> {
   const { anomalyId, evidenceIds } = req;

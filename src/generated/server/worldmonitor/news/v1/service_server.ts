@@ -10,8 +10,6 @@ export interface SummarizeArticleRequest {
   lang: string;
 }
 
-export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
-
 export interface SummarizeArticleResponse {
   summary: string;
   model: string;
@@ -65,6 +63,8 @@ export interface GeoCoordinates {
   latitude: number;
   longitude: number;
 }
+
+export type SummarizeStatus = "SUMMARIZE_STATUS_UNSPECIFIED" | "SUMMARIZE_STATUS_SUCCESS" | "SUMMARIZE_STATUS_CACHED" | "SUMMARIZE_STATUS_SKIPPED" | "SUMMARIZE_STATUS_ERROR";
 
 export type ThreatLevel = "THREAT_LEVEL_UNSPECIFIED" | "THREAT_LEVEL_LOW" | "THREAT_LEVEL_MEDIUM" | "THREAT_LEVEL_HIGH" | "THREAT_LEVEL_CRITICAL";
 

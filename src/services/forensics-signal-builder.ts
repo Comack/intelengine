@@ -1,15 +1,85 @@
-import type { ForensicsAnomalyOverlay, AisDisruptionEvent } from '@/types';
+import type { AisDisruptionEvent } from '@/types';
 import type { ForensicsSignalInput, ForensicsCalibratedAnomaly } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { MarketData } from '@/types';
 import type { PredictionMarket } from '@/services/prediction';
 import type { FredSeries, OilAnalytics } from '@/services/economic';
-import type { MacroSignalData, ETFFlowsResult, StablecoinResult } from '@/components';
-import type { RoutingAnomaly, GridZone } from '@/services/infrastructure';
-import type { SarDarkShip, PortCongestionStatus } from '@/services/maritime';
-import type { AcarsMessage } from '@/services/military';
-import type { WhaleTransfer } from '@/services/market';
-import type { AirQualityReading } from '@/services/climate';
 import type { SpaceWeatherStatus } from '@/generated/client/worldmonitor/space/v1/service_client';
+
+// ---------------------------------------------------------------------------
+// Local type definitions for types removed from upstream modules
+// ---------------------------------------------------------------------------
+
+interface ForensicsAnomalyOverlay {
+  severity: 'high' | 'medium' | 'low' | 'unspecified';
+  monitorCategory: 'market' | 'maritime' | 'cyber' | 'security' | 'infrastructure' | 'other';
+}
+
+interface MacroSignalData {
+  timestamp?: unknown;
+  signals: {
+    liquidity: { value?: number };
+    flowStructure: { btcReturn5?: number; qqqReturn5?: number };
+    macroRegime: { qqqRoc20?: number; xlpRoc20?: number };
+    technicalTrend: { btcPrice?: number; sma200?: number; vwap30d?: number; mayerMultiple?: number };
+    hashRate: { change30d?: number };
+    fearGreed: { value?: number };
+    balticDryIndex?: { value?: number; change7dPct?: number };
+    [key: string]: unknown;
+  };
+}
+
+interface ETFFlowsResult {
+  timestamp?: unknown;
+  etfs: Array<{ ticker: string; estFlow?: number; volumeRatio?: number; priceChange?: number }>;
+  summary?: { totalEstFlow?: number };
+}
+
+interface StablecoinResult {
+  timestamp?: unknown;
+  stablecoins: Array<{ symbol: string; deviation?: number; change24h?: number; volume24h?: number }>;
+  summary?: { totalVolume24h?: number };
+}
+
+interface RoutingAnomaly {
+  id?: string;
+  prefix?: string;
+  country?: string;
+  type: string;
+  severity: number | string;
+}
+
+interface GridZone {
+  zoneId: string;
+  zoneName?: string;
+  stressLevel: string;
+}
+
+interface SarDarkShip {
+  id: string;
+  region?: string;
+  confidence: number;
+}
+
+interface PortCongestionStatus {
+  [key: string]: unknown;
+}
+
+interface AcarsMessage {
+  [key: string]: unknown;
+}
+
+interface WhaleTransfer {
+  id?: string;
+  txHash?: string;
+  amountUsd: number;
+}
+
+interface AirQualityReading {
+  stationId?: string;
+  city?: string;
+  country?: string;
+  aqi: number;
+}
 import { SITE_VARIANT } from '@/config';
 import { FINANCIAL_CENTERS, COMMODITY_HUBS, STOCK_EXCHANGES } from '@/config/finance-geo';
 import { signalAggregator } from '@/services/signal-aggregator';
@@ -448,7 +518,7 @@ export class ForensicsSignalBuilder {
     const signals: ForensicsSignalInput[] = [];
     for (const event of this.ctx.aisDisruptions) {
       const signalType = this.classifyAisTrajectorySignal(event);
-      const observedAt = resolveObservedAt(event.observedAt, now);
+      const observedAt = resolveObservedAt((event as unknown as Record<string, unknown>).observedAt, now);
       const freshness = computeFreshnessPenalty(observedAt, CONFLICT_FRESHNESS_PROFILE, now);
       if (freshness.isStale) continue;
       const changeMagnitude = Math.abs(event.changePct || 0);
@@ -1243,7 +1313,7 @@ export class ForensicsSignalBuilder {
       const absChange = Math.abs(change);
       if (absChange < 0.25) continue;
       absChanges.push(absChange);
-      const observedAt = resolveObservedAt(market.observedAt, now);
+      const observedAt = resolveObservedAt((market as unknown as Record<string, unknown>).observedAt, now);
       const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
       if (freshness.isStale) continue;
       latestMarketObservedAt = Math.max(latestMarketObservedAt, observedAt);
@@ -1269,7 +1339,7 @@ export class ForensicsSignalBuilder {
       const conviction = Math.abs(prediction.yesPrice - 50) / 50 * 100;
       if (conviction < 12) continue;
       convictions.push(conviction);
-      const observedAt = resolveObservedAt(prediction.observedAt, now);
+      const observedAt = resolveObservedAt((prediction as unknown as Record<string, unknown>).observedAt, now);
       const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
       if (freshness.isStale) continue;
       latestPredictionObservedAt = Math.max(latestPredictionObservedAt, observedAt);

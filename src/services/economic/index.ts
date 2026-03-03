@@ -103,7 +103,7 @@ async function fetchSingleFredSeries(config: FredConfig): Promise<FredSeries | n
     const latest = obs[obs.length - 1]!;
     const previous = obs[obs.length - 2]!;
     const change = latest.value - previous.value;
-    const changePercent = (change / previous.value) * 100;
+    const changePercent = previous.value !== 0 ? (change / previous.value) * 100 : 0;
 
     let displayValue = latest.value;
     if (config.id === 'WALCL') displayValue = latest.value / 1000;
@@ -196,12 +196,13 @@ export interface OilAnalytics {
 
 function protoEnergyToOilMetric(proto: ProtoEnergyPrice): OilMetric {
   const change = proto.change;
+  const denom = 1 + change / 100;
   return {
     id: proto.commodity,
     name: proto.name,
     description: `${proto.name} price/volume`,
     current: proto.price,
-    previous: change !== 0 ? proto.price / (1 + change / 100) : proto.price,
+    previous: change !== 0 && denom !== 0 ? proto.price / denom : proto.price,
     changePct: Math.round(change * 10) / 10,
     unit: proto.unit,
     trend: change > 0.5 ? 'up' : change < -0.5 ? 'down' : 'stable',

@@ -262,7 +262,7 @@ fn get_secret(
     let secrets = cache
         .secrets
         .lock()
-        .map_err(|_| "Lock poisoned".to_string())?;
+        .unwrap_or_else(|e| e.into_inner());
     Ok(secrets.get(&key).cloned())
 }
 
@@ -290,7 +290,11 @@ fn set_secret(
     let mut secrets = cache
         .secrets
         .lock()
-        .map_err(|_| "Lock poisoned".to_string())?;
+        .unwrap_or_else(|e| {
+            let mut guard = e.into_inner();
+            guard.clear();
+            guard
+        });
     let trimmed = value.trim().to_string();
     // Build proposed state, persist first, then commit to cache
     let mut proposed = secrets.clone();
@@ -313,7 +317,11 @@ fn delete_secret(webview: Webview, key: String, cache: tauri::State<'_, SecretsC
     let mut secrets = cache
         .secrets
         .lock()
-        .map_err(|_| "Lock poisoned".to_string())?;
+        .unwrap_or_else(|e| {
+            let mut guard = e.into_inner();
+            guard.clear();
+            guard
+        });
     let mut proposed = secrets.clone();
     proposed.remove(&key);
     save_vault(&proposed)?;
@@ -981,7 +989,9 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     if token_slot.is_none() {
         *token_slot = Some(generate_local_token());
     }
-    let local_api_token = token_slot.clone().unwrap();
+    let local_api_token = token_slot
+        .clone()
+        .ok_or_else(|| "Local API token not initialized after generation".to_string())?;
     drop(token_slot);
 
     let mut cmd = Command::new(&node_binary);
@@ -1065,6 +1075,18 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         if let Ok(mut port_slot) = state.port.lock() {
             *port_slot = Some(DEFAULT_LOCAL_API_PORT);
         }
+    }
+
+    // Verify sidecar is listening on the assigned port
+    let health_port = state.port.lock().ok().and_then(|g| *g).unwrap_or(DEFAULT_LOCAL_API_PORT);
+    let addr: std::net::SocketAddr = ([127, 0, 0, 1], health_port).into();
+    match std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(2)) {
+        Ok(_) => append_desktop_log(app, "INFO", "sidecar health check passed"),
+        Err(e) => append_desktop_log(
+            app,
+            "WARN",
+            &format!("sidecar health check failed on port {health_port}: {e}"),
+        ),
     }
 
     Ok(())

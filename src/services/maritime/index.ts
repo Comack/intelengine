@@ -247,13 +247,32 @@ function pruneCallbackTimestampIndex(now: number): void {
     return;
   }
 
-  const oldest = Array.from(lastCallbackTimestampByMmsi.entries())
-    .sort((a, b) => a[1] - b[1]);
-  const toDelete = lastCallbackTimestampByMmsi.size - MAX_CALLBACK_TRACKED_VESSELS;
-  for (let i = 0; i < toDelete; i++) {
-    const entry = oldest[i];
-    if (!entry) break;
-    lastCallbackTimestampByMmsi.delete(entry[0]);
+  // O(n) partial selection via quickselect instead of O(n log n) full sort
+  const entries = Array.from(lastCallbackTimestampByMmsi.entries());
+  const k = entries.length - MAX_CALLBACK_TRACKED_VESSELS;
+  if (k <= 0) return;
+
+  // Quickselect: partition so the k smallest-timestamp entries are in [0..k-1]
+  let lo = 0, hi = entries.length - 1, target = k - 1;
+  while (lo < hi) {
+    const pivotTs = entries[lo + ((hi - lo) >> 1)]![1];
+    let i = lo, j = hi;
+    while (i <= j) {
+      while (entries[i]![1] < pivotTs) i++;
+      while (entries[j]![1] > pivotTs) j--;
+      if (i <= j) {
+        [entries[i], entries[j]] = [entries[j]!, entries[i]!];
+        i++;
+        j--;
+      }
+    }
+    if (target <= j) hi = j;
+    else if (target >= i) lo = i;
+    else break;
+  }
+
+  for (let i = 0; i < k; i++) {
+    lastCallbackTimestampByMmsi.delete(entries[i]![0]);
   }
 }
 

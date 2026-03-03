@@ -17,12 +17,26 @@ const FORCE_DESKTOP_RUNTIME = import.meta.env.VITE_DESKTOP_RUNTIME === '1';
 let _resolvedPort: number | null = null;
 let _portPromise: Promise<number> | null = null;
 
+// Cache dynamic imports to avoid re-resolving on every fetch
+let _tauriBridgeMod: typeof import('@/services/tauri-bridge') | null = null;
+let _runtimeConfigMod: typeof import('@/services/runtime-config') | null = null;
+
+async function getTauriBridge() {
+  if (!_tauriBridgeMod) _tauriBridgeMod = await import('@/services/tauri-bridge');
+  return _tauriBridgeMod;
+}
+
+async function getRuntimeConfig() {
+  if (!_runtimeConfigMod) _runtimeConfigMod = await import('@/services/runtime-config');
+  return _runtimeConfigMod;
+}
+
 export async function resolveLocalApiPort(): Promise<number> {
   if (_resolvedPort !== null) return _resolvedPort;
   if (_portPromise) return _portPromise;
   _portPromise = (async () => {
     try {
-      const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+      const { tryInvokeTauri } = await getTauriBridge();
       const port = await tryInvokeTauri<number>('get_local_api_port');
       if (port && port > 0) {
         _resolvedPort = port;
@@ -261,6 +275,8 @@ export function installRuntimeFetchPatch(): void {
   if (!isDesktopRuntime() || typeof window === 'undefined' || (window as unknown as Record<string, unknown>).__wmFetchPatched) {
     return;
   }
+  // Set flag synchronously before any async work to prevent double-patching
+  (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 
   const nativeFetch = window.fetch.bind(window);
   let localApiToken: string | null = null;
@@ -287,7 +303,7 @@ export function installRuntimeFetchPatch(): void {
     const tokenExpired = localApiToken && (Date.now() - tokenFetchedAt > TOKEN_TTL_MS);
     if (!localApiToken || tokenExpired) {
       try {
-        const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+        const { tryInvokeTauri } = await getTauriBridge();
         localApiToken = await tryInvokeTauri<string>('get_local_api_token');
         tokenFetchedAt = Date.now();
       } catch {
@@ -308,7 +324,7 @@ export function installRuntimeFetchPatch(): void {
 
     if (allowCloudFallback && !isKeyFreeApiTarget(target)) {
       try {
-        const { getSecretState, secretsReady } = await import('@/services/runtime-config');
+        const { getSecretState, secretsReady } = await getRuntimeConfig();
         await Promise.race([secretsReady, new Promise<void>(r => setTimeout(r, 2000))]);
         const wmKeyState = getSecretState('WORLDMONITOR_API_KEY');
         if (!wmKeyState.present || !wmKeyState.valid) {
@@ -327,7 +343,7 @@ export function installRuntimeFetchPatch(): void {
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
       const cloudHeaders = new Headers(init?.headers);
       if (KEYED_CLOUD_API_PATTERN.test(target)) {
-        const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
+        const { getRuntimeConfigSnapshot } = await getRuntimeConfig();
         const wmKeyValue = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
         if (wmKeyValue) {
           cloudHeaders.set('X-WorldMonitor-Key', wmKeyValue);
@@ -346,7 +362,7 @@ export function installRuntimeFetchPatch(): void {
       if (response.status === 401 && localApiToken && Date.now() > authRetryCooldownUntil) {
         if (debug) console.log(`[fetch] 401 from sidecar, refreshing token and retrying`);
         try {
-          const { tryInvokeTauri } = await import('@/services/tauri-bridge');
+          const { tryInvokeTauri } = await getTauriBridge();
           localApiToken = await tryInvokeTauri<string>('get_local_api_token');
           tokenFetchedAt = Date.now();
         } catch {
@@ -385,7 +401,6 @@ export function installRuntimeFetchPatch(): void {
     }
   };
 
-  (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 }
 
 const ALLOWED_REDIRECT_HOSTS = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*worldmonitor\.app(:\d+)?$/;

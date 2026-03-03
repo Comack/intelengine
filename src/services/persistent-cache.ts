@@ -80,11 +80,13 @@ export async function getPersistentCache<T>(key: string): Promise<CacheEnvelope<
   }
 
   if (isIndexedDbAvailable()) {
+    const dbPromiseSnapshot = cacheDbPromise;
     try {
       return await getFromIndexedDb<T>(key);
     } catch (error) {
       console.warn('[persistent-cache] IndexedDB read failed; falling back to localStorage', error);
-      cacheDbPromise = null;
+      // Only reset if no new connection has been opened since our attempt
+      if (cacheDbPromise === dbPromiseSnapshot) cacheDbPromise = null;
     }
   }
 
@@ -109,13 +111,14 @@ export async function setPersistentCache<T>(key: string, data: T): Promise<void>
   }
 
   if (isIndexedDbAvailable() && !isStorageQuotaExceeded()) {
+    const dbPromiseSnapshot = cacheDbPromise;
     try {
       await setInIndexedDb(payload);
       return;
     } catch (error) {
       if (isQuotaError(error)) markStorageQuotaExceeded();
       else console.warn('[persistent-cache] IndexedDB write failed; falling back to localStorage', error);
-      cacheDbPromise = null;
+      if (cacheDbPromise === dbPromiseSnapshot) cacheDbPromise = null;
     }
   }
 
@@ -138,6 +141,7 @@ export async function deletePersistentCache(key: string): Promise<void> {
   }
 
   if (isIndexedDbAvailable()) {
+    const dbPromiseSnapshot = cacheDbPromise;
     try {
       const db = await getCacheDb();
       await new Promise<void>((resolve, reject) => {
@@ -149,7 +153,7 @@ export async function deletePersistentCache(key: string): Promise<void> {
       return;
     } catch (error) {
       console.warn('[persistent-cache] IndexedDB delete failed; falling back to localStorage', error);
-      cacheDbPromise = null;
+      if (cacheDbPromise === dbPromiseSnapshot) cacheDbPromise = null;
     }
   }
 

@@ -32,6 +32,17 @@ function extractOriginFromReferer(referer) {
 }
 
 export function validateApiKey(req) {
+  // Local API mode: validate Authorization header against LOCAL_API_TOKEN
+  const localToken = process.env.LOCAL_API_TOKEN;
+  if (localToken) {
+    const authHeader = req.headers.get('Authorization') || '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (bearerToken !== localToken) {
+      return { valid: false, required: true, error: 'Invalid local API token' };
+    }
+    return { valid: true, required: true };
+  }
+
   const key = req.headers.get('X-WorldMonitor-Key');
   // Same-origin browser requests don't send Origin (per CORS spec).
   // Fall back to Referer to identify trusted same-origin callers.
