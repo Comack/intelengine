@@ -77,6 +77,14 @@ import { fetchGridStatus, fetchRoutingAnomalies, fetchRadiationReadings } from '
 import { fetchWhaleTransfers } from '@/services/market';
 import { fetchAcarsMessages } from '@/services/military';
 import { getSpaceWeather } from '@/services/space';
+import { ForensicsSignalBuilder } from '@/services/forensics-signal-builder';
+import { runForensicsShadow, listForensicsRuns, getForensicsPolicy, getForensicsTopologySummary } from '@/services/forensics';
+import type { ForensicsPanel } from '@/components/ForensicsPanel';
+import type { AisDisruptionEvent } from '@/types';
+import type { SarDarkShip } from '@/services/maritime';
+import type { GridZone, RoutingAnomaly } from '@/services/infrastructure';
+import type { WhaleTransfer } from '@/services/market';
+import type { AirQualityReading } from '@/services/climate';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
@@ -172,6 +180,24 @@ export class DataLoaderManager implements AppModule {
 
   private mapFlashCache: Map<string, number> = new Map();
   private readonly MAP_FLASH_COOLDOWN_MS = 10 * 60 * 1000;
+
+  // Forensics signal caches — populated by each loadXxx() method and used by loadForensics()
+  private cachedAisDisruptions: AisDisruptionEvent[] = [];
+  private cachedSarDetections: SarDarkShip[] = [];
+  // portCongestion kept as generic record to satisfy the ForensicsSignalContext index signature
+  private cachedPortCongestion: Record<string, unknown>[] = [];
+  private cachedGridZones: GridZone[] = [];
+  private cachedRoutingAnomalies: RoutingAnomaly[] = [];
+  private cachedAirQualityReadings: AirQualityReading[] = [];
+  private cachedAcarsMessages: Record<string, unknown>[] = [];
+  private cachedWhaleTransfers: WhaleTransfer[] = [];
+  private sarFetchedAt = 0;
+  private portFetchedAt = 0;
+  private gridFetchedAt = 0;
+  private routingFetchedAt = 0;
+  private aqiFetchedAt = 0;
+  private acarsFetchedAt = 0;
+  private whaleFetchedAt = 0;
   private readonly applyTimeRangeFilterToNewsPanelsDebounced = debounce(() => {
     this.applyTimeRangeFilterToNewsPanels();
   }, 120);
@@ -372,6 +398,7 @@ export class DataLoaderManager implements AppModule {
     if ((SITE_VARIANT === 'finance' || SITE_VARIANT === 'full') && this.ctx.mapLayers.whaleTransfers) tasks.push({ name: 'whaleTransfers', task: runGuarded('whaleTransfers', () => this.loadWhaleTransfers()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.navWarnings) tasks.push({ name: 'navWarnings', task: runGuarded('navWarnings', () => this.loadNavWarnings()) });
     if (SITE_VARIANT !== 'happy') tasks.push({ name: 'spaceWeather', task: runGuarded('spaceWeather', () => this.loadSpaceWeather()) });
+    if (SITE_VARIANT === 'full') tasks.push({ name: 'forensics', task: runGuarded('forensics', () => this.loadForensics()) });
 
     if (SITE_VARIANT === 'tech') {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
@@ -1563,6 +1590,7 @@ export class DataLoaderManager implements AppModule {
       const { disruptions, density } = await fetchAisSignals();
       const aisStatus = getAisStatus();
       console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
+      this.cachedAisDisruptions = disruptions;
       this.ctx.map?.setAisData(disruptions, density);
       signalAggregator.ingestAisDisruptions(disruptions);
       ingestAisDisruptionsForCII(disruptions);
@@ -2340,6 +2368,8 @@ export class DataLoaderManager implements AppModule {
   async loadSarDetections(): Promise<void> {
     try {
       const data = await fetchSarDetections();
+      this.cachedSarDetections = data;
+      this.sarFetchedAt = Date.now();
       this.ctx.map?.setSarDetections(data);
       this.ctx.map?.setLayerReady('sarDetections', data.length > 0);
       signalAggregator.ingestSarDetections(data);
@@ -2352,6 +2382,8 @@ export class DataLoaderManager implements AppModule {
   async loadPortCongestion(): Promise<void> {
     try {
       const data = await fetchPortCongestion();
+      this.cachedPortCongestion = data as unknown as Record<string, unknown>[];
+      this.portFetchedAt = Date.now();
       this.ctx.map?.setPortCongestion(data);
       this.ctx.map?.setLayerReady('portCongestion', data.length > 0);
       signalAggregator.ingestPortCongestion(data);
@@ -2364,6 +2396,8 @@ export class DataLoaderManager implements AppModule {
   async loadGridZones(): Promise<void> {
     try {
       const data = await fetchGridStatus();
+      this.cachedGridZones = data;
+      this.gridFetchedAt = Date.now();
       this.ctx.map?.setGridZones(data);
       this.ctx.map?.setLayerReady('gridZones', data.length > 0);
       signalAggregator.ingestGridZones(data);
@@ -2376,6 +2410,8 @@ export class DataLoaderManager implements AppModule {
   async loadRoutingAnomalies(): Promise<void> {
     try {
       const data = await fetchRoutingAnomalies();
+      this.cachedRoutingAnomalies = data;
+      this.routingFetchedAt = Date.now();
       this.ctx.map?.setRoutingAnomalies(data);
       this.ctx.map?.setLayerReady('routingAnomalies', data.length > 0);
       signalAggregator.ingestRoutingAnomalies(data);
@@ -2400,6 +2436,8 @@ export class DataLoaderManager implements AppModule {
   async loadAirQualityReadings(): Promise<void> {
     try {
       const data = await fetchAirQualityReadings();
+      this.cachedAirQualityReadings = data;
+      this.aqiFetchedAt = Date.now();
       this.ctx.map?.setAirQualityReadings(data);
       this.ctx.map?.setLayerReady('airQuality', data.length > 0);
       signalAggregator.ingestAirQualityReadings(data);
@@ -2424,6 +2462,8 @@ export class DataLoaderManager implements AppModule {
   async loadAcarsMessages(): Promise<void> {
     try {
       const data = await fetchAcarsMessages();
+      this.cachedAcarsMessages = data as unknown as Record<string, unknown>[];
+      this.acarsFetchedAt = Date.now();
       this.ctx.map?.setAcarsMessages(data);
       this.ctx.map?.setLayerReady('acarsMessages', data.length > 0);
       signalAggregator.ingestAcarsMessages(data);
@@ -2436,6 +2476,8 @@ export class DataLoaderManager implements AppModule {
   async loadWhaleTransfers(): Promise<void> {
     try {
       const data = await fetchWhaleTransfers();
+      this.cachedWhaleTransfers = data;
+      this.whaleFetchedAt = Date.now();
       this.ctx.map?.setWhaleTransfers(data);
       this.ctx.map?.setLayerReady('whaleTransfers', data.length > 0);
       signalAggregator.ingestWhaleTransfers(data);
@@ -2467,6 +2509,101 @@ export class DataLoaderManager implements AppModule {
       }
     } catch {
       // Space weather is best-effort — no error propagation needed
+    }
+  }
+
+  async loadForensics(): Promise<void> {
+    try {
+      const panel = this.ctx.panels['forensics'] as ForensicsPanel | undefined;
+      if (!panel) return;
+
+      const now = Date.now();
+      const ctx = {
+        aisDisruptions: this.cachedAisDisruptions,
+        predictions: this.ctx.latestPredictions,
+        markets: this.ctx.latestMarkets,
+        macroSignals: null,
+        etfFlows: null,
+        stablecoins: null,
+        fredSeries: [],
+        oilAnalytics: null,
+        conflictFetchedAt: now,
+        ucdpFetchedAt: now,
+        hapiFetchedAt: now,
+        displacementFetchedAt: now,
+        climateFetchedAt: now,
+        macroFetchedAt: 0,
+        etfFetchedAt: 0,
+        stablecoinFetchedAt: 0,
+        fredFetchedAt: 0,
+        oilFetchedAt: 0,
+        routingAnomalies: this.cachedRoutingAnomalies,
+        gridZones: this.cachedGridZones,
+        sarDetections: this.cachedSarDetections,
+        portCongestion: this.cachedPortCongestion,
+        acarsMessages: this.cachedAcarsMessages,
+        whaleTransfers: this.cachedWhaleTransfers,
+        airQualityReadings: this.cachedAirQualityReadings,
+        spaceWeather: this.ctx.intelligenceCache.spaceWeather ?? null,
+        routingFetchedAt: this.routingFetchedAt,
+        gridFetchedAt: this.gridFetchedAt,
+        sarFetchedAt: this.sarFetchedAt,
+        portFetchedAt: this.portFetchedAt,
+        acarsFetchedAt: this.acarsFetchedAt,
+        whaleFetchedAt: this.whaleFetchedAt,
+        aqiFetchedAt: this.aqiFetchedAt,
+        spaceFetchedAt: this.ctx.intelligenceCache.spaceWeather ? now : 0,
+      };
+
+      const builder = new ForensicsSignalBuilder(ctx);
+      const signals = [
+        ...builder.buildIntelligenceSignals(),
+        ...builder.buildMarketSignals(),
+      ];
+
+      if (signals.length === 0) return;
+
+      const shadowResult = await runForensicsShadow('global', signals);
+
+      const [runsResult, policyResult, topologyResult] = await Promise.allSettled([
+        listForensicsRuns('global', '', 20),
+        getForensicsPolicy('global'),
+        getForensicsTopologySummary(shadowResult.run?.runId ?? '', 'global', { anomaliesOnly: true, alertLimit: 20 }),
+      ]);
+
+      const runs = runsResult.status === 'fulfilled' ? runsResult.value.runs : [];
+      const policy = policyResult.status === 'fulfilled' ? policyResult.value.entries : [];
+      const topologyAlerts = topologyResult.status === 'fulfilled' ? topologyResult.value.alerts : [];
+
+      const latestRun = runs[0];
+
+      panel.update({
+        summary: latestRun,
+        fusedSignals: shadowResult.fusedSignals,
+        anomalies: shadowResult.anomalies,
+        causalEdges: shadowResult.causalEdges,
+        monitorStreams: [],
+        aisTrajectoryStreams: [],
+        topologyAlerts,
+        topologyTrends: [],
+        topologyWindowDrilldowns: [],
+        topologyDrifts: [],
+        topologyBaselines: [],
+        trace: shadowResult.trace,
+        policy,
+        runHistory: runs.map(r => ({
+          runId: r.run?.runId ?? '',
+          domain: r.run?.domain ?? 'global',
+          completedAt: r.run?.completedAt ?? 0,
+          anomalyFlaggedCount: r.anomalyFlaggedCount,
+          minPValue: r.minPValue,
+          maxFusedScore: r.maxFusedScore,
+        })),
+        anomalyTrends: [],
+        error: shadowResult.error || undefined,
+      });
+    } catch (err) {
+      console.error('[Forensics] loadForensics failed:', err);
     }
   }
 }

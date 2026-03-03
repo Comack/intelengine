@@ -40,6 +40,7 @@ import {
   WorldClockPanel,
 } from '@/components';
 import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
+import { ForensicsPanel } from '@/components/ForensicsPanel';
 import { PositiveNewsFeedPanel } from '@/components/PositiveNewsFeedPanel';
 import { CountersPanel } from '@/components/CountersPanel';
 import { ProgressChartsPanel } from '@/components/ProgressChartsPanel';
@@ -621,6 +622,9 @@ export class PanelLayoutManager implements AppModule {
 
       const telegramIntelPanel = new TelegramIntelPanel();
       this.ctx.panels['telegram-intel'] = telegramIntelPanel;
+
+      const forensicsPanel = new ForensicsPanel();
+      this.ctx.panels['forensics'] = forensicsPanel;
     }
 
     if (SITE_VARIANT === 'finance') {
