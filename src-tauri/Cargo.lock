@@ -5426,6 +5426,7 @@ version = "2.5.23"
 dependencies = [
  "getrandom 0.2.17",
  "keyring",
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

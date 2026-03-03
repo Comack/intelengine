@@ -299,9 +299,18 @@ function sebufApiPlugin(): Plugin {
           // Read body for POST requests
           let body: string | undefined;
           if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+            const MAX_BODY = 10 * 1024 * 1024; // 10 MB
             const chunks: Buffer[] = [];
+            let totalSize = 0;
             for await (const chunk of req) {
-              chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+              const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+              totalSize += buf.length;
+              if (totalSize > MAX_BODY) {
+                res.writeHead(413, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Request body too large' }));
+                return;
+              }
+              chunks.push(buf);
             }
             body = Buffer.concat(chunks).toString();
           }
@@ -364,8 +373,14 @@ function sebufApiPlugin(): Plugin {
             return;
           }
 
-          // Execute handler
-          const response = await matchedHandler(webRequest);
+          // Execute handler with timeout
+          const handlerPromise = matchedHandler(webRequest);
+          let timeoutId: ReturnType<typeof setTimeout>;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('Handler timed out after 30s')), 30_000);
+          });
+          const response = await Promise.race([handlerPromise, timeoutPromise]);
+          clearTimeout(timeoutId!);
 
           // Write response
           res.statusCode = response.status;

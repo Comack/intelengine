@@ -118,7 +118,7 @@ async function fetchWhaleTransfers(req: ListWhaleTransfersRequest): Promise<Whal
     return syntheticFallback();
   }
 
-  const minValue = req.minValueUsd || 50000000;
+  const minValue = Math.min(req.minValueUsd || 50_000_000, 10_000_000_000); // cap at $10B
   const limit = Math.min(req.limit || 20, 50);
   const url = `https://api.whale-alert.io/v1/transactions?api_key=${apiKey}&min_value=${minValue}&limit=${limit}&cursor=0`;
 

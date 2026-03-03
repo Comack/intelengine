@@ -75,6 +75,7 @@ async function probeDirectFetchCapability(): Promise<boolean> {
   if (!directFetchProbe) {
     directFetchProbe = fetch(`${GAMMA_API}/events?closed=false&active=true&archived=false&order=volume&ascending=false&limit=1`, {
       headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15_000),
     })
       .then(resp => {
         directFetchWorks = resp.ok;
@@ -100,6 +101,7 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
     try {
       const resp = await fetch(`${GAMMA_API}/${endpoint}?${qs}`, {
         headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15_000),
       });
       if (resp.ok) {
         directFetchWorks = true;

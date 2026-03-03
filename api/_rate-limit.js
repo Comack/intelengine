@@ -52,7 +52,15 @@ export async function checkRateLimit(request, corsHeaders) {
     }
 
     return null;
-  } catch {
-    return null;
+  } catch (err) {
+    console.error('[rate-limit] Redis error, failing closed:', err);
+    return new Response(JSON.stringify({ error: 'Service temporarily unavailable' }), {
+      status: 503,
+      headers: {
+        'Content-Type': 'application/json',
+        'Retry-After': '5',
+        ...corsHeaders,
+      },
+    });
   }
 }

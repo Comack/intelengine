@@ -310,6 +310,9 @@ if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && 'serviceWo
       }, 60 * 60 * 1000);
       // Expose interval ID for cleanup/debugging
       (window as unknown as Record<string, unknown>).__swUpdateInterval = swUpdateInterval;
+      window.addEventListener('beforeunload', () => {
+        clearInterval(swUpdateInterval);
+      });
     })
     .catch((err) => {
       console.warn('[PWA] Service worker registration failed:', err);

@@ -508,6 +508,10 @@ async function handleSpike(spike: TrendingSpike, config: TrendingConfig): Promis
   const termKey = toTermKey(spike.term);
   if (activeSpikeTerms.has(termKey)) return;
   activeSpikeTerms.add(termKey);
+  if (activeSpikeTerms.size >= MAX_TRACKED_TERMS) {
+    const firstVal = activeSpikeTerms.values().next().value;
+    if (firstVal !== undefined) activeSpikeTerms.delete(firstVal);
+  }
 
   try {
     const significant = await isSignificantTerm(spike.term, spike.headlines);
@@ -622,6 +626,10 @@ export function ingestHeadlines(headlines: TrendingHeadlineInput[]): void {
       continue;
     }
     seenHeadlines.set(key, now);
+    if (seenHeadlines.size >= MAX_TRACKED_TERMS) {
+      const firstKey = seenHeadlines.keys().next().value;
+      if (firstKey !== undefined) seenHeadlines.delete(firstKey);
+    }
 
     const termCandidates = buildBaseTermCandidates(headline.title);
     recordTermCandidates(termCandidates, headline, now, blockedTerms);

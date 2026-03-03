@@ -129,7 +129,7 @@ export function createDomainGateway(
     try {
       corsHeaders = getCorsHeaders(request);
     } catch {
-      corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+      corsHeaders = { 'Access-Control-Allow-Origin': '' };
     }
 
     // OPTIONS preflight

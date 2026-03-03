@@ -199,7 +199,23 @@ fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
 
 fn generate_local_token() -> String {
     let mut buf = [0u8; 32];
-    getrandom::getrandom(&mut buf).expect("OS CSPRNG unavailable");
+    if getrandom::getrandom(&mut buf).is_err() {
+        // Fallback: mix multiple entropy sources to fill all 32 bytes
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let pid = std::process::id() as u128;
+        let tid = unsafe { libc::syscall(libc::SYS_gettid) } as u128;
+        let ptr_entropy = (&buf as *const _ as usize) as u128;
+        let sources: [u128; 4] = [ts, pid, tid, ptr_entropy];
+        for (i, b) in buf.iter_mut().enumerate() {
+            let src = sources[i / 16];
+            let byte = src.to_le_bytes()[i % 16];
+            // Mix with rotating XOR from other sources
+            *b = byte ^ sources[(i + 1) % 4].to_le_bytes()[i % 16];
+        }
+    }
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -1116,18 +1132,23 @@ fn stop_local_api(app: &AppHandle) {
             if let Some(mut child) = slot.take() {
                 #[cfg(unix)]
                 {
-                    // Send SIGTERM for graceful shutdown, fall back to SIGKILL
                     let pid = child.id() as i32;
-                    unsafe { libc::kill(pid, libc::SIGTERM); }
-                    // Wait up to 3 seconds for graceful exit
-                    for _ in 0..30 {
-                        match child.try_wait() {
-                            Ok(Some(_)) => break,
-                            _ => std::thread::sleep(std::time::Duration::from_millis(100)),
+                    let kill_result = unsafe { libc::kill(pid, libc::SIGTERM) };
+                    if kill_result == 0 {
+                        // Wait up to 3 seconds for graceful exit
+                        for _ in 0..30 {
+                            match child.try_wait() {
+                                Ok(Some(_)) => break,
+                                _ => std::thread::sleep(std::time::Duration::from_millis(100)),
+                            }
                         }
-                    }
-                    // If still running, force kill
-                    if child.try_wait().ok().flatten().is_none() {
+                        // If still running, force kill
+                        if child.try_wait().ok().flatten().is_none() {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                        }
+                    } else {
+                        // SIGTERM failed, force kill
                         let _ = child.kill();
                         let _ = child.wait();
                     }
@@ -1378,7 +1399,10 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running world-monitor tauri application")
+        .unwrap_or_else(|e| {
+            eprintln!("[tauri] fatal: failed to run application: {e}");
+            std::process::exit(1);
+        })
         .run(|app, event| {
             match &event {
                 // macOS: hide window on close instead of quitting (standard behavior)

@@ -152,13 +152,28 @@ export class ExportPanel {
     this.clickAbort = new AbortController();
     this.element = document.createElement('div');
     this.element.className = 'export-panel-container';
-    this.element.innerHTML = `
-      <button class="export-btn" title="${t('common.exportData')}">⬇</button>
-      <div class="export-menu hidden">
-        <button class="export-option" data-format="csv">${t('common.exportCsv')}</button>
-        <button class="export-option" data-format="json">${t('common.exportJson')}</button>
-      </div>
-    `;
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'export-btn';
+    exportBtn.title = t('common.exportData');
+    exportBtn.textContent = '⬇';
+
+    const menu = document.createElement('div');
+    menu.className = 'export-menu hidden';
+
+    const csvBtn = document.createElement('button');
+    csvBtn.className = 'export-option';
+    csvBtn.dataset.format = 'csv';
+    csvBtn.textContent = t('common.exportCsv');
+
+    const jsonBtn = document.createElement('button');
+    jsonBtn.className = 'export-option';
+    jsonBtn.dataset.format = 'json';
+    jsonBtn.textContent = t('common.exportJson');
+
+    menu.appendChild(csvBtn);
+    menu.appendChild(jsonBtn);
+    this.element.appendChild(exportBtn);
+    this.element.appendChild(menu);
 
     this.setupEventListeners();
   }

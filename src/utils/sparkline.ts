@@ -1,11 +1,13 @@
 export function miniSparkline(data: number[] | undefined, change: number | null, w = 50, h = 16): string {
   if (!data || data.length < 2) return '';
-  const min = data.reduce((a, b) => a < b ? a : b, data[0]!);
-  const max = data.reduce((a, b) => a > b ? a : b, data[0]!);
+  const safeData = data.filter(Number.isFinite);
+  if (safeData.length < 2) return '';
+  const min = safeData.reduce((a, b) => a < b ? a : b, safeData[0]!);
+  const max = safeData.reduce((a, b) => a > b ? a : b, safeData[0]!);
   const range = max - min || 1;
   const color = change != null && change >= 0 ? 'var(--green)' : 'var(--red)';
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * w;
+  const points = safeData.map((v, i) => {
+    const x = (i / (safeData.length - 1)) * w;
     const y = h - ((v - min) / range) * (h - 2) - 1;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');

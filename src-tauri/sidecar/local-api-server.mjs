@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import crypto from 'node:crypto';
 
 const brotliCompressAsync = promisify(brotliCompress);
 
@@ -1122,7 +1123,9 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({ error: 'Unauthorized – no session token configured' }, 401);
   }
   const authHeader = req.headers.authorization || '';
-  if (authHeader !== `Bearer ${expectedToken}`) {
+  const expected = Buffer.from(`Bearer ${expectedToken}`);
+  const actual = Buffer.from(authHeader);
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
     context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
     return json({ error: 'Unauthorized' }, 401);
   }

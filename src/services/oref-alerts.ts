@@ -288,8 +288,16 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
   }
 }
 
-export function onOrefAlertsUpdate(cb: (data: OrefAlertsResponse) => void): void {
+export function onOrefAlertsUpdate(cb: (data: OrefAlertsResponse) => void): () => void {
+  if (updateCallbacks.length >= 50) {
+    // Reject registration when at capacity to avoid evicting active listeners
+    return () => {};
+  }
   updateCallbacks.push(cb);
+  return () => {
+    const idx = updateCallbacks.indexOf(cb);
+    if (idx !== -1) updateCallbacks.splice(idx, 1);
+  };
 }
 
 export function startOrefPolling(): void {

@@ -10,8 +10,18 @@ const rateLimitMap = new Map();
 const RATE_LIMIT = 5;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 
+function cleanupRateLimit() {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now - entry.windowStart > RATE_WINDOW_MS) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}
+
 function isRateLimited(ip) {
   const now = Date.now();
+  if (rateLimitMap.size > 10000) cleanupRateLimit();
   const entry = rateLimitMap.get(ip);
   if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
     rateLimitMap.set(ip, { windowStart: now, count: 1 });
