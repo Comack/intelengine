@@ -294,7 +294,9 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
 }
 
 function pickModule(pathname, routes) {
-  const apiPath = pathname.startsWith('/api') ? pathname.slice(4) || '/' : pathname;
+  // Normalize pathname to remove duplicate slashes and /api prefix
+  const normalizedPath = pathname.replace(/\/+/g, '/');
+  const apiPath = normalizedPath.startsWith('/api/') ? normalizedPath.slice(4) || '/' : normalizedPath;
 
   for (const candidate of routes) {
     if (matchRoute(candidate.routePath, apiPath)) {
@@ -305,8 +307,11 @@ function pickModule(pathname, routes) {
   return null;
 }
 
-const moduleCache = new Map();
-const failedImports = new Set();
+// LRU-capped module cache: evict least-recently-used when over limit
+const MODULE_CACHE_MAX = 50;
+const FAILED_IMPORT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
+const moduleCache = new Map();       // modulePath → module
+const failedImports = new Map();     // modulePath → timestamp of first failure
 const fallbackCounts = new Map();
 const cloudPreferred = new Set();
 
@@ -392,20 +397,36 @@ function logOnce(logger, route, message) {
 }
 
 async function importHandler(modulePath) {
-  if (failedImports.has(modulePath)) {
-    throw new Error(`cached-failure:${path.basename(modulePath)}`);
+  // Check if import previously failed and the retry window hasn't elapsed
+  const failedAt = failedImports.get(modulePath);
+  if (failedAt !== undefined) {
+    if (Date.now() - failedAt < FAILED_IMPORT_RETRY_MS) {
+      throw new Error(`cached-failure:${path.basename(modulePath)}`);
+    }
+    // Retry window elapsed — allow re-import
+    failedImports.delete(modulePath);
   }
 
   const cached = moduleCache.get(modulePath);
-  if (cached) return cached;
+  if (cached) {
+    // Refresh LRU order: delete and re-insert so this key is newest
+    moduleCache.delete(modulePath);
+    moduleCache.set(modulePath, cached);
+    return cached;
+  }
 
   try {
     const mod = await import(pathToFileURL(modulePath).href);
+    // Evict least-recently-used entry when at cap
+    if (moduleCache.size >= MODULE_CACHE_MAX) {
+      const lruKey = moduleCache.keys().next().value;
+      if (lruKey !== undefined) moduleCache.delete(lruKey);
+    }
     moduleCache.set(modulePath, mod);
     return mod;
   } catch (error) {
     if (error.code === 'ERR_MODULE_NOT_FOUND') {
-      failedImports.add(modulePath);
+      failedImports.set(modulePath, Date.now());
     }
     throw error;
   }
@@ -485,12 +506,210 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
   }
 }
 
+// Sidecar is localhost-only; only allow local/Tauri origins.
+// Wildcard subdomain patterns are intentionally excluded to prevent
+// any unregistered subdomain from bypassing the origin check.
+// Mirrors ALLOWED_DOMAINS from api/rss-proxy.js — keep in sync
+const RSS_ALLOWED_DOMAINS = [
+  'feeds.bbci.co.uk',
+  'www.theguardian.com',
+  'feeds.npr.org',
+  'news.google.com',
+  'www.aljazeera.com',
+  'rss.cnn.com',
+  'hnrss.org',
+  'feeds.arstechnica.com',
+  'www.theverge.com',
+  'www.cnbc.com',
+  'feeds.marketwatch.com',
+  'www.defenseone.com',
+  'breakingdefense.com',
+  'www.bellingcat.com',
+  'techcrunch.com',
+  'huggingface.co',
+  'www.technologyreview.com',
+  'rss.arxiv.org',
+  'export.arxiv.org',
+  'www.federalreserve.gov',
+  'www.sec.gov',
+  'www.whitehouse.gov',
+  'www.state.gov',
+  'www.defense.gov',
+  'home.treasury.gov',
+  'www.justice.gov',
+  'tools.cdc.gov',
+  'www.fema.gov',
+  'www.dhs.gov',
+  'www.thedrive.com',
+  'krebsonsecurity.com',
+  'finance.yahoo.com',
+  'thediplomat.com',
+  'venturebeat.com',
+  'foreignpolicy.com',
+  'www.ft.com',
+  'openai.com',
+  'www.reutersagency.com',
+  'feeds.reuters.com',
+  'rsshub.app',
+  'asia.nikkei.com',
+  'www.cfr.org',
+  'www.csis.org',
+  'www.politico.com',
+  'www.brookings.edu',
+  'layoffs.fyi',
+  'www.defensenews.com',
+  'www.militarytimes.com',
+  'taskandpurpose.com',
+  'news.usni.org',
+  'www.oryxspioenkop.com',
+  'www.gov.uk',
+  'www.foreignaffairs.com',
+  'www.atlanticcouncil.org',
+  'www.zdnet.com',
+  'www.techmeme.com',
+  'www.darkreading.com',
+  'www.schneier.com',
+  'rss.politico.com',
+  'www.anandtech.com',
+  'www.tomshardware.com',
+  'www.semianalysis.com',
+  'feed.infoq.com',
+  'thenewstack.io',
+  'devops.com',
+  'dev.to',
+  'lobste.rs',
+  'changelog.com',
+  'seekingalpha.com',
+  'news.crunchbase.com',
+  'www.saastr.com',
+  'feeds.feedburner.com',
+  'www.producthunt.com',
+  'www.axios.com',
+  'github.blog',
+  'githubnext.com',
+  'mshibanami.github.io',
+  'www.engadget.com',
+  'news.mit.edu',
+  'dev.events',
+  'www.ycombinator.com',
+  'a16z.com',
+  'review.firstround.com',
+  'www.sequoiacap.com',
+  'www.nfx.com',
+  'www.aaronsw.com',
+  'bothsidesofthetable.com',
+  'www.lennysnewsletter.com',
+  'stratechery.com',
+  'www.eu-startups.com',
+  'tech.eu',
+  'sifted.eu',
+  'www.techinasia.com',
+  'kr-asia.com',
+  'techcabal.com',
+  'disrupt-africa.com',
+  'lavca.org',
+  'contxto.com',
+  'inc42.com',
+  'yourstory.com',
+  'pitchbook.com',
+  'www.cbinsights.com',
+  'www.techstars.com',
+  'english.alarabiya.net',
+  'www.arabnews.com',
+  'www.timesofisrael.com',
+  'www.haaretz.com',
+  'www.scmp.com',
+  'kyivindependent.com',
+  'www.themoscowtimes.com',
+  'feeds.24.com',
+  'feeds.capi24.com',
+  'www.france24.com',
+  'www.euronews.com',
+  'www.lemonde.fr',
+  'rss.dw.com',
+  'www.africanews.com',
+  'www.lasillavacia.com',
+  'www.channelnewsasia.com',
+  'www.thehindu.com',
+  'news.un.org',
+  'www.iaea.org',
+  'www.who.int',
+  'www.cisa.gov',
+  'www.crisisgroup.org',
+  'rusi.org',
+  'warontherocks.com',
+  'www.aei.org',
+  'responsiblestatecraft.org',
+  'www.fpri.org',
+  'jamestown.org',
+  'www.chathamhouse.org',
+  'ecfr.eu',
+  'www.gmfus.org',
+  'www.wilsoncenter.org',
+  'www.lowyinstitute.org',
+  'www.mei.edu',
+  'www.stimson.org',
+  'www.cnas.org',
+  'carnegieendowment.org',
+  'www.rand.org',
+  'fas.org',
+  'www.armscontrol.org',
+  'www.nti.org',
+  'thebulletin.org',
+  'www.iss.europa.eu',
+  'www.fao.org',
+  'worldbank.org',
+  'www.imf.org',
+  'www.hurriyet.com.tr',
+  'tvn24.pl',
+  'www.polsatnews.pl',
+  'www.rp.pl',
+  'meduza.io',
+  'novayagazeta.eu',
+  'www.bangkokpost.com',
+  'vnexpress.net',
+  'www.abc.net.au',
+  'news.ycombinator.com',
+  'www.coindesk.com',
+  'cointelegraph.com',
+  'fr.euronews.com',
+  'de.euronews.com',
+  'it.euronews.com',
+  'es.euronews.com',
+  'pt.euronews.com',
+  'ru.euronews.com',
+  'feeds.elpais.com',
+  'e00-elmundo.uecdn.es',
+  'www.bbc.com',
+  'www.tagesschau.de',
+  'www.spiegel.de',
+  'newsfeed.zeit.de',
+  'www.ansa.it',
+  'xml2.corriereobjects.it',
+  'www.repubblica.it',
+  'feeds.nos.nl',
+  'www.nrc.nl',
+  'www.telegraaf.nl',
+  'www.svt.se',
+  'www.dn.se',
+  'www.svd.se',
+  'www.aljazeera.net',
+  'www.lorientlejour.com',
+  'www.jeuneafrique.com',
+  'fr.africanews.com',
+  'www.clarin.com',
+  'oglobo.globo.com',
+  'feeds.folha.uol.com.br',
+  'www.eltiempo.com',
+  'www.eluniversal.com.mx',
+  'www.asahi.com',
+];
+
 const SIDECAR_ALLOWED_ORIGINS = [
   /^tauri:\/\/localhost$/,
   /^https?:\/\/localhost(:\d+)?$/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
   /^https:\/\/tauri\.localhost(:\d+)?$/,
-  /^https:\/\/(.*\.)?worldmonitor\.app$/,
 ];
 
 function getSidecarCorsOrigin(req) {
@@ -556,9 +775,25 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   }
 }
 
+// Allowed relay hostnames: Railway-hosted relays, localhost, and loopback.
+// Prevents SSRF if WS_RELAY_URL is set to an attacker-controlled host.
+const ALLOWED_RELAY_HOST_PATTERNS = [
+  /^127\.0\.0\.1$/,
+  /^localhost$/,
+  /^[a-z0-9-]+\.up\.railway\.app$/,
+];
+
+function isAllowedRelayHost(hostname) {
+  return ALLOWED_RELAY_HOST_PATTERNS.some(p => p.test(hostname));
+}
+
 function relayToHttpUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
+    if (!isAllowedRelayHost(parsed.hostname)) {
+      console.error(`[local-api] Relay URL rejected — hostname not in allowlist: ${parsed.hostname}`);
+      return null;
+    }
     if (parsed.protocol === 'ws:') parsed.protocol = 'http:';
     if (parsed.protocol === 'wss:') parsed.protocol = 'https:';
     return parsed.toString().replace(/\/$/, '');
@@ -826,16 +1061,49 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 }
 
 async function dispatch(requestUrl, req, routes, context) {
+  const pathname = requestUrl.pathname;
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: makeCorsHeaders(req) });
   }
 
-  if (requestUrl.pathname === '/api/service-status') {
+  // ---- Public endpoints (No token required) ----
+
+  if (pathname === '/api/service-status' || pathname === '/api/service-status/') {
     return handleLocalServiceStatus(context);
   }
 
+  // YouTube bypass: required for iframe embeds which cannot send custom Authorization headers.
+  // This must remain public to allow the frontend to load it as a cross-origin iframe.
+  if (pathname.startsWith('/api/youtube/')) {
+    const modulePath = pickModule(pathname, routes);
+    if (modulePath && existsSync(modulePath)) {
+      try {
+        const mod = await importHandler(modulePath);
+        if (typeof mod.default === 'function') {
+          const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
+          const request = new Request(requestUrl.toString(), {
+            method: req.method,
+            headers: toHeaders(req.headers, { stripOrigin: true }),
+            body,
+          });
+          return await mod.default(request);
+        }
+      } catch (error) {
+        context.logger.error(`[local-api] youtube handler error: ${error.message}`);
+      }
+    }
+    // Fallback to cloud if local handler fails
+    if (context.cloudFallback && !context.localFirst) {
+      return await tryCloudFallback(requestUrl, req, context, 'youtube bypass fallback');
+    }
+    // Nothing left to try — return 404 rather than falling through to the
+    // token-auth block, which would misleadingly return 401 for a public route.
+    return json({ error: 'Not found' }, 404);
+  }
+
   // Localhost-only diagnostics — no token required
-  if (requestUrl.pathname === '/api/local-status') {
+  if (pathname === '/api/local-status' || pathname === '/api/local-status/') {
     return json({
       success: true,
       mode: context.mode,
@@ -914,6 +1182,9 @@ async function dispatch(requestUrl, req, routes, context) {
     if (!feedUrl) return json({ error: 'Missing url parameter' }, 400);
     try {
       const parsed = new URL(feedUrl);
+      if (!RSS_ALLOWED_DOMAINS.includes(parsed.hostname)) {
+        return json({ error: 'Domain not allowed' }, 403);
+      }
       const response = await fetchWithTimeout(feedUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -935,16 +1206,18 @@ async function dispatch(requestUrl, req, routes, context) {
 
   // Token auth — required for env mutations and all API handlers
   const expectedToken = process.env.LOCAL_API_TOKEN;
-  if (expectedToken) {
-    const authHeader = req.headers.authorization || '';
-    if (authHeader !== `Bearer ${expectedToken}`) {
-      context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
-      return json({ error: 'Unauthorized' }, 401);
-    }
+  if (!expectedToken) {
+    context.logger.warn(`[local-api] LOCAL_API_TOKEN is not set — rejecting request to ${pathname}`);
+    return json({ error: 'Unauthorized – server token not configured' }, 401);
+  }
+  const authHeader = req.headers.authorization || '';
+  if (authHeader !== `Bearer ${expectedToken}`) {
+    context.logger.warn(`[local-api] unauthorized request to ${pathname}`);
+    return json({ error: 'Unauthorized' }, 401);
   }
 
   // ---- Local AIS snapshot (embedded relay) ----
-  if (requestUrl.pathname === '/api/local-ais-snapshot') {
+  if (pathname === '/api/local-ais-snapshot') {
     const relay = getAisRelay(context.logger);
     if (!relay) return json({ error: 'AISSTREAM_API_KEY not configured' }, 503);
     const includeCandidates = requestUrl.searchParams.get('candidates') === 'true';
@@ -1075,8 +1348,14 @@ async function dispatch(requestUrl, req, routes, context) {
       }
       const safeContext = (context && typeof context === 'object') ? context : {};
       const result = await validateSecretAgainstProvider(key, value, safeContext);
+      if (!result.valid) {
+        // Mask the value (show only first 4 chars) to avoid logging secrets
+        const masked = String(value || '').slice(0, 4).padEnd(8, '*');
+        console.error(`[local-api] Secret validation failed — key=${key} masked=${masked} reason=${result.message}`);
+      }
       return json(result, result.valid ? 200 : 422);
-    } catch {
+    } catch (err) {
+      console.error('[local-api] Secret validation threw unexpectedly:', err?.message);
       return json({ error: 'expected { key, value }' }, 400);
     }
   }
@@ -1089,9 +1368,14 @@ async function dispatch(requestUrl, req, routes, context) {
     if (cloudResponse) return cloudResponse;
   }
 
-  // ---- Local cache probe (GET requests only, cacheable routes) ----
+  // ---- Local cache probe (GET requests only) ----
   const CACHEABLE_ROUTE_TTLS = {
     '/seismology/v1/GetEarthquakes': 120,
+    '/market/v1/ListMarketQuotes': 60,
+    '/market/v1/ListCryptoQuotes': 60,
+    '/market/v1/ListCommodityQuotes': 300,
+    '/market/v1/GetSectorSummary': 300,
+    '/news/v1/ListTopStories': 300,
     '/aviation/v1/GetFlights': 60,
     '/conflict/v1/GetAcledEvents': 600,
     '/economic/v1/GetFredSeries': 900,
@@ -1252,11 +1536,16 @@ export async function createLocalApiServer(options = {}) {
 
       res.writeHead(500, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
       res.end(JSON.stringify({ error: 'Internal server error' }));
+    } finally {
+      // Release cached request body to avoid holding large buffers until GC sweep
+      delete req[REQUEST_BODY_CACHE];
     }
   });
 
   async function gracefulShutdown(signal) {
     context.logger.log(`[local-api] ${signal} — shutting down gracefully`);
+    moduleCache.clear();
+    failedImports.clear();
     if (_aisRelayInstance) { try { _aisRelayInstance.stop(); } catch { /* ignore */ } }
     if (_openSkyRelayInstance) { try { _openSkyRelayInstance.reset(); } catch { /* ignore */ } }
     if (_localCache) { try { _localCache.persist(); } catch { /* ignore */ } }
@@ -1304,6 +1593,11 @@ export async function createLocalApiServer(options = {}) {
 }
 
 if (isMainModule()) {
+  // Minimal pre-startup safety net. process.once so these auto-remove when
+  // createLocalApiServer() registers the full graceful-shutdown handlers.
+  process.once('SIGTERM', () => process.exit(0));
+  process.once('SIGINT',  () => process.exit(0));
+
   try {
     const app = await createLocalApiServer();
     await app.start();

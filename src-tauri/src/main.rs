@@ -152,20 +152,8 @@ fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
 }
 
 fn generate_local_token() -> String {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{BuildHasher, Hasher};
-    let state = RandomState::new();
-    let mut h1 = state.build_hasher();
-    h1.write_u64(std::process::id() as u64);
-    let a = h1.finish();
-    let mut h2 = state.build_hasher();
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    h2.write_u128(nanos);
-    let b = h2.finish();
-    format!("{a:016x}{b:016x}")
+    use rand::random;
+    format!("{:032x}", random::<u128>())
 }
 
 #[tauri::command]
@@ -215,7 +203,12 @@ fn get_all_secrets(cache: tauri::State<'_, SecretsCache>) -> HashMap<String, Str
     cache
         .secrets
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|e| {
+            eprintln!("[worldmonitor] WARNING: secrets mutex was poisoned, returning empty state");
+            let mut guard = e.into_inner();
+            guard.clear();
+            guard
+        })
         .clone()
 }
 
@@ -336,6 +329,14 @@ fn append_desktop_log(app: &AppHandle, level: &str, message: &str) {
     let Ok(path) = desktop_log_path(app) else {
         return;
     };
+
+    // Rotate the log if it exceeds 5 MB to prevent unbounded disk growth.
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > 5 * 1024 * 1024 {
+            let rotated = path.with_extension("1.log");
+            let _ = std::fs::rename(&path, &rotated);
+        }
+    }
 
     let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) else {
         return;
@@ -1056,7 +1057,7 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
     if token_slot.is_none() {
         *token_slot = Some(generate_local_token());
     }
-    let local_api_token = token_slot.clone().unwrap();
+    let local_api_token = token_slot.clone().ok_or("Token not generated")?;
     drop(token_slot);
 
     let mut cmd = Command::new(&node_binary);
@@ -1079,6 +1080,14 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         .stderr(Stdio::from(log_file_err));
     if let Some(parent) = script.parent() {
         cmd.current_dir(parent);
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // Place sidecar in its own process group so session-manager SIGTERM
+        // broadcasts don't race with Tauri's graceful_kill() sequence.
+        cmd.process_group(0);
     }
 
     // Pass cached keychain secrets to sidecar as env vars (no keychain re-read)
@@ -1129,6 +1138,26 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         &format!("local API sidecar started pid={}", child.id()),
     );
     *slot = Some(child);
+
+    // Non-blocking health check: poll sidecar port until it accepts connections
+    std::thread::spawn(move || {
+        let addr: std::net::SocketAddr = format!("127.0.0.1:{LOCAL_API_PORT}").parse().expect("invalid local API address");
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(10);
+        while start.elapsed() < timeout {
+            if let Ok(stream) = std::net::TcpStream::connect_timeout(
+                &addr,
+                std::time::Duration::from_millis(500),
+            ) {
+                drop(stream);
+                println!("[worldmonitor] sidecar ready on port {LOCAL_API_PORT} after {:?}", start.elapsed());
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+        eprintln!("[worldmonitor] WARNING: sidecar not ready on port {LOCAL_API_PORT} after {timeout:?}");
+    });
+
     Ok(())
 }
 
@@ -1136,16 +1165,20 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
 fn graceful_kill(child: &mut std::process::Child) {
     let pid = child.id() as libc::pid_t;
     unsafe { libc::kill(pid, libc::SIGTERM); }
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
         match child.try_wait() {
+            // Process exited cleanly before deadline — no SIGKILL needed.
             Ok(Some(_)) => { let _ = child.wait(); return; }
+            // Still running, deadline not reached — keep polling.
             Ok(None) if std::time::Instant::now() < deadline => {
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
+            // Deadline exceeded OR try_wait returned an error — fall through to SIGKILL.
             _ => break,
         }
     }
+    // Unconditional SIGKILL + reap to guarantee child cleanup regardless of how loop exits.
     let _ = child.kill();
     let _ = child.wait();
 }
