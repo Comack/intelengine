@@ -2436,6 +2436,177 @@ Signal types produced per data domain:
 
 ---
 
+### Signal Source API Reference
+
+Each signal type backed by an external API is listed below with its provider, endpoint, required environment variable, and fallback behaviour.
+
+#### Space Weather — NOAA SWPC (free, no key required)
+
+Signal types: `geomagnetic_storm`, `space_weather_alert`
+
+The `getSpaceWeather` handler fans out three concurrent requests to NOAA's Space Weather Prediction Center:
+
+| Endpoint | Data |
+|----------|------|
+| `https://services.swpc.noaa.gov/json/planetary_k_index_1m.json` | Kp index (1-minute cadence) |
+| `https://services.swpc.noaa.gov/json/goes/primary/xray-fluxes-7-day.json` | GOES X-ray flux (solar flare class A–X) |
+| `https://services.swpc.noaa.gov/json/alerts.json` | SWPC watch/warning/alert messages |
+
+No API key required — NOAA data is public. A static `kp=0` / no-alerts fallback is returned when all three fetches fail.
+
+Signal thresholds: Kp ≥ 5 emits `geomagnetic_storm`; any active alerts emit `space_weather_alert`.
+
+---
+
+#### BGP Routing Anomalies — CAIDA BGPStream (free, no key required)
+
+Signal types: `bgp_hijack`, `bgp_leak`
+
+```
+GET https://bgpstream.caida.org/api/v2/events?type=hijack,leak&limit=<N>
+```
+
+The handler fetches up to 200 events from CAIDA's BGPStream service (University of California San Diego). Events are classified as `ROUTING_ANOMALY_TYPE_BGP_HIJACK` or `ROUTING_ANOMALY_TYPE_BGP_LEAK`. Severity is derived from the prefix length: `/24` or longer = high; `/16`–`/23` = medium; shorter = low. No API key required. Returns an empty list on failure — the signal builder silently skips the domain.
+
+---
+
+#### SAR Dark-Ship Detections — Global Fishing Watch API
+
+Signal types: `sar_dark_vessel`
+
+Environment variable: `GLOBAL_FISHING_WATCH_API_KEY`
+
+```
+GET https://gateway.api.globalfishingwatch.org/v3/events
+    ?datasets[0]=public-global-sar-presence:latest
+    &limit=<N>
+Authorization: Bearer <GLOBAL_FISHING_WATCH_API_KEY>
+```
+
+Global Fishing Watch indexes synthetic-aperture radar satellite passes and cross-references detections against AIS transponder data. Vessels detected in SAR imagery with no matching AIS broadcast are flagged as dark ships (`aisMatched = false`). The handler requests up to 500 entries and maps each to a `SarDarkShip` proto message.
+
+Fallback: 5 hardcoded detections in strategic areas (South China Sea, Strait of Hormuz, Singapore Strait, Aegean Sea, Central Mediterranean) when the API key is absent or the request fails.
+
+---
+
+#### Electricity Grid Zones — Electricity Maps API
+
+Signal types: `grid_stress`
+
+Environment variable: `ELECTRICITY_MAPS_API_KEY`
+
+```
+GET https://api.electricitymap.org/v3/power-breakdown/latest?zone=<ZONE_ID>
+auth-token: <ELECTRICITY_MAPS_API_KEY>
+```
+
+Eight strategic grid zones are polled concurrently:
+
+| Zone ID | Description |
+|---------|-------------|
+| `US-TEX-ERCO` | ERCOT (Texas) |
+| `US-CAL-CISO` | California ISO |
+| `DE` | Germany |
+| `FR` | France |
+| `GB` | United Kingdom |
+| `CN-SO` | China South |
+| `IN-SO` | India South |
+| `AU-NSW` | Australia New South Wales |
+
+Stress level is derived from carbon intensity and renewable percentage: carbon > 700 g CO₂/kWh or renewable < 10 % → `GRID_STRESS_HIGH`; carbon > 500 or renewable < 20 % → `GRID_STRESS_ELEVATED`; otherwise `GRID_STRESS_NORMAL`. Only `ELEVATED` and above emit `grid_stress` signals into the forensics pipeline.
+
+Fallback: the same 8 zones are returned as a static dataset with representative values when the API key is absent.
+
+---
+
+#### ACARS Military Messages — Airframes.io (via Railway relay)
+
+Signal types: surfaced in `ForensicsPanel` ACARS tab; not directly emitted as scored forensics signals but consumed by the military domain.
+
+Environment variables: `AIRFRAMES_API_KEY`, `WS_RELAY_URL`
+
+The `listAcarsMessages` handler reads recent ACARS messages from the custom Railway relay server:
+
+```
+GET {WS_RELAY_URL}/acars/recent?limit=<N>
+```
+
+The relay (`ais-relay.cjs`) maintains a WebSocket connection to [Airframes.io](https://airframes.io) — a crowdsourced VHF/HF radio network that decodes ACARS transmissions from commercial and military aircraft. Incoming messages are classified into military categories by keyword matching:
+
+| Category | Keywords |
+|----------|---------|
+| `ACARS_MIL_CATEGORY_MEDICAL_EVAC` | MEDIVAC, EVAC, DUSTOFF |
+| `ACARS_MIL_CATEGORY_TACTICAL` | STRIKE, WEAPON, LOAD, TARGET |
+| `ACARS_MIL_CATEGORY_LOGISTICS` | CARGO, PALLETS, AIRLIFT, REACH\* |
+
+Fallback: 5 synthetic ACARS messages covering logistics, MEDEVAC, tactical, and OOOI event types when the relay is unavailable.
+
+---
+
+#### Cryptocurrency Whale Transfers — Whale Alert API
+
+Signal types: `whale_transfer`
+
+Environment variable: `WHALE_ALERT_API_KEY`
+
+```
+GET https://api.whale-alert.io/v1/transactions
+    ?api_key=<WHALE_ALERT_API_KEY>
+    &min_value=<MIN_USD>
+    &limit=<N>
+    &cursor=0
+```
+
+[Whale Alert](https://whale-alert.io) monitors on-chain transaction flows across Bitcoin, Ethereum, and major altcoin networks. The handler fetches transactions with value ≥ $500 k USD. Transfer type is classified by counterparty labels: exchange inflows/outflows, government seizures, or wallet-to-wallet moves.
+
+In the signal builder, only transfers ≥ $5 M USD emit scored `whale_transfer` signals. Value is log-scaled: `log₁₊(amountUsd / 1 000 000) × 20`.
+
+Fallback: synthetic data covering representative transfer archetypes when the API key is absent.
+
+---
+
+#### Air Quality — World Air Quality Index (WAQI) API
+
+Signal types: `aqi_spike`
+
+Environment variable: `WAQI_TOKEN`
+
+```
+GET https://api.waqi.info/map/bounds/?latlng=<LAT1,LON1,LAT2,LON2>&token=<WAQI_TOKEN>
+```
+
+The WAQI API aggregates readings from ~10 000 government monitoring stations worldwide. The `listAirQualityReadings` handler queries 5 strategic bounding boxes (China/East Asia, South/Southeast Asia, Europe, North America, Middle East/South Asia) and returns stations with AQI > 0. Dominant pollutant (PM2.5, PM10, SO₂, NO₂, O₃, CO) is extracted from per-station breakdowns.
+
+In the signal builder, stations with AQI ≥ 150 (Unhealthy) emit `aqi_spike` signals. Value is capped at 100: `min(100, aqi / 5)`.
+
+Fallback: 8 synthetic readings from key cities when the API token is absent.
+
+---
+
+#### Port Congestion — Static/Derived Dataset (no external API)
+
+Signal types: `port_stress` (via intelligence aggregator)
+
+Port congestion is computed from a static dataset of 15 major world ports (Singapore, Shanghai, Shenzhen, Ningbo, Rotterdam, Hamburg, Busan, Yokohama, Baltimore, Los Angeles, Dubai Jebel Ali, Port Said, Port Klang, Hong Kong, Antwerp-Bruges). Congestion level is deterministically derived from UTC hour to simulate diurnal shipping patterns (Asian morning peak, European morning peak, off-peak periods). No external API or key is required.
+
+---
+
+#### Summary: Required API Keys
+
+| Service | Env var | Signal domain | Free tier |
+|---------|---------|---------------|-----------|
+| NOAA SWPC | *(none)* | `space` | ✅ Always free |
+| CAIDA BGPStream | *(none)* | `infrastructure` | ✅ Always free |
+| Global Fishing Watch | `GLOBAL_FISHING_WATCH_API_KEY` | `maritime` | ✅ Free with registration |
+| Electricity Maps | `ELECTRICITY_MAPS_API_KEY` | `infrastructure` | ⚠️ Free tier available |
+| Airframes.io (relay) | `AIRFRAMES_API_KEY` + `WS_RELAY_URL` | `military` | ⚠️ Requires relay server |
+| Whale Alert | `WHALE_ALERT_API_KEY` | `market` | ⚠️ Free tier available |
+| WAQI | `WAQI_TOKEN` | `climate` | ✅ Free with registration |
+
+All signal sources degrade gracefully: when an API key is absent or a request fails, the handler returns static fallback data so the forensics pipeline continues to operate with reduced fidelity.
+
+---
+
 ### ForensicsPanel UI
 
 `src/components/ForensicsPanel.ts` renders the operator console for the pipeline. All views are read-only except the feedback control.

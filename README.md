@@ -217,7 +217,7 @@ A server-side shadow analytics pipeline (`server/worldmonitor/intelligence/v1/fo
 **Supporting components:**
 - **Financial Topology** (`financial-topology.ts`) — builds a correlation graph of financial signals (markets, predictions, volatility) computing beta-1 (average degree − 1) and a Topological Stress Index (TSI). Derives up to 80 synthetic signals from graph topology to improve fusion coverage
 - **Redis-backed Blackboard** (`forensics-blackboard.ts`) — persistent state store with run history (1 000 runs, 7-day TTL), calibration history per metric (512 samples, 30-day TTL), policy Q-table per domain for RL-style adaptive phase selection (4 000 rows, 30-day TTL), and topology baselines (2 000 rows, 90-day TTL). All stores have in-memory fallback maps when Redis is unavailable
-- **Signal Builder** (`src/services/forensics-signal-builder.ts`) — `ForensicsSignalBuilder` collects signals from 30+ sources across market (stocks, BTC, ETF flows, stablecoins, Baltic Dry Index, Polymarket), maritime (AIS disruptions, dark vessels, port congestion), cyber (BGP anomalies, ACARS), military (NavyField, OpenSky/Wingbits), space weather (Kp index, X-ray flux), economic (FRED series), and air quality. Each signal type carries a freshness profile (FAST/SLOW/CONFLICT) with configurable decay penalties
+- **Signal Builder** (`src/services/forensics-signal-builder.ts`) — `ForensicsSignalBuilder` collects signals from 30+ sources across market (stocks, BTC, ETF flows, stablecoins, Baltic Dry Index, Polymarket), maritime (AIS disruptions, SAR dark-ship detections via **Global Fishing Watch**, port congestion), cyber (BGP anomalies via **CAIDA BGPStream**, ACARS messages via **Airframes.io**), military (NavyField, OpenSky/Wingbits), space weather (Kp index/X-ray flux from **NOAA SWPC**), electricity grid stress via **Electricity Maps** (8 strategic zones), on-chain whale transfers via **Whale Alert**, air quality via **WAQI** (World Air Quality Index), and economic (FRED series). All external sources degrade gracefully to static fallback data when API keys are absent. Each signal type carries a freshness profile (FAST/SLOW/CONFLICT) with configurable decay penalties
 - **ForensicsPanel UI** (`src/components/ForensicsPanel.ts`) — run history with trend sparklines, anomaly monitor stream organized by category (market/maritime/cyber/security/infrastructure), fused signal leaderboard with confidence interval bars, phase trace timeline (DAG with timing), causal DAG (D3 force graph), and topology drilldown with short/long window comparison
 - **Feedback loop** — thumbs-up/down buttons on each anomaly card submit `SubmitForensicsFeedback` RPC calls that feed directly back into conformal calibration history, improving future anomaly scoring over time
 - **9 RPC endpoints** under `/api/intelligence/v1/`: `RunForensicsShadow`, `ListFusedSignals`, `ListCalibratedAnomalies`, `GetForensicsTrace`, `GetForensicsRun`, `ListForensicsRuns`, `GetForensicsPolicy`, `GetForensicsTopologySummary`, `SubmitForensicsFeedback`
@@ -942,6 +942,12 @@ Theme state is stored in localStorage and applied via a `[data-theme="light"]` a
 
 A `theme-changed` CustomEvent is dispatched on toggle, allowing panels with custom rendering (charts, maps, gauges) to re-render with the new palette.
 
+#### Celebration Service
+
+`src/services/celebration.ts` integrates [canvas-confetti](https://github.com/catdad/canvas-confetti) to fire confetti bursts on positive environmental milestones in the Happy/full variant. Two burst types are defined: `milestone` (40 particles, single burst) for species recovery events (`status === "recovered"` or `"stabilized"`) and renewable energy record thresholds (every 5%), and `record` (80 particles, double burst 300ms apart) for new species count records. Both use a nature-inspired palette: greens (`#6B8F5E`, `#8BAF7A`), golds (`#C4A35A`, `#E8B96E`), and blues (`#7BA5C4`, `#7FC4C4`).
+
+Session-level deduplication is maintained with an in-memory `Set<string>` — each milestone key is celebrated at most once per browser session. The service checks `window.matchMedia('(prefers-reduced-motion: reduce)')` before firing; no animation is triggered when the user prefers reduced motion. It is invoked via `checkMilestones()` called from `src/app/data-loader.ts` after each data load cycle.
+
 ### Privacy & Offline Architecture
 
 World Monitor is designed so that sensitive intelligence work can run entirely on local hardware with no data leaving the user's machine. The privacy architecture operates at three levels:
@@ -1361,6 +1367,8 @@ When a local API handler is missing, throws an error, or returns a 5xx status, t
 - **Dual log files** — `desktop.log` captures Rust-side events (startup, secret injection counts, menu actions), while `local-api.log` captures Node.js stdout/stderr
 - **IPv4-forced fetch** — the sidecar patches `globalThis.fetch` to force IPv4 for all outbound requests. Government APIs (NASA FIRMS, EIA, FRED) publish AAAA DNS records but their IPv6 endpoints frequently timeout. The patch uses `node:https` with `family: 4` to bypass Happy Eyeballs and avoid cascading ETIMEDOUT failures
 - **DevTools** — `Cmd+Alt+I` toggles the embedded web inspector
+
+> **Arch Linux users**: See [docs/ARCH_LINUX.md](docs/ARCH_LINUX.md) for build dependencies, `.pkg.tar.zst` packaging, and Arch-specific troubleshooting.
 
 ---
 
