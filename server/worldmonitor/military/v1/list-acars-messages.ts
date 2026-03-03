@@ -98,13 +98,13 @@ export async function listAcarsMessages(
   req: ListAcarsMessagesRequest,
 ): Promise<ListAcarsMessagesResponse> {
   const apiKey = process.env.AIRFRAMES_API_KEY;
-  const relayUrl = process.env.WS_RELAY_URL || 'http://localhost:3004';
+  const relayUrl = process.env.WS_RELAY_URL; // only attempt relay if explicitly configured
   const limit = Math.min(req.limit || 100, 500);
 
   let messages: AcarsMessage[] = [];
   let usedRelay = false;
 
-  if (apiKey) {
+  if (apiKey && relayUrl) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);

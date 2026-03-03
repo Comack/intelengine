@@ -208,6 +208,9 @@ inject();
 // Initialize dynamic meta tags for sharing
 initMetaTags();
 
+// Both patches are always called; each has an internal runtime guard so only the
+// appropriate one activates (installRuntimeFetchPatch runs on desktop, installWebApiRedirect
+// runs on web when a custom API base URL is configured).
 // In desktop mode, route /api/* calls to the local Tauri sidecar backend.
 installRuntimeFetchPatch();
 // In web production, route RPC calls through api.worldmonitor.app (Cloudflare edge).

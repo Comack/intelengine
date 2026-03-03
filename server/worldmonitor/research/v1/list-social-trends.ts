@@ -61,7 +61,8 @@ interface RelayTrend {
 }
 
 async function fetchFromRelay(req: ListSocialTrendsRequest): Promise<SocialTrend[]> {
-  const relayUrl = process.env.WS_RELAY_URL || 'http://localhost:3004';
+  const relayUrl = process.env.WS_RELAY_URL; // only attempt relay if explicitly configured
+  if (!relayUrl) return syntheticTrends();
   const platform = req.platform || '';
   const limit = req.limit || 20;
   const url = `${relayUrl}/social/trends?platform=${encodeURIComponent(platform)}&limit=${limit}`;

@@ -189,9 +189,12 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   {
     id: 'aisRelay',
     name: 'AIS vessel tracking',
-    description: 'Live vessel ingestion via AISStream WebSocket.',
+    description: 'Live vessel ingestion via AISStream WebSocket relay.',
     requiredSecrets: ['WS_RELAY_URL', 'AISSTREAM_API_KEY'],
-    desktopRequiredSecrets: ['AISSTREAM_API_KEY'],
+    // Desktop mode also requires WS_RELAY_URL because the sidecar still proxies
+    // through the relay for AIS snapshot data; direct AISStream WebSocket support
+    // in the sidecar is planned but not yet implemented.
+    desktopRequiredSecrets: ['WS_RELAY_URL', 'AISSTREAM_API_KEY'],
     fallback: 'AIS layer is disabled.',
   },
   {
