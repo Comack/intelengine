@@ -17,39 +17,10 @@ import {
 } from '@/services/runtime-config';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
-import { isDesktopRuntime, getLocalFirstMode, setLocalFirstMode } from '@/services/runtime';
+import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '@/services/i18n';
 import { trackFeatureToggle } from '@/services/analytics';
-
-const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
-  GROQ_API_KEY: 'https://console.groq.com/keys',
-  OPENROUTER_API_KEY: 'https://openrouter.ai/settings/keys',
-  FRED_API_KEY: 'https://fred.stlouisfed.org/docs/api/api_key.html',
-  EIA_API_KEY: 'https://www.eia.gov/opendata/register.php',
-  CLOUDFLARE_API_TOKEN: 'https://dash.cloudflare.com/profile/api-tokens',
-  ACLED_ACCESS_TOKEN: 'https://developer.acleddata.com/',
-  URLHAUS_AUTH_KEY: 'https://auth.abuse.ch/',
-  OTX_API_KEY: 'https://otx.alienvault.com/',
-  ABUSEIPDB_API_KEY: 'https://www.abuseipdb.com/login',
-  WINGBITS_API_KEY: 'https://wingbits.com/register',
-  AISSTREAM_API_KEY: 'https://aisstream.io/authenticate',
-  OPENSKY_CLIENT_ID: 'https://opensky-network.org/login?view=registration',
-  OPENSKY_CLIENT_SECRET: 'https://opensky-network.org/login?view=registration',
-  FINNHUB_API_KEY: 'https://finnhub.io/register',
-  NASA_FIRMS_API_KEY: 'https://firms.modaps.eosdis.nasa.gov/api/area/',
-  UC_DP_KEY: 'https://ucdp.uu.se/downloads/',
-  OLLAMA_API_URL: 'https://ollama.com/download',
-  OLLAMA_MODEL: 'https://ollama.com/library',
-};
-
-const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
-  'OLLAMA_API_URL',
-  'OLLAMA_MODEL',
-  'WS_RELAY_URL',
-  'VITE_OPENSKY_RELAY_URL',
-]);
-
-const MASKED_SENTINEL = '__WM_MASKED__';
+import { SIGNUP_URLS, PLAINTEXT_KEYS, MASKED_SENTINEL } from '@/services/settings-constants';
 
 interface RuntimeConfigPanelOptions {
   mode?: 'full' | 'alert';
@@ -65,7 +36,6 @@ export class RuntimeConfigPanel extends Panel {
   private pendingSecrets = new Map<RuntimeSecretKey, string>();
   private validatedKeys = new Map<RuntimeSecretKey, boolean>();
   private validationMessages = new Map<RuntimeSecretKey, string>();
-  private localFirstEnabled = false;
 
   constructor(options: RuntimeConfigPanelOptions = {}) {
     super({ id: 'runtime-config', title: t('modals.runtimeConfig.title'), showCount: false });
@@ -73,13 +43,6 @@ export class RuntimeConfigPanel extends Panel {
     this.buffered = options.buffered ?? false;
     this.featureFilter = options.featureFilter;
     this.unsubscribe = subscribeRuntimeConfig(() => this.render());
-    // Load local-first state async; re-render once known
-    if (isDesktopRuntime()) {
-      void getLocalFirstMode().then((enabled) => {
-        this.localFirstEnabled = enabled;
-        this.render();
-      });
-    }
     this.render();
   }
 
@@ -262,26 +225,10 @@ export class RuntimeConfigPanel extends Panel {
       return;
     }
 
-    const localFirstSection = desktop ? `
-      <section class="runtime-feature local-first-section ${this.localFirstEnabled ? 'local-first-active' : ''}">
-        <header class="runtime-feature-header">
-          <label>
-            <input type="checkbox" data-local-first-toggle ${this.localFirstEnabled ? 'checked' : ''}>
-            <span>Local-First Mode</span>
-          </label>
-          <span class="runtime-pill ${this.localFirstEnabled ? 'ok' : ''}">
-            ${this.localFirstEnabled ? 'Active' : 'Off'}
-          </span>
-        </header>
-        ${this.localFirstEnabled ? '<p class="runtime-feature-fallback" style="color:var(--color-warn,#f59e0b)">&#9888; Cloud enrichment disabled — all data from local sidecar</p>' : '<p class="runtime-feature-fallback">Enable to operate without Vercel; direct outbound connections from your machine.</p>'}
-      </section>
-    ` : '';
-
     this.content.innerHTML = `
       <div class="runtime-config-summary">
         ${desktop ? t('modals.runtimeConfig.summary.desktop') : t('modals.runtimeConfig.summary.web')} · ${features.filter(f => isFeatureAvailable(f.id)).length}/${features.length} ${t('modals.runtimeConfig.summary.available')}
       </div>
-      ${localFirstSection}
       <div class="runtime-config-list">
         ${features.map(feature => this.renderFeature(feature)).join('')}
       </div>
@@ -332,9 +279,7 @@ export class RuntimeConfigPanel extends Panel {
     const helpKey = `modals.runtimeConfig.help.${key}`;
     const helpRaw = t(helpKey);
     const helpText = helpRaw !== helpKey ? helpRaw : '';
-    const linkHtml = signupUrl
-      ? ` <a href="#" data-signup-url="${signupUrl}" class="runtime-secret-link" title="Get API key">&#x2197;</a>`
-      : '';
+    const showGetKey = signupUrl && !state.present && !pending;
     const validated = this.validatedKeys.get(key);
     const inputClass = pending ? (validated === false ? 'invalid' : 'valid-staged') : '';
     const checkClass = validated === true ? 'visible' : '';
@@ -361,13 +306,20 @@ export class RuntimeConfigPanel extends Panel {
       `;
     }
 
+    const getKeyHtml = showGetKey
+      ? `<a href="#" data-signup-url="${signupUrl}" class="runtime-secret-link">Get key</a>`
+      : '';
+
     return `
       <div class="runtime-secret-row">
-        <div class="runtime-secret-key"><code>${escapeHtml(key)}</code>${linkHtml}</div>
+        <div class="runtime-secret-key"><code>${escapeHtml(key)}</code></div>
         <span class="runtime-secret-status ${statusClass}">${escapeHtml(status)}</span>
         <span class="runtime-secret-check ${checkClass}">&#x2713;</span>
         ${helpText ? `<div class="runtime-secret-meta">${escapeHtml(helpText)}</div>` : ''}
-        <input type="${PLAINTEXT_KEYS.has(key) ? 'text' : 'password'}" data-secret="${key}" placeholder="${pending ? t('modals.runtimeConfig.placeholder.staged') : t('modals.runtimeConfig.placeholder.setSecret')}" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'} class="${inputClass}" ${pending ? `value="${PLAINTEXT_KEYS.has(key) ? escapeHtml(this.pendingSecrets.get(key) || '') : MASKED_SENTINEL}"` : (PLAINTEXT_KEYS.has(key) && state.present ? `value="${escapeHtml(getRuntimeConfigSnapshot().secrets[key]?.value || '')}"` : '')}>
+        <div class="runtime-input-wrapper${showGetKey ? ' has-suffix' : ''}">
+          <input type="${PLAINTEXT_KEYS.has(key) ? 'text' : 'password'}" data-secret="${key}" placeholder="${pending ? t('modals.runtimeConfig.placeholder.staged') : t('modals.runtimeConfig.placeholder.setSecret')}" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'} class="${inputClass}" ${pending ? `value="${PLAINTEXT_KEYS.has(key) ? escapeHtml(this.pendingSecrets.get(key) || '') : MASKED_SENTINEL}"` : (PLAINTEXT_KEYS.has(key) && state.present ? `value="${escapeHtml(getRuntimeConfigSnapshot().secrets[key]?.value || '')}"` : '')}>
+          ${getKeyHtml}
+        </div>
         ${hintText ? `<span class="runtime-secret-hint">${escapeHtml(hintText)}</span>` : ''}
       </div>
     `;
@@ -412,19 +364,6 @@ export class RuntimeConfigPanel extends Panel {
         }
       });
       void this.fetchOllamaModels(modelSelect);
-    }
-
-    // Local-first mode toggle (desktop-only)
-    const localFirstToggle = this.content.querySelector<HTMLInputElement>('input[data-local-first-toggle]');
-    if (localFirstToggle) {
-      localFirstToggle.addEventListener('change', () => {
-        const enabled = localFirstToggle.checked;
-        this.localFirstEnabled = enabled;
-        void setLocalFirstMode(enabled).then(() => {
-          localStorage.setItem('wm-local-first-updated', String(Date.now()));
-          this.render();
-        });
-      });
     }
 
     this.content.querySelectorAll<HTMLInputElement>('input[data-toggle]').forEach((input) => {
@@ -502,6 +441,19 @@ export class RuntimeConfigPanel extends Panel {
             }
           }
           this.updateFeatureCardStatus(key);
+
+          // Update inline status text to reflect staged state
+          const statusEl = input.closest('.runtime-secret-row')?.querySelector('.runtime-secret-status');
+          if (statusEl) {
+            statusEl.textContent = result.valid ? t('modals.runtimeConfig.status.staged') : t('modals.runtimeConfig.status.invalid');
+            statusEl.className = `runtime-secret-status ${result.valid ? 'staged' : 'warn'}`;
+          }
+
+          // When Ollama URL is staged, auto-fetch available models
+          if (key === 'OLLAMA_API_URL' && result.valid) {
+            const modelSelect = this.content.querySelector<HTMLSelectElement>('select[data-model-select]');
+            if (modelSelect) void this.fetchOllamaModels(modelSelect);
+          }
         } else {
           void setSecretValue(key, raw);
           input.value = '';
@@ -586,6 +538,8 @@ export class RuntimeConfigPanel extends Panel {
         }
       } catch { /* Ollama endpoint not available, try OpenAI format */ }
 
+      if (!select.isConnected) return;
+
       if (models.length === 0) {
         try {
           const res = await fetch(new URL('/v1/models', ollamaUrl).toString(), {
@@ -597,6 +551,8 @@ export class RuntimeConfigPanel extends Panel {
           }
         } catch { /* OpenAI endpoint also unavailable */ }
       }
+
+      if (!select.isConnected) return;
 
       if (models.length === 0) {
         // No models discovered — show manual text input as fallback

@@ -4,18 +4,19 @@ info:
     version: 1.0.0
 paths:
     /api/market/v1/list-market-quotes:
-        post:
+        get:
             tags:
                 - MarketService
             summary: ListMarketQuotes
             description: ListMarketQuotes retrieves stock and index quotes.
             operationId: ListMarketQuotes
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListMarketQuotesRequest'
-                required: true
+            parameters:
+                - name: symbols
+                  in: query
+                  description: Ticker symbols to retrieve (e.g., ["AAPL", "^GSPC"]). Empty returns defaults.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -36,18 +37,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/market/v1/list-crypto-quotes:
-        post:
+        get:
             tags:
                 - MarketService
             summary: ListCryptoQuotes
             description: ListCryptoQuotes retrieves cryptocurrency quotes from CoinGecko.
             operationId: ListCryptoQuotes
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListCryptoQuotesRequest'
-                required: true
+            parameters:
+                - name: ids
+                  in: query
+                  description: Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -68,18 +70,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/market/v1/list-commodity-quotes:
-        post:
+        get:
             tags:
                 - MarketService
             summary: ListCommodityQuotes
             description: ListCommodityQuotes retrieves commodity price quotes from Yahoo Finance.
             operationId: ListCommodityQuotes
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListCommodityQuotesRequest'
-                required: true
+            parameters:
+                - name: symbols
+                  in: query
+                  description: Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -100,18 +103,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/market/v1/get-sector-summary:
-        post:
+        get:
             tags:
                 - MarketService
             summary: GetSectorSummary
             description: GetSectorSummary retrieves market sector performance data from Finnhub.
             operationId: GetSectorSummary
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetSectorSummaryRequest'
-                required: true
+            parameters:
+                - name: period
+                  in: query
+                  description: Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -132,18 +136,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/market/v1/list-stablecoin-markets:
-        post:
+        get:
             tags:
                 - MarketService
             summary: ListStablecoinMarkets
             description: ListStablecoinMarkets retrieves stablecoin peg health and market data from CoinGecko.
             operationId: ListStablecoinMarkets
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListStablecoinMarketsRequest'
-                required: true
+            parameters:
+                - name: coins
+                  in: query
+                  description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -164,18 +169,12 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/market/v1/list-etf-flows:
-        post:
+        get:
             tags:
                 - MarketService
             summary: ListEtfFlows
             description: ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
             operationId: ListEtfFlows
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListEtfFlowsRequest'
-                required: true
             responses:
                 "200":
                     description: Successful response
@@ -196,18 +195,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/market/v1/get-country-stock-index:
-        post:
+        get:
             tags:
                 - MarketService
             summary: GetCountryStockIndex
             description: GetCountryStockIndex retrieves the primary stock index for a country from Yahoo Finance.
             operationId: GetCountryStockIndex
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetCountryStockIndexRequest'
-                required: true
+            parameters:
+                - name: country_code
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code (e.g., "US", "GB", "JP").
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -227,26 +227,20 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
-    /api/market/v1/list-whale-transfers:
-        post:
+    /api/market/v1/list-gulf-quotes:
+        get:
             tags:
                 - MarketService
-            summary: ListWhaleTransfers
-            description: ListWhaleTransfers retrieves large on-chain cryptocurrency transfers from Whale Alert.
-            operationId: ListWhaleTransfers
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListWhaleTransfersRequest'
-                required: true
+            summary: ListGulfQuotes
+            description: ListGulfQuotes retrieves Gulf region market quotes (indices, currencies, oil).
+            operationId: ListGulfQuotes
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ListWhaleTransfersResponse'
+                                $ref: '#/components/schemas/ListGulfQuotesResponse'
                 "400":
                     description: Validation error
                     content:
@@ -314,6 +308,9 @@ components:
                 skipReason:
                     type: string
                     description: Human-readable reason when Finnhub was skipped (e.g., "FINNHUB_API_KEY not configured").
+                rateLimited:
+                    type: boolean
+                    description: True when the upstream API rate-limited the request.
             description: ListMarketQuotesResponse contains stock and index quotes.
         MarketQuote:
             type: object
@@ -577,6 +574,9 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/EtfFlow'
+                rateLimited:
+                    type: boolean
+                    description: True when the upstream API rate-limited the request.
             description: ListEtfFlowsResponse contains BTC spot ETF flow data.
         EtfFlowsSummary:
             type: object
@@ -685,71 +685,39 @@ components:
                     type: string
                     description: When the data was fetched (ISO 8601).
             description: GetCountryStockIndexResponse contains the country's primary stock index data.
-        ListWhaleTransfersRequest:
+        ListGulfQuotesRequest:
+            type: object
+        ListGulfQuotesResponse:
             type: object
             properties:
-                minValueUsd:
-                    type: number
-                    format: double
-                    description: Minimum transfer value in USD (default 50,000,000).
-                limit:
-                    type: integer
-                    format: int32
-                    description: Maximum transfers to return (default 20, max 50).
-            description: ListWhaleTransfersRequest filters large cryptocurrency transfer queries.
-        ListWhaleTransfersResponse:
-            type: object
-            properties:
-                transfers:
+                quotes:
                     type: array
                     items:
-                        $ref: '#/components/schemas/WhaleTransfer'
-                fetchedAt:
-                    type: string
-                    format: int64
-                    description: Unix milliseconds when data was fetched.
-            description: ListWhaleTransfersResponse contains large on-chain cryptocurrency transfers.
-        WhaleTransfer:
+                        $ref: '#/components/schemas/GulfQuote'
+                rateLimited:
+                    type: boolean
+        GulfQuote:
             type: object
             properties:
-                id:
+                symbol:
                     type: string
-                    description: Unique transfer identifier.
-                blockchain:
+                name:
                     type: string
-                    description: 'Blockchain network: bitcoin | ethereum | tron | ripple | solana.'
-                amountUsd:
+                flag:
+                    type: string
+                country:
+                    type: string
+                type:
+                    type: string
+                price:
                     type: number
                     format: double
-                    description: Transfer value in USD.
-                fromLabel:
-                    type: string
-                    description: Human-readable label for the sending address, e.g. "Binance 1" or "Unknown Wallet".
-                toLabel:
-                    type: string
-                    description: Human-readable label for the receiving address.
-                transferType:
-                    type: string
-                    enum:
-                        - WHALE_TRANSFER_TYPE_UNSPECIFIED
-                        - WHALE_TRANSFER_TYPE_EXCHANGE_INFLOW
-                        - WHALE_TRANSFER_TYPE_EXCHANGE_OUTFLOW
-                        - WHALE_TRANSFER_TYPE_WALLET_TO_WALLET
-                        - WHALE_TRANSFER_TYPE_GOVERNMENT_SEIZURE
-                    description: WhaleTransferType classifies the economic implication of a large transfer.
-                lat:
+                change:
                     type: number
                     format: double
-                    description: Approximate latitude of the sending exchange (if known).
-                lon:
-                    type: number
-                    format: double
-                    description: Approximate longitude of the sending exchange (if known).
-                occurredAt:
-                    type: string
-                    format: int64
-                    description: Unix milliseconds when the on-chain transaction was confirmed.
-                txHash:
-                    type: string
-                    description: Transaction hash.
-            description: WhaleTransfer represents a large cryptocurrency on-chain transfer from Whale Alert.
+                sparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+            description: GulfQuote represents a Gulf region market quote (index, currency, or oil).

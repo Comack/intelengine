@@ -75,14 +75,7 @@ export interface CountryBriefExport {
   level?: string;
   trend?: string;
   components?: { unrest: number; conflict: number; security: number; information: number };
-  signals?: Record<string, number>;
-  forensics?: {
-    flagged: number;
-    nearLive: number;
-    minPValue?: number | null;
-    latestObservedAt?: number;
-    topAnomalies?: Array<{ label: string; pValue: number; supportCount: number; severity: string }>;
-  };
+  signals?: Record<string, number | string | null>;
   brief?: string;
   headlines?: Array<{ title: string; source: string; link: string; pubDate?: string }>;
   generatedAt: string;
@@ -116,26 +109,6 @@ export function exportCountryBriefCSV(data: CountryBriefExport): void {
     lines.push('Signal,Count');
     for (const [k, v] of Object.entries(data.signals)) {
       lines.push(csvRow([k, String(v)]));
-    }
-  }
-  if (data.forensics) {
-    lines.push('');
-    lines.push('Forensics,Value');
-    lines.push(csvRow(['flagged', String(data.forensics.flagged)]));
-    lines.push(csvRow(['nearLive', String(data.forensics.nearLive)]));
-    if (typeof data.forensics.minPValue === 'number' && Number.isFinite(data.forensics.minPValue)) {
-      lines.push(csvRow(['minPValue', String(data.forensics.minPValue)]));
-    }
-    if (typeof data.forensics.latestObservedAt === 'number' && data.forensics.latestObservedAt > 0) {
-      lines.push(csvRow(['latestObservedAt', new Date(data.forensics.latestObservedAt).toISOString()]));
-    }
-    if (data.forensics.topAnomalies && data.forensics.topAnomalies.length > 0) {
-      lines.push('');
-      lines.push('Forensics Top Anomalies');
-      lines.push('Label,PValue,Support,Severity');
-      data.forensics.topAnomalies.forEach((item) => {
-        lines.push(csvRow([item.label, String(item.pValue), String(item.supportCount), item.severity]));
-      });
     }
   }
   if (data.headlines && data.headlines.length > 0) {
@@ -172,7 +145,6 @@ export class ExportPanel {
   private element: HTMLElement;
   private isOpen = false;
   private getData: () => ExportData;
-  private cleanupController = new AbortController();
 
   constructor(getDataFn: () => ExportData) {
     this.getData = getDataFn;
@@ -203,7 +175,7 @@ export class ExportPanel {
         this.isOpen = false;
         menu.classList.add('hidden');
       }
-    }, { signal: this.cleanupController.signal });
+    });
 
     this.element.querySelectorAll('.export-option').forEach(option => {
       option.addEventListener('click', () => {
@@ -229,9 +201,5 @@ export class ExportPanel {
 
   public getElement(): HTMLElement {
     return this.element;
-  }
-
-  public destroy(): void {
-    this.cleanupController.abort();
   }
 }

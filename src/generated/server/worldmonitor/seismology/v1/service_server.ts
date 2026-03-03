@@ -2,19 +2,11 @@
 // source: worldmonitor/seismology/v1/service.proto
 
 export interface ListEarthquakesRequest {
-  timeRange?: TimeRange;
-  pagination?: PaginationRequest;
-  minMagnitude: number;
-}
-
-export interface TimeRange {
   start: number;
   end: number;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  minMagnitude: number;
 }
 
 export interface ListEarthquakesResponse {
@@ -40,26 +32,6 @@ export interface GeoCoordinates {
 export interface PaginationResponse {
   nextCursor: string;
   totalCount: number;
-}
-
-export interface ListTsunamiWarningsRequest {
-}
-
-export interface ListTsunamiWarningsResponse {
-  warnings: TsunamiWarning[];
-}
-
-export interface TsunamiWarning {
-  id: string;
-  headline: string;
-  severity: string;
-  urgency: string;
-  areaDesc: string;
-  onset: number;
-  expires: number;
-  description: string;
-  sender: string;
-  event: string;
 }
 
 export interface FieldViolation {
@@ -108,7 +80,6 @@ export interface RouteDescriptor {
 
 export interface SeismologyServiceHandler {
   listEarthquakes(ctx: ServerContext, req: ListEarthquakesRequest): Promise<ListEarthquakesResponse>;
-  listTsunamiWarnings(ctx: ServerContext, req: ListTsunamiWarningsRequest): Promise<ListTsunamiWarningsResponse>;
 }
 
 export function createSeismologyServiceRoutes(
@@ -117,12 +88,20 @@ export function createSeismologyServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/seismology/v1/list-earthquakes",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListEarthquakesRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListEarthquakesRequest = {
+            start: Number(params.get("start") ?? "0"),
+            end: Number(params.get("end") ?? "0"),
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            minMagnitude: Number(params.get("min_magnitude") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listEarthquakes", body);
             if (bodyViolations) {
@@ -138,49 +117,6 @@ export function createSeismologyServiceRoutes(
 
           const result = await handler.listEarthquakes(ctx, body);
           return new Response(JSON.stringify(result as ListEarthquakesResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "POST",
-      path: "/api/seismology/v1/list-tsunami-warnings",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListTsunamiWarningsRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("listTsunamiWarnings", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
-          const result = await handler.listTsunamiWarnings(ctx, body);
-          return new Response(JSON.stringify(result as ListTsunamiWarningsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

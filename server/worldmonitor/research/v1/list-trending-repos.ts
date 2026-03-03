@@ -12,12 +12,18 @@ import type {
   GithubRepo,
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
 
+import { CHROME_UA, clampInt } from '../../../_shared/constants';
+import { cachedFetchJson } from '../../../_shared/redis';
+
+const REDIS_CACHE_KEY = 'research:trending:v1';
+const REDIS_CACHE_TTL = 3600; // 1 hr — daily trending data
+
 // ---------- Fetch ----------
 
 async function fetchTrendingRepos(req: ListTrendingReposRequest): Promise<GithubRepo[]> {
   const language = req.language || 'python';
   const period = req.period || 'daily';
-  const pageSize = req.pagination?.pageSize || 50;
+  const pageSize = clampInt(req.pageSize, 50, 1, 100);
 
   // Primary API
   const primaryUrl = `https://api.gitterapp.com/repositories?language=${language}&since=${period}`;
@@ -25,7 +31,7 @@ async function fetchTrendingRepos(req: ListTrendingReposRequest): Promise<Github
 
   try {
     const response = await fetch(primaryUrl, {
-      headers: { Accept: 'application/json', 'User-Agent': 'WorldMonitor/1.0' },
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(10000),
     });
 
@@ -36,7 +42,7 @@ async function fetchTrendingRepos(req: ListTrendingReposRequest): Promise<Github
     try {
       const fallbackUrl = `https://gh-trending-api.herokuapp.com/repositories/${language}?since=${period}`;
       const fallbackResponse = await fetch(fallbackUrl, {
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(10000),
       });
 
@@ -67,8 +73,12 @@ export async function listTrendingRepos(
   req: ListTrendingReposRequest,
 ): Promise<ListTrendingReposResponse> {
   try {
-    const repos = await fetchTrendingRepos(req);
-    return { repos, pagination: undefined };
+    const cacheKey = `${REDIS_CACHE_KEY}:${req.language || 'python'}:${req.period || 'daily'}:${clampInt(req.pageSize, 50, 1, 100)}`;
+    const result = await cachedFetchJson<ListTrendingReposResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+      const repos = await fetchTrendingRepos(req);
+      return repos.length > 0 ? { repos, pagination: undefined } : null;
+    });
+    return result || { repos: [], pagination: undefined };
   } catch {
     return { repos: [], pagination: undefined };
   }

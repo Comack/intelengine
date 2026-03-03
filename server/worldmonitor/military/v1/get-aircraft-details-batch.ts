@@ -1,5 +1,3 @@
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetAircraftDetailsBatchRequest,
@@ -8,58 +6,87 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 import { mapWingbitsDetails } from './_shared';
+import { CHROME_UA } from '../../../_shared/constants';
+import { getCachedJsonBatch, cachedFetchJson } from '../../../_shared/redis';
+
+interface CachedAircraftDetails {
+  details: AircraftDetails | null;
+  configured: boolean;
+}
 
 export async function getAircraftDetailsBatch(
   _ctx: ServerContext,
   req: GetAircraftDetailsBatchRequest,
 ): Promise<GetAircraftDetailsBatchResponse> {
-  const apiKey = process.env.WINGBITS_API_KEY;
-  if (!apiKey) return { results: {}, fetched: 0, requested: 0, configured: false };
+  try {
+    const apiKey = process.env.WINGBITS_API_KEY;
+    if (!apiKey) return { results: {}, fetched: 0, requested: 0, configured: false };
 
-  const limitedList = req.icao24s.slice(0, 20).map((id) => id.toLowerCase());
-  const results: Record<string, AircraftDetails> = {};
+    const normalized = req.icao24s
+      .map((id) => id.trim().toLowerCase())
+      .filter((id) => id.length > 0);
+    const uniqueSorted = Array.from(new Set(normalized)).sort();
+    const limitedList = uniqueSorted.slice(0, 10);
 
-  const tasks = limitedList.map((icao24) => async () => {
-    try {
-      const resp = await fetch(`https://customer-api.wingbits.com/v1/flights/details/${icao24}`, {
-        headers: { 'x-api-key': apiKey, Accept: 'application/json' },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (resp.status === 429) {
-        const retryAfter = resp.headers.get('Retry-After');
-        console.warn(`[aircraft-details] Wingbits rate-limited icao24=${icao24} retry-after=${retryAfter ?? 'unset'}`);
-        return null;
+    // Redis shared cache — batch GET all keys in a single pipeline round-trip
+    const SINGLE_KEY = 'military:aircraft:v1';
+    const SINGLE_TTL = 24 * 60 * 60;
+    const results: Record<string, AircraftDetails> = {};
+    const toFetch: string[] = [];
+
+    const cacheKeys = limitedList.map((icao24) => `${SINGLE_KEY}:${icao24}`);
+    const cachedMap = await getCachedJsonBatch(cacheKeys);
+
+    for (let i = 0; i < limitedList.length; i++) {
+      const icao24 = limitedList[i]!;
+      const cached = cachedMap.get(cacheKeys[i]!);
+      if (cached && typeof cached === 'object' && 'details' in cached) {
+        const details = (cached as { details?: AircraftDetails | null }).details;
+        if (details) {
+          results[icao24] = details;
+        }
+        // details === null means cached negative lookup; skip refetch.
+      } else {
+        toFetch.push(icao24);
       }
-      if (resp.ok) {
-        const data = (await resp.json()) as Record<string, unknown>;
-        return { icao24, details: mapWingbitsDetails(icao24, data) };
-      }
-      console.warn(`[aircraft-details] Wingbits returned ${resp.status} for icao24=${icao24}`);
-    } catch (err) {
-      console.warn(`[aircraft-details] fetch failed icao24=${icao24}:`, (err as Error).message);
     }
-    return null;
-  });
 
-  // Limit concurrency to 5 to avoid triggering Wingbits rate limits
-  const fetchResults = await (async () => {
-    const out: (Awaited<ReturnType<typeof tasks[0]>> | null)[] = new Array(tasks.length);
-    let i = 0;
-    await Promise.all(
-      Array.from({ length: Math.min(5, tasks.length) }, async () => {
-        while (i < tasks.length) { const idx = i++; const t = tasks[idx]; if (t) out[idx] = await t(); }
-      }),
-    );
-    return out;
-  })();
-  for (const r of fetchResults) {
-    if (r) results[r.icao24] = r.details;
+    const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    for (let i = 0; i < toFetch.length; i++) {
+      const icao24 = toFetch[i]!;
+      const cacheResult = await cachedFetchJson<CachedAircraftDetails>(
+        `${SINGLE_KEY}:${icao24}`,
+        SINGLE_TTL,
+        async () => {
+          try {
+            const resp = await fetch(`https://customer-api.wingbits.com/v1/flights/details/${icao24}`, {
+              headers: { 'x-api-key': apiKey, Accept: 'application/json', 'User-Agent': CHROME_UA },
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (resp.status === 404) {
+              return { details: null, configured: true };
+            }
+            if (resp.ok) {
+              const data = (await resp.json()) as Record<string, unknown>;
+              const details = mapWingbitsDetails(icao24, data);
+              return { details, configured: true };
+            }
+          } catch { /* skip failed lookups */ }
+          return null;
+        },
+      );
+      if (cacheResult?.details) results[icao24] = cacheResult.details;
+      if (i < toFetch.length - 1) await delay(100);
+    }
+
+    return {
+      results,
+      fetched: Object.keys(results).length,
+      requested: limitedList.length,
+      configured: true,
+    };
+  } catch {
+    return { results: {}, fetched: 0, requested: 0, configured: true };
   }
-
-  return {
-    results,
-    fetched: Object.keys(results).length,
-    requested: limitedList.length,
-    configured: true,
-  };
 }

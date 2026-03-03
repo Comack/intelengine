@@ -6,6 +6,11 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
+import { CHROME_UA, clampInt } from '../../../_shared/constants';
+import { cachedFetchJson } from '../../../_shared/redis';
+
+const REDIS_CACHE_KEY = 'research:arxiv:v1';
+const REDIS_CACHE_TTL = 3600; // 1 hr — daily arXiv updates
 import type {
   ServerContext,
   ListArxivPapersRequest,
@@ -26,7 +31,7 @@ const xmlParser = new XMLParser({
 
 async function fetchArxivPapers(req: ListArxivPapersRequest): Promise<ArxivPaper[]> {
   const category = req.category || 'cs.AI';
-  const pageSize = req.pagination?.pageSize || 50;
+  const pageSize = clampInt(req.pageSize, 50, 1, 100);
 
   let searchQuery: string;
   if (req.query) {
@@ -38,7 +43,7 @@ async function fetchArxivPapers(req: ListArxivPapersRequest): Promise<ArxivPaper
   const url = `https://export.arxiv.org/api/query?search_query=${searchQuery}&start=0&max_results=${pageSize}`;
 
   const response = await fetch(url, {
-    headers: { Accept: 'application/xml' },
+    headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15000),
   });
 
@@ -87,8 +92,16 @@ export async function listArxivPapers(
   req: ListArxivPapersRequest,
 ): Promise<ListArxivPapersResponse> {
   try {
-    const papers = await fetchArxivPapers(req);
-    return { papers, pagination: undefined };
+    const cacheKey = `${REDIS_CACHE_KEY}:${req.category || 'cs.AI'}:${req.query || ''}:${clampInt(req.pageSize, 50, 1, 100)}`;
+    const result = await cachedFetchJson<ListArxivPapersResponse>(
+      cacheKey,
+      REDIS_CACHE_TTL,
+      async () => {
+        const papers = await fetchArxivPapers(req);
+        return papers.length > 0 ? { papers, pagination: undefined } : null;
+      },
+    );
+    return result || { papers: [], pagination: undefined };
   } catch {
     return { papers: [], pagination: undefined };
   }

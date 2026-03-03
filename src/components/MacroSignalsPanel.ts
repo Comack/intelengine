@@ -3,8 +3,9 @@ import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { GetMacroSignalsResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import { getHydratedData } from '@/services/bootstrap';
 
-export interface MacroSignalData {
+interface MacroSignalData {
   timestamp: string;
   verdict: string;
   bullishCount: number;
@@ -15,15 +16,14 @@ export interface MacroSignalData {
     macroRegime: { status: string; qqqRoc20: number | null; xlpRoc20: number | null };
     technicalTrend: { status: string; btcPrice: number | null; sma50: number | null; sma200: number | null; vwap30d: number | null; mayerMultiple: number | null; sparkline: number[] };
     hashRate: { status: string; change30d: number | null };
-    miningCost: { status: string };
+    priceMomentum: { status: string };
     fearGreed: { status: string; value: number | null; history: Array<{ value: number; date: string }> };
-    balticDryIndex?: { value: number; change7dPct: number; trend: string; updatedAt: string } | null;
   };
   meta: { qqqSparkline: number[] };
   unavailable?: boolean;
 }
 
-const economicClient = new EconomicServiceClient('', { fetch: fetch.bind(globalThis) });
+const economicClient = new EconomicServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
 /** Map proto response (optional fields = undefined) to MacroSignalData (null for absent values). */
 function mapProtoToData(r: GetMacroSignalsResponse): MacroSignalData {
@@ -62,20 +62,14 @@ function mapProtoToData(r: GetMacroSignalsResponse): MacroSignalData {
         status: s?.hashRate?.status ?? 'UNKNOWN',
         change30d: s?.hashRate?.change30d ?? null,
       },
-      miningCost: {
-        status: s?.miningCost?.status ?? 'UNKNOWN',
+      priceMomentum: {
+        status: s?.priceMomentum?.status ?? 'UNKNOWN',
       },
       fearGreed: {
         status: s?.fearGreed?.status ?? 'UNKNOWN',
         value: s?.fearGreed?.value ?? null,
         history: s?.fearGreed?.history ?? [],
       },
-      balticDryIndex: s?.balticDryIndex ? {
-        value: s.balticDryIndex.value,
-        change7dPct: s.balticDryIndex.change7dPct,
-        trend: s.balticDryIndex.trend,
-        updatedAt: s.balticDryIndex.updatedAt,
-      } : null,
     },
     meta: { qqqSparkline: r.meta?.qqqSparkline ?? [] },
     unavailable: r.unavailable,
@@ -129,41 +123,57 @@ export class MacroSignalsPanel extends Panel {
   private data: MacroSignalData | null = null;
   private loading = true;
   private error: string | null = null;
-  private onDataUpdated: ((data: MacroSignalData) => void) | null = null;
-
-  private refreshInterval: ReturnType<typeof setInterval> | null = null;
+  private lastTimestamp = '';
 
   constructor() {
     super({ id: 'macro-signals', title: t('panels.macroSignals'), showCount: false });
     void this.fetchData();
-    this.refreshInterval = setInterval(() => this.fetchData(), 3 * 60000);
   }
 
-  public destroy(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-    }
-  }
-
-  public setOnDataUpdated(cb: ((data: MacroSignalData) => void) | null): void {
-    this.onDataUpdated = cb;
-    if (cb && this.data) cb(this.data);
-  }
-
-  private async fetchData(): Promise<void> {
-    try {
-      const res = await economicClient.getMacroSignals({});
-      this.data = mapProtoToData(res);
+  public async fetchData(): Promise<boolean> {
+    const hydrated = getHydratedData('macroSignals') as GetMacroSignalsResponse | undefined;
+    if (hydrated) {
+      this.data = mapProtoToData(hydrated);
+      this.lastTimestamp = this.data.timestamp;
       this.error = null;
-      this.onDataUpdated?.(this.data);
-    } catch (err) {
-      if (this.isAbortError(err)) return;
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
-    } finally {
       this.loading = false;
       this.renderPanel();
+      return true;
     }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await economicClient.getMacroSignals({});
+        if (!this.element?.isConnected) return false;
+        this.data = mapProtoToData(res);
+        this.error = null;
+
+        if (this.data && this.data.unavailable && attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          if (!this.element?.isConnected) return false;
+          continue;
+        }
+        break;
+      } catch (err) {
+        if (this.isAbortError(err)) return false;
+        if (!this.element?.isConnected) return false;
+        if (attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          if (!this.element?.isConnected) return false;
+          continue;
+        }
+        this.error = err instanceof Error ? err.message : 'Failed to fetch';
+      }
+    }
+    this.loading = false;
+    this.renderPanel();
+
+    const ts = this.data?.timestamp ?? '';
+    const changed = ts !== this.lastTimestamp;
+    this.lastTimestamp = ts;
+    return changed;
   }
 
   private renderPanel(): void {
@@ -200,13 +210,8 @@ export class MacroSignalsPanel extends Panel {
           ${this.renderSignalCard(t('components.macroSignals.signals.regime'), s.macroRegime.status, `QQQ ${formatNum(s.macroRegime.qqqRoc20)} / XLP ${formatNum(s.macroRegime.xlpRoc20)}`, sparklineSvg(d.meta.qqqSparkline, 60, 20, '#ab47bc'), '20d ROC', 'https://www.tradingview.com/symbols/QQQ/')}
           ${this.renderSignalCard(t('components.macroSignals.signals.btcTrend'), s.technicalTrend.status, `$${s.technicalTrend.btcPrice?.toLocaleString() ?? 'N/A'}`, sparklineSvg(s.technicalTrend.sparkline, 60, 20, '#ff9800'), `SMA50: $${s.technicalTrend.sma50?.toLocaleString() ?? '-'} | VWAP: $${s.technicalTrend.vwap30d?.toLocaleString() ?? '-'} | Mayer: ${s.technicalTrend.mayerMultiple ?? '-'}`, 'https://www.tradingview.com/symbols/BTCUSD/')}
           ${this.renderSignalCard(t('components.macroSignals.signals.hashRate'), s.hashRate.status, formatNum(s.hashRate.change30d), '', '30d change', 'https://mempool.space/mining')}
-          ${this.renderSignalCard(t('components.macroSignals.signals.mining'), s.miningCost.status, '', '', 'Hashprice model', null)}
+          ${this.renderSignalCard(t('components.macroSignals.signals.momentum'), s.priceMomentum.status, '', '', 'Mayer Multiple', null)}
           ${this.renderFearGreedCard(s.fearGreed)}
-          ${s.balticDryIndex ? (() => {
-            const bdiValue = s.balticDryIndex.value;
-            const bdiStatus = bdiValue > 2000 ? 'bullish' : bdiValue > 1000 ? 'neutral' : 'bearish';
-            return this.renderSignalCard('Baltic Dry Index', bdiStatus, bdiValue.toLocaleString(), '', 'Global shipping demand proxy', null);
-          })() : ''}
         </div>
       </div>
     `;

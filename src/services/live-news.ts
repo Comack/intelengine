@@ -1,13 +1,17 @@
 import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 
-const liveVideoCache = new Map<string, { videoId: string | null; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const MAX_CACHE_SIZE = 200;
+interface LiveVideoInfo {
+  videoId: string | null;
+  hlsUrl: string | null;
+}
 
-export async function fetchLiveVideoId(channelHandle: string): Promise<string | null> {
+const liveVideoCache = new Map<string, { videoId: string | null; hlsUrl: string | null; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export async function fetchLiveVideoInfo(channelHandle: string): Promise<LiveVideoInfo> {
   const cached = liveVideoCache.get(channelHandle);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.videoId;
+    return { videoId: cached.videoId, hlsUrl: cached.hlsUrl };
   }
 
   try {
@@ -16,15 +20,17 @@ export async function fetchLiveVideoId(channelHandle: string): Promise<string | 
     if (!res.ok) throw new Error('API error');
     const data = await res.json();
     const videoId = data.videoId || null;
-    if (liveVideoCache.size >= MAX_CACHE_SIZE) {
-      const oldest = liveVideoCache.keys().next().value;
-      if (oldest !== undefined) liveVideoCache.delete(oldest);
-    }
-    liveVideoCache.set(channelHandle, { videoId, timestamp: Date.now() });
-    return videoId;
+    const hlsUrl = data.hlsUrl || null;
+    liveVideoCache.set(channelHandle, { videoId, hlsUrl, timestamp: Date.now() });
+    return { videoId, hlsUrl };
   } catch (error) {
-    console.warn(`[LiveNews] Failed to fetch live ID for ${channelHandle}:`, error);
-    return null;
+    console.warn(`[LiveNews] Failed to fetch live info for ${channelHandle}:`, error);
+    return { videoId: null, hlsUrl: null };
   }
 }
 
+/** @deprecated Use fetchLiveVideoInfo instead */
+export async function fetchLiveVideoId(channelHandle: string): Promise<string | null> {
+  const info = await fetchLiveVideoInfo(channelHandle);
+  return info.videoId;
+}

@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
+import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createLocalCache } from './local-cache.mjs';
-import { createAisRelay } from './ais-relay.mjs';
-import { createOpenSkyRelay } from './opensky-relay.mjs';
-import { createForensicsWorker } from './forensics-worker.mjs';
 
 const brotliCompressAsync = promisify(brotliCompress);
 
@@ -107,8 +104,102 @@ const ALLOWED_ENV_KEYS = new Set([
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
-  'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY',
+  'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
+  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN',
 ]);
+
+const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+// ── SSRF protection ──────────────────────────────────────────────────────
+// Block requests to private/reserved IP ranges to prevent the RSS proxy
+// from being used as a localhost pivot or internal network scanner.
+
+function isPrivateIP(ip) {
+  // IPv4-mapped IPv6 — extract the v4 portion
+  const v4Mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const addr = v4Mapped ? v4Mapped[1] : ip;
+
+  // IPv6 loopback
+  if (addr === '::1' || addr === '::') return true;
+
+  // IPv6 link-local / unique-local
+  if (/^f[cd][0-9a-f]{2}:/i.test(addr)) return true; // fc00::/7 (ULA)
+  if (/^fe[89ab][0-9a-f]:/i.test(addr)) return true;  // fe80::/10 (link-local)
+
+  const parts = addr.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => isNaN(p))) return false; // not an IPv4
+
+  const [a, b] = parts;
+  if (a === 127) return true;                       // 127.0.0.0/8  loopback
+  if (a === 10) return true;                        // 10.0.0.0/8   private
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
+  if (a === 192 && b === 168) return true;           // 192.168.0.0/16 private
+  if (a === 169 && b === 254) return true;           // 169.254.0.0/16 link-local
+  if (a === 0) return true;                          // 0.0.0.0/8
+  if (a >= 224) return true;                         // 224.0.0.0+ multicast/reserved
+  return false;
+}
+
+async function isSafeUrl(urlString) {
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    return { safe: false, reason: 'Invalid URL' };
+  }
+
+  // Only allow http(s) protocols
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { safe: false, reason: 'Only http and https protocols are allowed' };
+  }
+
+  // Block URLs with credentials
+  if (parsed.username || parsed.password) {
+    return { safe: false, reason: 'URLs with credentials are not allowed' };
+  }
+
+  const hostname = parsed.hostname;
+
+  // Quick-reject obvious private hostnames before DNS resolution
+  if (hostname === 'localhost' || hostname === '[::1]') {
+    return { safe: false, reason: 'Requests to localhost are not allowed' };
+  }
+
+  // Check if the hostname is already an IP literal
+  const ipLiteral = hostname.replace(/^\[|\]$/g, '');
+  if (isPrivateIP(ipLiteral)) {
+    return { safe: false, reason: 'Requests to private/reserved IP addresses are not allowed' };
+  }
+
+  // DNS resolution check — resolve the hostname and verify all resolved IPs
+  // are public. This prevents DNS rebinding attacks where a public domain
+  // resolves to a private IP.
+  let addresses = [];
+  try {
+    try {
+      const v4 = await dns.resolve4(hostname);
+      addresses = addresses.concat(v4);
+    } catch { /* no A records — try AAAA */ }
+    try {
+      const v6 = await dns.resolve6(hostname);
+      addresses = addresses.concat(v6);
+    } catch { /* no AAAA records */ }
+
+    if (addresses.length === 0) {
+      return { safe: false, reason: 'Could not resolve hostname' };
+    }
+
+    for (const addr of addresses) {
+      if (isPrivateIP(addr)) {
+        return { safe: false, reason: 'Hostname resolves to a private/reserved IP address' };
+      }
+    }
+  } catch {
+    return { safe: false, reason: 'DNS resolution failed' };
+  }
+
+  return { safe: true, resolvedAddresses: addresses };
+}
 
 function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
@@ -242,23 +333,14 @@ async function buildRouteTable(root) {
 }
 
 const REQUEST_BODY_CACHE = Symbol('requestBodyCache');
-const MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MiB
 
 async function readBody(req) {
   if (Object.prototype.hasOwnProperty.call(req, REQUEST_BODY_CACHE)) {
     return req[REQUEST_BODY_CACHE];
   }
 
-  const claimedLength = parseInt(req.headers['content-length'] || '0', 10);
-  if (claimedLength > MAX_BODY_BYTES) return null;
-
   const chunks = [];
-  let totalBytes = 0;
-  for await (const chunk of req) {
-    totalBytes += chunk.length;
-    if (totalBytes > MAX_BODY_BYTES) return null;
-    chunks.push(chunk);
-  }
+  for await (const chunk of req) chunks.push(chunk);
   const body = chunks.length ? Buffer.concat(chunks) : undefined;
   req[REQUEST_BODY_CACHE] = body;
   return body;
@@ -294,9 +376,7 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
 }
 
 function pickModule(pathname, routes) {
-  // Normalize pathname to remove duplicate slashes and /api prefix
-  const normalizedPath = pathname.replace(/\/+/g, '/');
-  const apiPath = normalizedPath.startsWith('/api/') ? normalizedPath.slice(4) || '/' : normalizedPath;
+  const apiPath = pathname.startsWith('/api') ? pathname.slice(4) || '/' : pathname;
 
   for (const candidate of routes) {
     if (matchRoute(candidate.routePath, apiPath)) {
@@ -307,64 +387,18 @@ function pickModule(pathname, routes) {
   return null;
 }
 
-// LRU-capped module cache: evict least-recently-used when over limit
-const MODULE_CACHE_MAX = 50;
-const FAILED_IMPORT_RETRY_MS = 5 * 60 * 1000; // 5 minutes
-const moduleCache = new Map();       // modulePath → module
-const failedImports = new Map();     // modulePath → timestamp of first failure
+const moduleCache = new Map();
+const failedImports = new Set();
 const fallbackCounts = new Map();
 const cloudPreferred = new Set();
-
-// ---- Lazy relay + cache instances ----
-// Initialized on first request requiring them. Reset when credentials change.
-let _aisRelayInstance = null;
-let _openSkyRelayInstance = null;
-let _localCache = null;
-const _forensicsWorker = createForensicsWorker();
-
-function getLocalCache(resourceDir) {
-  if (!_localCache) {
-    const persistPath = resourceDir ? path.join(resourceDir, 'sidecar-cache.json') : null;
-    _localCache = createLocalCache({ persistPath, maxEntries: 500 });
-  }
-  return _localCache;
-}
-
-function getAisRelay(logger) {
-  if (!process.env.AISSTREAM_API_KEY) return null;
-  if (!_aisRelayInstance) {
-    _aisRelayInstance = createAisRelay({ logger });
-    _aisRelayInstance.start();
-  }
-  return _aisRelayInstance;
-}
-
-function getOpenSkyRelay() {
-  if (!process.env.OPENSKY_CLIENT_ID || !process.env.OPENSKY_CLIENT_SECRET) return null;
-  if (!_openSkyRelayInstance) {
-    _openSkyRelayInstance = createOpenSkyRelay();
-  }
-  return _openSkyRelayInstance;
-}
-
-function resetRelays() {
-  if (_aisRelayInstance) {
-    _aisRelayInstance.stop();
-    _aisRelayInstance = null;
-  }
-  if (_openSkyRelayInstance) {
-    _openSkyRelayInstance.reset();
-    _openSkyRelayInstance = null;
-  }
-}
 
 const TRAFFIC_LOG_MAX = 200;
 const trafficLog = [];
 let verboseMode = false;
 let _verboseStatePath = null;
 
-function loadVerboseState(resourceDir) {
-  _verboseStatePath = path.join(resourceDir, 'verbose-mode.json');
+function loadVerboseState(dataDir) {
+  _verboseStatePath = path.join(dataDir, 'verbose-mode.json');
   try {
     const data = JSON.parse(readFileSync(_verboseStatePath, 'utf-8'));
     verboseMode = !!data.verboseMode;
@@ -397,36 +431,20 @@ function logOnce(logger, route, message) {
 }
 
 async function importHandler(modulePath) {
-  // Check if import previously failed and the retry window hasn't elapsed
-  const failedAt = failedImports.get(modulePath);
-  if (failedAt !== undefined) {
-    if (Date.now() - failedAt < FAILED_IMPORT_RETRY_MS) {
-      throw new Error(`cached-failure:${path.basename(modulePath)}`);
-    }
-    // Retry window elapsed — allow re-import
-    failedImports.delete(modulePath);
+  if (failedImports.has(modulePath)) {
+    throw new Error(`cached-failure:${path.basename(modulePath)}`);
   }
 
   const cached = moduleCache.get(modulePath);
-  if (cached) {
-    // Refresh LRU order: delete and re-insert so this key is newest
-    moduleCache.delete(modulePath);
-    moduleCache.set(modulePath, cached);
-    return cached;
-  }
+  if (cached) return cached;
 
   try {
     const mod = await import(pathToFileURL(modulePath).href);
-    // Evict least-recently-used entry when at cap
-    if (moduleCache.size >= MODULE_CACHE_MAX) {
-      const lruKey = moduleCache.keys().next().value;
-      if (lruKey !== undefined) moduleCache.delete(lruKey);
-    }
     moduleCache.set(modulePath, mod);
     return mod;
   } catch (error) {
     if (error.code === 'ERR_MODULE_NOT_FOUND') {
-      failedImports.set(modulePath, Date.now());
+      failedImports.add(modulePath);
     }
     throw error;
   }
@@ -442,19 +460,19 @@ function resolveConfig(options = {}) {
       path.join(resourceDir, 'api'),
       path.join(resourceDir, '_up_', 'api'),
     ].find((candidate) => existsSync(candidate)) ?? path.join(resourceDir, 'api');
+  const dataDir = String(options.dataDir ?? process.env.LOCAL_API_DATA_DIR ?? resourceDir);
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
   const cloudFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
-  const localFirst = String(options.localFirst ?? process.env.LOCAL_API_LOCAL_FIRST ?? '') === 'true';
   const logger = options.logger ?? console;
 
   return {
     port,
     remoteBase,
     resourceDir,
+    dataDir,
     apiDir,
     mode,
     cloudFallback,
-    localFirst,
     logger,
   };
 }
@@ -471,9 +489,9 @@ async function handleLocalServiceStatus(context) {
     summary: { operational: 2, degraded: 0, outage: 0, unknown: 0 },
     services: [
       { id: 'local-api', name: 'Local Desktop API', category: 'dev', status: 'operational', description: `Running on 127.0.0.1:${context.port}` },
-      { id: 'cloud-pass-through', name: 'Cloud pass-through', category: 'cloud', status: context.localFirst ? 'disabled' : 'operational', description: context.localFirst ? 'Disabled — local-first mode' : `Fallback target ${context.remoteBase}` },
+      { id: 'cloud-pass-through', name: 'Cloud pass-through', category: 'cloud', status: 'operational', description: `Fallback target ${context.remoteBase}` },
     ],
-    local: { enabled: true, mode: context.mode, port: context.port, remoteBase: context.remoteBase, localFirst: context.localFirst },
+    local: { enabled: true, mode: context.mode, port: context.port, remoteBase: context.remoteBase },
   });
 }
 
@@ -492,224 +510,22 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
     }
   }
   try {
-    const cloudResponse = await proxyToCloud(requestUrl, req, context.remoteBase);
-    // Tag the cloud response so the frontend fetch patch can record its source
-    if (cloudResponse instanceof Response) {
-      const tagged = new Response(cloudResponse.body, cloudResponse);
-      tagged.headers.set('x-wm-data-source', 'cloud');
-      return tagged;
-    }
-    return cloudResponse;
+    return await proxyToCloud(requestUrl, req, context.remoteBase);
   } catch (error) {
     context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
     return null;
   }
 }
 
-// Sidecar is localhost-only; only allow local/Tauri origins.
-// Wildcard subdomain patterns are intentionally excluded to prevent
-// any unregistered subdomain from bypassing the origin check.
-// Mirrors ALLOWED_DOMAINS from api/rss-proxy.js — keep in sync
-const RSS_ALLOWED_DOMAINS = [
-  'feeds.bbci.co.uk',
-  'www.theguardian.com',
-  'feeds.npr.org',
-  'news.google.com',
-  'www.aljazeera.com',
-  'rss.cnn.com',
-  'hnrss.org',
-  'feeds.arstechnica.com',
-  'www.theverge.com',
-  'www.cnbc.com',
-  'feeds.marketwatch.com',
-  'www.defenseone.com',
-  'breakingdefense.com',
-  'www.bellingcat.com',
-  'techcrunch.com',
-  'huggingface.co',
-  'www.technologyreview.com',
-  'rss.arxiv.org',
-  'export.arxiv.org',
-  'www.federalreserve.gov',
-  'www.sec.gov',
-  'www.whitehouse.gov',
-  'www.state.gov',
-  'www.defense.gov',
-  'home.treasury.gov',
-  'www.justice.gov',
-  'tools.cdc.gov',
-  'www.fema.gov',
-  'www.dhs.gov',
-  'www.thedrive.com',
-  'krebsonsecurity.com',
-  'finance.yahoo.com',
-  'thediplomat.com',
-  'venturebeat.com',
-  'foreignpolicy.com',
-  'www.ft.com',
-  'openai.com',
-  'www.reutersagency.com',
-  'feeds.reuters.com',
-  'rsshub.app',
-  'asia.nikkei.com',
-  'www.cfr.org',
-  'www.csis.org',
-  'www.politico.com',
-  'www.brookings.edu',
-  'layoffs.fyi',
-  'www.defensenews.com',
-  'www.militarytimes.com',
-  'taskandpurpose.com',
-  'news.usni.org',
-  'www.oryxspioenkop.com',
-  'www.gov.uk',
-  'www.foreignaffairs.com',
-  'www.atlanticcouncil.org',
-  'www.zdnet.com',
-  'www.techmeme.com',
-  'www.darkreading.com',
-  'www.schneier.com',
-  'rss.politico.com',
-  'www.anandtech.com',
-  'www.tomshardware.com',
-  'www.semianalysis.com',
-  'feed.infoq.com',
-  'thenewstack.io',
-  'devops.com',
-  'dev.to',
-  'lobste.rs',
-  'changelog.com',
-  'seekingalpha.com',
-  'news.crunchbase.com',
-  'www.saastr.com',
-  'feeds.feedburner.com',
-  'www.producthunt.com',
-  'www.axios.com',
-  'github.blog',
-  'githubnext.com',
-  'mshibanami.github.io',
-  'www.engadget.com',
-  'news.mit.edu',
-  'dev.events',
-  'www.ycombinator.com',
-  'a16z.com',
-  'review.firstround.com',
-  'www.sequoiacap.com',
-  'www.nfx.com',
-  'www.aaronsw.com',
-  'bothsidesofthetable.com',
-  'www.lennysnewsletter.com',
-  'stratechery.com',
-  'www.eu-startups.com',
-  'tech.eu',
-  'sifted.eu',
-  'www.techinasia.com',
-  'kr-asia.com',
-  'techcabal.com',
-  'disrupt-africa.com',
-  'lavca.org',
-  'contxto.com',
-  'inc42.com',
-  'yourstory.com',
-  'pitchbook.com',
-  'www.cbinsights.com',
-  'www.techstars.com',
-  'english.alarabiya.net',
-  'www.arabnews.com',
-  'www.timesofisrael.com',
-  'www.haaretz.com',
-  'www.scmp.com',
-  'kyivindependent.com',
-  'www.themoscowtimes.com',
-  'feeds.24.com',
-  'feeds.capi24.com',
-  'www.france24.com',
-  'www.euronews.com',
-  'www.lemonde.fr',
-  'rss.dw.com',
-  'www.africanews.com',
-  'www.lasillavacia.com',
-  'www.channelnewsasia.com',
-  'www.thehindu.com',
-  'news.un.org',
-  'www.iaea.org',
-  'www.who.int',
-  'www.cisa.gov',
-  'www.crisisgroup.org',
-  'rusi.org',
-  'warontherocks.com',
-  'www.aei.org',
-  'responsiblestatecraft.org',
-  'www.fpri.org',
-  'jamestown.org',
-  'www.chathamhouse.org',
-  'ecfr.eu',
-  'www.gmfus.org',
-  'www.wilsoncenter.org',
-  'www.lowyinstitute.org',
-  'www.mei.edu',
-  'www.stimson.org',
-  'www.cnas.org',
-  'carnegieendowment.org',
-  'www.rand.org',
-  'fas.org',
-  'www.armscontrol.org',
-  'www.nti.org',
-  'thebulletin.org',
-  'www.iss.europa.eu',
-  'www.fao.org',
-  'worldbank.org',
-  'www.imf.org',
-  'www.hurriyet.com.tr',
-  'tvn24.pl',
-  'www.polsatnews.pl',
-  'www.rp.pl',
-  'meduza.io',
-  'novayagazeta.eu',
-  'www.bangkokpost.com',
-  'vnexpress.net',
-  'www.abc.net.au',
-  'news.ycombinator.com',
-  'www.coindesk.com',
-  'cointelegraph.com',
-  'fr.euronews.com',
-  'de.euronews.com',
-  'it.euronews.com',
-  'es.euronews.com',
-  'pt.euronews.com',
-  'ru.euronews.com',
-  'feeds.elpais.com',
-  'e00-elmundo.uecdn.es',
-  'www.bbc.com',
-  'www.tagesschau.de',
-  'www.spiegel.de',
-  'newsfeed.zeit.de',
-  'www.ansa.it',
-  'xml2.corriereobjects.it',
-  'www.repubblica.it',
-  'feeds.nos.nl',
-  'www.nrc.nl',
-  'www.telegraaf.nl',
-  'www.svt.se',
-  'www.dn.se',
-  'www.svd.se',
-  'www.aljazeera.net',
-  'www.lorientlejour.com',
-  'www.jeuneafrique.com',
-  'fr.africanews.com',
-  'www.clarin.com',
-  'oglobo.globo.com',
-  'feeds.folha.uol.com.br',
-  'www.eltiempo.com',
-  'www.eluniversal.com.mx',
-  'www.asahi.com',
-];
-
 const SIDECAR_ALLOWED_ORIGINS = [
   /^tauri:\/\/localhost$/,
   /^https?:\/\/localhost(:\d+)?$/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
-  /^https:\/\/tauri\.localhost(:\d+)?$/,
+  /^https?:\/\/tauri\.localhost(:\d+)?$/,
+  // Only allow exact domain or single-level subdomains (e.g. preview-xyz.worldmonitor.app).
+  // The previous (.*\.)? pattern was overly broad. Anchored to prevent spoofing
+  // via domains like worldmonitorEVIL.vercel.app.
+  /^https:\/\/([a-z0-9-]+\.)?worldmonitor\.app$/,
 ];
 
 function getSidecarCorsOrigin(req) {
@@ -742,6 +558,11 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
         headers: options.headers || {},
         family: 4,
       };
+      // Pin to a pre-resolved IP to prevent TOCTOU DNS rebinding.
+      // The hostname is kept for SNI / TLS certificate validation.
+      if (options.resolvedAddress) {
+        reqOpts.lookup = (_hostname, _opts, cb) => cb(null, options.resolvedAddress, 4);
+      }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
@@ -766,34 +587,28 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
     });
   }
   // HTTP fallback (localhost sidecar, etc.)
+  // For pinned addresses on plain HTTP, rewrite the URL to connect to the
+  // validated IP and set the Host header so virtual-host routing still works.
+  let fetchUrl = url;
+  const fetchHeaders = { ...(options.headers || {}) };
+  if (options.resolvedAddress && u.protocol === 'http:') {
+    const pinned = new URL(url);
+    fetchHeaders['Host'] = pinned.host;
+    pinned.hostname = options.resolvedAddress;
+    fetchUrl = pinned.toString();
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(fetchUrl, { ...options, headers: fetchHeaders, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
 }
 
-// Allowed relay hostnames: Railway-hosted relays, localhost, and loopback.
-// Prevents SSRF if WS_RELAY_URL is set to an attacker-controlled host.
-const ALLOWED_RELAY_HOST_PATTERNS = [
-  /^127\.0\.0\.1$/,
-  /^localhost$/,
-  /^[a-z0-9-]+\.up\.railway\.app$/,
-];
-
-function isAllowedRelayHost(hostname) {
-  return ALLOWED_RELAY_HOST_PATTERNS.some(p => p.test(hostname));
-}
-
 function relayToHttpUrl(rawUrl) {
   try {
     const parsed = new URL(rawUrl);
-    if (!isAllowedRelayHost(parsed.hostname)) {
-      console.error(`[local-api] Relay URL rejected — hostname not in allowlist: ${parsed.hostname}`);
-      return null;
-    }
     if (parsed.protocol === 'ws:') parsed.protocol = 'http:';
     if (parsed.protocol === 'wss:') parsed.protocol = 'https:';
     return parsed.toString().replace(/\/$/, '');
@@ -803,8 +618,26 @@ function relayToHttpUrl(rawUrl) {
 }
 
 function isAuthFailure(status, text = '') {
+  // Intentionally broad for provider auth responses.
+  // Callers MUST check isCloudflareChallenge403() first or CF challenge pages
+  // may be misclassified as credential failures.
   if (status === 401 || status === 403) return true;
   return /unauthori[sz]ed|forbidden|invalid api key|invalid token|bad credentials/i.test(text);
+}
+
+function isCloudflareChallenge403(response, text = '') {
+  if (response.status !== 403 || !response.headers.get('cf-ray')) return false;
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  const body = String(text || '').toLowerCase();
+  const looksLikeHtml = contentType.includes('text/html') || body.includes('<html');
+  if (!looksLikeHtml) return false;
+  const matches = [
+    'attention required',
+    'cf-browser-verification',
+    '__cf_chl',
+    'ray id',
+  ].filter((marker) => body.includes(marker)).length;
+  return matches >= 2;
 }
 
 async function validateSecretAgainstProvider(key, rawValue, context = {}) {
@@ -818,9 +651,10 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     switch (key) {
     case 'GROQ_API_KEY': {
       const response = await fetchWithTimeout('https://api.groq.com/openai/v1/models', {
-        headers: { Authorization: `Bearer ${value}` },
+        headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
       });
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Groq key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Groq rejected this key');
       if (!response.ok) return fail(`Groq probe failed (${response.status})`);
       return ok('Groq key verified');
@@ -828,9 +662,10 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
     case 'OPENROUTER_API_KEY': {
       const response = await fetchWithTimeout('https://openrouter.ai/api/v1/models', {
-        headers: { Authorization: `Bearer ${value}` },
+        headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
       });
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('OpenRouter key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('OpenRouter rejected this key');
       if (!response.ok) return fail(`OpenRouter probe failed (${response.status})`);
       return ok('OpenRouter key verified');
@@ -839,7 +674,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'FRED_API_KEY': {
       const response = await fetchWithTimeout(
         `https://api.stlouisfed.org/fred/series?series_id=GDP&api_key=${encodeURIComponent(value)}&file_type=json`,
-        { headers: { Accept: 'application/json' } }
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }
       );
       const text = await response.text();
       if (!response.ok) return fail(`FRED probe failed (${response.status})`);
@@ -853,9 +688,10 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'EIA_API_KEY': {
       const response = await fetchWithTimeout(
         `https://api.eia.gov/v2/?api_key=${encodeURIComponent(value)}`,
-        { headers: { Accept: 'application/json' } }
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }
       );
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('EIA key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('EIA rejected this key');
       if (!response.ok) return fail(`EIA probe failed (${response.status})`);
       let payload = null;
@@ -867,9 +703,10 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'CLOUDFLARE_API_TOKEN': {
       const response = await fetchWithTimeout(
         'https://api.cloudflare.com/client/v4/radar/annotations/outages?dateRange=1d&limit=1',
-        { headers: { Authorization: `Bearer ${value}` } }
+        { headers: { Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA } }
       );
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Cloudflare token stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Cloudflare rejected this token');
       if (!response.ok) return fail(`Cloudflare probe failed (${response.status})`);
       let payload = null;
@@ -879,13 +716,19 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     }
 
     case 'ACLED_ACCESS_TOKEN': {
-      const response = await fetchWithTimeout('https://acleddata.com/api/acled/read?_format=json&limit=1', {
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const fmt = (d) => d.toISOString().split('T')[0];
+      const acledProbeUrl = `https://acleddata.com/api/acled/read?event_type=Protests&event_date=${fmt(weekAgo)}|${fmt(now)}&event_date_where=BETWEEN&limit=1&_format=json`;
+      const response = await fetchWithTimeout(acledProbeUrl, {
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${value}`,
+          'User-Agent': CHROME_UA,
         },
       });
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('ACLED token stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('ACLED rejected this token');
       if (!response.ok) return fail(`ACLED probe failed (${response.status})`);
       return ok('ACLED token verified');
@@ -896,9 +739,11 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         headers: {
           Accept: 'application/json',
           'Auth-Key': value,
+          'User-Agent': CHROME_UA,
         },
       });
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('URLhaus key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('URLhaus rejected this key');
       if (!response.ok) return fail(`URLhaus probe failed (${response.status})`);
       return ok('URLhaus key verified');
@@ -909,9 +754,11 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         headers: {
           Accept: 'application/json',
           'X-OTX-API-KEY': value,
+          'User-Agent': CHROME_UA,
         },
       });
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('OTX key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('OTX rejected this key');
       if (!response.ok) return fail(`OTX probe failed (${response.status})`);
       return ok('OTX key verified');
@@ -922,9 +769,11 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         headers: {
           Accept: 'application/json',
           Key: value,
+          'User-Agent': CHROME_UA,
         },
       });
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('AbuseIPDB key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('AbuseIPDB rejected this key');
       if (!response.ok) return fail(`AbuseIPDB probe failed (${response.status})`);
       return ok('AbuseIPDB key verified');
@@ -935,19 +784,22 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         headers: {
           Accept: 'application/json',
           'x-api-key': value,
+          'User-Agent': CHROME_UA,
         },
       });
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Wingbits key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Wingbits rejected this key');
       if (response.status >= 500) return fail(`Wingbits probe failed (${response.status})`);
       return ok('Wingbits key accepted');
     }
 
     case 'FINNHUB_API_KEY': {
-      const response = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(value)}`, {
-        headers: { Accept: 'application/json' },
+      const response = await fetchWithTimeout(`https://finnhub.io/api/v1/quote?symbol=AAPL`, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA, 'X-Finnhub-Token': value },
       });
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Finnhub key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Finnhub rejected this key');
       if (response.status === 429) return ok('Finnhub key accepted (rate limited)');
       if (!response.ok) return fail(`Finnhub probe failed (${response.status})`);
@@ -963,13 +815,34 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'NASA_FIRMS_API_KEY': {
       const response = await fetchWithTimeout(
         `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(value)}/VIIRS_SNPP_NRT/22,44,40,53/1`,
-        { headers: { Accept: 'text/csv' } }
+        { headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA } }
       );
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('NASA FIRMS key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('NASA FIRMS rejected this key');
       if (!response.ok) return fail(`NASA FIRMS probe failed (${response.status})`);
       if (/invalid api key|not authorized|forbidden/i.test(text)) return fail('NASA FIRMS rejected this key');
       return ok('NASA FIRMS key verified');
+    }
+
+    case 'UCDP_ACCESS_TOKEN': {
+      const year = new Date().getFullYear() - 2000;
+      const candidates = [...new Set([`${year}.1`, `${year - 1}.1`, '25.1', '24.1'])];
+      for (const version of candidates) {
+        try {
+          const response = await fetchWithTimeout(
+            `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=1`,
+            { headers: { Accept: 'application/json', 'x-ucdp-access-token': value, 'User-Agent': CHROME_UA } }
+          );
+          if (isAuthFailure(response.status)) return fail('UCDP rejected this token');
+          if (!response.ok) continue;
+          const text = await response.text();
+          let payload = null;
+          try { payload = JSON.parse(text); } catch { /* ignore */ }
+          if (Array.isArray(payload?.Result)) return ok(`UCDP token verified (GED v${version})`);
+        } catch { continue; }
+      }
+      return fail('Could not verify UCDP token (all GED versions failed)');
     }
 
     case 'OLLAMA_API_URL': {
@@ -1032,11 +905,12 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
         'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': CHROME_UA },
           body,
         }
       );
       const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('OpenSky credentials stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('OpenSky rejected these credentials');
       if (!response.ok) return fail(`OpenSky auth probe failed (${response.status})`);
       let payload = null;
@@ -1047,6 +921,26 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
     case 'AISSTREAM_API_KEY':
       return ok('AISSTREAM key stored (live verification not available in sidecar)');
+
+    case 'WTO_API_KEY':
+      return ok('WTO API key stored (live verification not available in sidecar)');
+
+    case 'AVIATIONSTACK_API': {
+      const response = await fetchWithTimeout(
+        `https://api.aviationstack.com/v1/flights?access_key=${encodeURIComponent(value)}&limit=1`,
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }
+      );
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('AviationStack key stored (Cloudflare blocked verification)');
+      let payload = null;
+      try { payload = JSON.parse(text); } catch { /* ignore */ }
+      if (payload?.error?.code === 101 || payload?.error?.code === 105) return fail('AviationStack rejected this key');
+      if (!response.ok && response.status !== 200) return fail(`AviationStack probe failed (${response.status})`);
+      return ok('AviationStack key verified');
+    }
+
+    case 'ICAO_API_KEY':
+      return ok('ICAO API key stored (verification requires NOTAM endpoint access)');
 
       default:
         return ok('Key stored');
@@ -1061,49 +955,104 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 }
 
 async function dispatch(requestUrl, req, routes, context) {
-  const pathname = requestUrl.pathname;
-
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: makeCorsHeaders(req) });
   }
 
-  // ---- Public endpoints (No token required) ----
-
-  if (pathname === '/api/service-status' || pathname === '/api/service-status/') {
+  // Health check — exempt from auth to support external monitoring tools
+  if (requestUrl.pathname === '/api/service-status') {
     return handleLocalServiceStatus(context);
   }
 
-  // YouTube bypass: required for iframe embeds which cannot send custom Authorization headers.
-  // This must remain public to allow the frontend to load it as a cross-origin iframe.
-  if (pathname.startsWith('/api/youtube/')) {
-    const modulePath = pickModule(pathname, routes);
-    if (modulePath && existsSync(modulePath)) {
-      try {
-        const mod = await importHandler(modulePath);
-        if (typeof mod.default === 'function') {
-          const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
-          const request = new Request(requestUrl.toString(), {
-            method: req.method,
-            headers: toHeaders(req.headers, { stripOrigin: true }),
-            body,
-          });
-          return await mod.default(request);
-        }
-      } catch (error) {
-        context.logger.error(`[local-api] youtube handler error: ${error.message}`);
+  // HLS proxy — exempt from auth because <video src="..."> cannot carry
+  // custom headers.  Proxies HLS manifests and segments from allowlisted CDN
+  // hosts, adding the required Referer header that browsers cannot set.
+  // Desktop-only (sidecar); web uses YouTube fallback.
+  if (requestUrl.pathname === '/api/hls-proxy') {
+    const ALLOWED_HLS_HOSTS = new Set(['cdn-ca2-na.lncnetworks.host']);
+    const upstreamRaw = requestUrl.searchParams.get('url');
+    if (!upstreamRaw) return new Response('Missing url param', { status: 400, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
+    let upstream;
+    try { upstream = new URL(upstreamRaw); } catch { return new Response('Invalid url', { status: 400, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } }); }
+    if (upstream.protocol !== 'https:' || !ALLOWED_HLS_HOSTS.has(upstream.hostname)) {
+      return new Response('Host not allowed', { status: 403, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
+    }
+    try {
+      const hlsResp = await new Promise((resolve, reject) => {
+        const reqOpts = {
+          hostname: upstream.hostname,
+          port: 443,
+          path: upstream.pathname + upstream.search,
+          method: 'GET',
+          headers: { 'Referer': 'https://livenewschat.eu/', 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
+          family: 4,
+        };
+        const r = https.request(reqOpts, (res) => {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+        });
+        r.on('error', reject);
+        r.setTimeout(10000, () => r.destroy(new Error('HLS upstream timeout')));
+        r.end();
+      });
+      if (hlsResp.status < 200 || hlsResp.status >= 300) {
+        return new Response(`Upstream ${hlsResp.status}`, { status: hlsResp.status, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
       }
+      const ct = hlsResp.headers['content-type'] || '';
+      const isManifest = upstreamRaw.endsWith('.m3u8') || ct.includes('mpegurl') || ct.includes('x-mpegurl');
+      if (isManifest) {
+        const basePath = upstream.pathname.substring(0, upstream.pathname.lastIndexOf('/') + 1);
+        const baseOrigin = upstream.origin;
+        let manifest = hlsResp.body.toString('utf-8');
+        manifest = manifest.replace(/^(?!#)(\S+)/gm, (match) => {
+          const full = match.startsWith('http') ? match : `${baseOrigin}${basePath}${match}`;
+          return `/api/hls-proxy?url=${encodeURIComponent(full)}`;
+        });
+        manifest = manifest.replace(/URI="([^"]+)"/g, (_m, uri) => {
+          const full = uri.startsWith('http') ? uri : `${baseOrigin}${basePath}${uri}`;
+          return `URI="/api/hls-proxy?url=${encodeURIComponent(full)}"`;
+        });
+        return new Response(manifest, { status: 200, headers: { 'content-type': 'application/vnd.apple.mpegurl', 'cache-control': 'no-cache', ...makeCorsHeaders(req) } });
+      }
+      return new Response(hlsResp.body, { status: 200, headers: { 'content-type': ct || 'application/octet-stream', 'cache-control': 'no-cache', ...makeCorsHeaders(req) } });
+    } catch (e) {
+      context.logger.warn('[hls-proxy] error:', e.message);
+      return new Response('Proxy error', { status: 502, headers: { 'content-type': 'text/plain', ...makeCorsHeaders(req) } });
     }
-    // Fallback to cloud if local handler fails
-    if (context.cloudFallback && !context.localFirst) {
-      return await tryCloudFallback(requestUrl, req, context, 'youtube bypass fallback');
-    }
-    // Nothing left to try — return 404 rather than falling through to the
-    // token-auth block, which would misleadingly return 401 for a public route.
-    return json({ error: 'Not found' }, 404);
   }
 
-  // Localhost-only diagnostics — no token required
-  if (pathname === '/api/local-status' || pathname === '/api/local-status/') {
+  // YouTube embed bridge — exempt from auth because iframe src cannot carry
+  // Authorization headers.  Serves a minimal HTML page that loads the YouTube
+  // IFrame Player API from a localhost origin (which YouTube accepts, unlike
+  // tauri://localhost).  No sensitive data is exposed.
+  if (requestUrl.pathname === '/api/youtube-embed') {
+    const videoId = requestUrl.searchParams.get('videoId');
+    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+      return new Response('Invalid videoId', { status: 400, headers: { 'content-type': 'text/plain' } });
+    }
+    const autoplay = requestUrl.searchParams.get('autoplay') === '0' ? '0' : '1';
+    const mute = requestUrl.searchParams.get('mute') === '0' ? '0' : '1';
+    const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
+    const origin = `http://localhost:${context.port}`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture '+a);console.log('[yt-embed] patched iframe allow=autoplay')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)window.parent.postMessage({type:'yt-mute-state',muted:last},'*');muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;window.parent.postMessage({type:'yt-mute-state',muted:m},'*')}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:'${videoId}',host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:'${origin}',widget_referrer:'${origin}'},events:{onReady:function(){console.log('[yt-embed] onReady');window.parent.postMessage({type:'yt-ready'},'*');${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality('${vq}');` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');window.parent.postMessage({type:'yt-autoplay-failed'},'*')}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},'*')},onStateChange:function(e){window.parent.postMessage({type:'yt-state',state:e.data},'*');if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
+    return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*', ...makeCorsHeaders(req) } });
+  }
+
+  // ── Global auth gate ────────────────────────────────────────────────────
+  // Every endpoint below requires a valid LOCAL_API_TOKEN.  This prevents
+  // other local processes, malicious browser scripts, and rogue extensions
+  // from accessing the sidecar API without the per-session token.
+  const expectedToken = process.env.LOCAL_API_TOKEN;
+  if (expectedToken) {
+    const authHeader = req.headers.authorization || '';
+    if (authHeader !== `Bearer ${expectedToken}`) {
+      context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
+      return json({ error: 'Unauthorized' }, 401);
+    }
+  }
+
+  if (requestUrl.pathname === '/api/local-status') {
     return json({
       success: true,
       mode: context.mode,
@@ -1111,14 +1060,7 @@ async function dispatch(requestUrl, req, routes, context) {
       apiDir: context.apiDir,
       remoteBase: context.remoteBase,
       cloudFallback: context.cloudFallback,
-      localFirst: context.localFirst,
       routes: routes.length,
-    });
-  }
-  if (requestUrl.pathname === '/api/local-mode') {
-    return json({
-      localFirst: context.localFirst,
-      cloudFallback: context.cloudFallback && !context.localFirst,
     });
   }
   if (requestUrl.pathname === '/api/local-traffic-log') {
@@ -1126,7 +1068,13 @@ async function dispatch(requestUrl, req, routes, context) {
       trafficLog.length = 0;
       return json({ cleared: true });
     }
-    return json({ entries: [...trafficLog], verboseMode, maxEntries: TRAFFIC_LOG_MAX });
+    // Strip query strings from logged paths to avoid leaking feed URLs and
+    // user research patterns to anyone who can read the traffic log.
+    const sanitized = trafficLog.map(entry => ({
+      ...entry,
+      path: entry.path?.split('?')[0] ?? entry.path,
+    }));
+    return json({ entries: sanitized, verboseMode, maxEntries: TRAFFIC_LOG_MAX });
   }
   if (requestUrl.pathname === '/api/local-debug-toggle') {
     if (req.method === 'POST') {
@@ -1136,11 +1084,14 @@ async function dispatch(requestUrl, req, routes, context) {
     }
     return json({ verboseMode });
   }
-  // Registration — call Convex directly (Vercel Attack Challenge Mode blocks server-side)
+  // Registration — call Convex directly when CONVEX_URL is available (self-hosted),
+  // otherwise proxy to cloud (desktop sidecar never has CONVEX_URL).
   if (requestUrl.pathname === '/api/register-interest' && req.method === 'POST') {
     const convexUrl = process.env.CONVEX_URL;
     if (!convexUrl) {
-      return json({ error: 'Registration service not configured' }, 503);
+      const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'no CONVEX_URL');
+      if (cloudResponse) return cloudResponse;
+      return json({ error: 'Registration service unavailable' }, 503);
     }
     try {
       const body = await new Promise((resolve, reject) => {
@@ -1171,26 +1122,36 @@ async function dispatch(requestUrl, req, routes, context) {
       }
       return json(result.value || result);
     } catch (e) {
-      logVerbose(`[register-interest] error: ${e.message}`);
+      context.logger.error(`[register-interest] error: ${e.message}`);
       return json({ error: 'Registration service unreachable' }, 502);
     }
   }
 
-  // RSS proxy — fetch public feeds directly from desktop, no auth needed
+  // RSS proxy — fetch public feeds with SSRF protection
   if (requestUrl.pathname === '/api/rss-proxy') {
     const feedUrl = requestUrl.searchParams.get('url');
     if (!feedUrl) return json({ error: 'Missing url parameter' }, 400);
+
+    // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
+    const safety = await isSafeUrl(feedUrl);
+    if (!safety.safe) {
+      context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${feedUrl})`);
+      return json({ error: safety.reason }, 403);
+    }
+
     try {
       const parsed = new URL(feedUrl);
-      if (!RSS_ALLOWED_DOMAINS.includes(parsed.hostname)) {
-        return json({ error: 'Domain not allowed' }, 403);
-      }
+      // Pin to the first IPv4 address validated by isSafeUrl() so the
+      // actual TCP connection goes to the same IP we checked, closing
+      // the TOCTOU DNS-rebinding window.
+      const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
       const response = await fetchWithTimeout(feedUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'User-Agent': CHROME_UA,
           'Accept': 'application/rss+xml, application/xml, text/xml, */*',
           'Accept-Language': 'en-US,en;q=0.9',
         },
+        ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
       }, parsed.hostname.includes('news.google.com') ? 20000 : 12000);
       const contentType = response.headers?.get?.('content-type') || 'application/xml';
       const rssBody = await response.text();
@@ -1201,106 +1162,6 @@ async function dispatch(requestUrl, req, routes, context) {
     } catch (e) {
       const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
       return json({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
-    }
-  }
-
-  // Token auth — required for env mutations and all API handlers
-  const expectedToken = process.env.LOCAL_API_TOKEN;
-  if (!expectedToken) {
-    context.logger.warn(`[local-api] LOCAL_API_TOKEN is not set — rejecting request to ${pathname}`);
-    return json({ error: 'Unauthorized – server token not configured' }, 401);
-  }
-  const authHeader = req.headers.authorization || '';
-  if (authHeader !== `Bearer ${expectedToken}`) {
-    context.logger.warn(`[local-api] unauthorized request to ${pathname}`);
-    return json({ error: 'Unauthorized' }, 401);
-  }
-
-  // ---- Local AIS snapshot (embedded relay) ----
-  if (pathname === '/api/local-ais-snapshot') {
-    const relay = getAisRelay(context.logger);
-    if (!relay) return json({ error: 'AISSTREAM_API_KEY not configured' }, 503);
-    const includeCandidates = requestUrl.searchParams.get('candidates') === 'true';
-    const snapshot = relay.buildSnapshot();
-    if (includeCandidates) {
-      return json({ ...snapshot, candidateReports: relay.getCandidateReports() });
-    }
-    return json(snapshot);
-  }
-
-  // ---- OpenSky flight states (embedded OAuth2 relay) ----
-  if (requestUrl.pathname === '/api/local-opensky') {
-    const relay = getOpenSkyRelay();
-    if (!relay) return json({ error: 'OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET not configured' }, 503);
-    const params = Object.fromEntries(requestUrl.searchParams.entries());
-    const result = await relay.fetchStates(params);
-    return json(result, result.error ? 502 : 200);
-  }
-
-  // ---- Local cache HTTP interface (for server-side handler access) ----
-  if (requestUrl.pathname === '/api/local-cache') {
-    const cache = getLocalCache(context.resourceDir);
-    if (req.method === 'GET') {
-      const key = requestUrl.searchParams.get('key');
-      if (!key) return json({ error: 'key required' }, 400);
-      const value = cache.get(key);
-      return json({ value });
-    }
-    if (req.method === 'POST') {
-      const body = await readBody(req);
-      if (!body) return json({ error: 'expected { key, value, ttl }' }, 400);
-      try {
-        const { key, value, ttl } = JSON.parse(body.toString());
-        if (!key || ttl == null) return json({ error: 'key and ttl required' }, 400);
-        cache.set(key, value, Number(ttl));
-        return json({ ok: true });
-      } catch { return json({ error: 'invalid JSON' }, 400); }
-    }
-    return json({ error: 'GET or POST required' }, 405);
-  }
-
-  // ---- Forensics worker endpoints (self-referencing sidecar) ----
-  if (requestUrl.pathname === '/internal/forensics/v1/fuse' && req.method === 'POST') {
-    const workerSecret = process.env.FORENSICS_WORKER_SHARED_SECRET;
-    const localToken  = process.env.LOCAL_API_TOKEN;
-    const expected    = workerSecret || localToken;
-    const authHeader  = req.headers['x-forensics-worker-secret'] || req.headers.authorization?.replace('Bearer ', '');
-    if (!expected || authHeader !== expected) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
-    const body = await readBody(req);
-    if (!body) return json({ error: 'expected { signals, feedbackMap }' }, 400);
-    try {
-      const { signals = [], feedbackMap = {} } = JSON.parse(body.toString());
-      const feedbackMapObj = new Map(Object.entries(feedbackMap));
-      const result = _forensicsWorker.runWeakSupervisionFusion(signals, feedbackMapObj);
-      return json({
-        fusedSignals: result.fusedSignals,
-        learnedWeights: Object.fromEntries(result.learnedWeights),
-        learnedAccuracies: Object.fromEntries(result.learnedAccuracies),
-        classPrior: result.classPrior,
-      });
-    } catch (err) {
-      return json({ error: err.message }, 500);
-    }
-  }
-
-  if (requestUrl.pathname === '/internal/forensics/v1/anomaly' && req.method === 'POST') {
-    const workerSecret = process.env.FORENSICS_WORKER_SHARED_SECRET;
-    const localToken  = process.env.LOCAL_API_TOKEN;
-    const expected    = workerSecret || localToken;
-    const authHeader  = req.headers['x-forensics-worker-secret'] || req.headers.authorization?.replace('Bearer ', '');
-    if (!expected || authHeader !== expected) {
-      return json({ error: 'Unauthorized' }, 401);
-    }
-    const body = await readBody(req);
-    if (!body) return json({ error: 'expected { signals, alpha }' }, 400);
-    try {
-      const { signals = [], alpha = 0.05 } = JSON.parse(body.toString());
-      const anomalies = _forensicsWorker.detectAnomalies(signals, alpha);
-      return json({ anomalies });
-    } catch (err) {
-      return json({ error: err.message }, 500);
     }
   }
 
@@ -1321,10 +1182,6 @@ async function dispatch(requestUrl, req, routes, context) {
             moduleCache.clear();
             failedImports.clear();
             cloudPreferred.clear();
-            // Reset relay instances when their credentials change
-            if (['AISSTREAM_API_KEY', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET'].includes(key)) {
-              resetRelays();
-            }
             return json({ ok: true, key });
           }
           return json({ error: 'key not in allowlist' }, 403);
@@ -1348,65 +1205,24 @@ async function dispatch(requestUrl, req, routes, context) {
       }
       const safeContext = (context && typeof context === 'object') ? context : {};
       const result = await validateSecretAgainstProvider(key, value, safeContext);
-      if (!result.valid) {
-        // Mask the value (show only first 4 chars) to avoid logging secrets
-        const masked = String(value || '').slice(0, 4).padEnd(8, '*');
-        console.error(`[local-api] Secret validation failed — key=${key} masked=${masked} reason=${result.message}`);
-      }
       return json(result, result.valid ? 200 : 422);
-    } catch (err) {
-      console.error('[local-api] Secret validation threw unexpectedly:', err?.message);
+    } catch {
       return json({ error: 'expected { key, value }' }, 400);
     }
   }
 
-  // When local-first mode is active, cloud fallback is completely disabled.
-  const allowCloud = context.cloudFallback && !context.localFirst;
-
-  if (allowCloud && cloudPreferred.has(requestUrl.pathname)) {
+  if (context.cloudFallback && cloudPreferred.has(requestUrl.pathname)) {
     const cloudResponse = await tryCloudFallback(requestUrl, req, context);
     if (cloudResponse) return cloudResponse;
   }
 
-  // ---- Local cache probe (GET requests only) ----
-  const CACHEABLE_ROUTE_TTLS = {
-    '/seismology/v1/GetEarthquakes': 120,
-    '/market/v1/ListMarketQuotes': 60,
-    '/market/v1/ListCryptoQuotes': 60,
-    '/market/v1/ListCommodityQuotes': 300,
-    '/market/v1/GetSectorSummary': 300,
-    '/news/v1/ListTopStories': 300,
-    '/aviation/v1/GetFlights': 60,
-    '/conflict/v1/GetAcledEvents': 600,
-    '/economic/v1/GetFredSeries': 900,
-    '/wildfire/v1/GetWildfirePerimeters': 180,
-    '/climate/v1/GetClimateIndicators': 600,
-    '/space/v1/GetSpaceWeather': 300,
-  };
-
-  const cacheKeySegment = Object.keys(CACHEABLE_ROUTE_TTLS).find((seg) => requestUrl.pathname.includes(seg));
-  const cacheKey = cacheKeySegment && req.method === 'GET'
-    ? `route:${requestUrl.pathname}${requestUrl.search}`
-    : null;
-
-  if (cacheKey) {
-    const localCache = getLocalCache(context.resourceDir);
-    const cached = localCache.get(cacheKey);
-    if (cached) {
-      return new Response(JSON.stringify(cached), {
-        status: 200,
-        headers: { 'content-type': 'application/json', 'x-local-cache': 'HIT' },
-      });
-    }
-  }
-
   const modulePath = pickModule(requestUrl.pathname, routes);
   if (!modulePath || !existsSync(modulePath)) {
-    if (allowCloud) {
+    if (context.cloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler missing');
       if (cloudResponse) return cloudResponse;
     }
-    logOnce(context.logger, requestUrl.pathname, context.localFirst ? 'no local handler (local-first, cloud blocked)' : 'no local handler');
+    logOnce(context.logger, requestUrl.pathname, 'no local handler');
     return json({ error: 'No local handler for this endpoint', endpoint: requestUrl.pathname }, 404);
   }
 
@@ -1414,7 +1230,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const mod = await importHandler(modulePath);
     if (typeof mod.default !== 'function') {
       logOnce(context.logger, requestUrl.pathname, 'invalid handler module');
-      if (allowCloud) {
+      if (context.cloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, `invalid handler module`);
         if (cloudResponse) return cloudResponse;
       }
@@ -1422,42 +1238,34 @@ async function dispatch(requestUrl, req, routes, context) {
     }
 
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
+    const hdrs = toHeaders(req.headers, { stripOrigin: true });
+    hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
     const request = new Request(requestUrl.toString(), {
       method: req.method,
-      headers: toHeaders(req.headers, { stripOrigin: true }),
+      headers: hdrs,
       body,
     });
 
     const response = await mod.default(request);
     if (!(response instanceof Response)) {
       logOnce(context.logger, requestUrl.pathname, 'handler returned non-Response');
-      if (allowCloud) {
+      if (context.cloudFallback) {
         const cloudResponse = await tryCloudFallback(requestUrl, req, context, 'handler returned non-Response');
         if (cloudResponse) return cloudResponse;
       }
       return json({ error: 'Handler returned invalid response', endpoint: requestUrl.pathname }, 500);
     }
 
-    if (!response.ok && allowCloud) {
+    if (!response.ok && context.cloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, `local status ${response.status}`);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
-    }
-
-    // Store successful GET responses in local cache
-    if (response.ok && cacheKey && cacheKeySegment) {
-      try {
-        const cloned = response.clone();
-        const data = await cloned.json();
-        const ttl = CACHEABLE_ROUTE_TTLS[cacheKeySegment] ?? 60;
-        getLocalCache(context.resourceDir).set(cacheKey, data, ttl);
-      } catch { /* non-JSON or clone error — skip caching */ }
     }
 
     return response;
   } catch (error) {
     const reason = error.code === 'ERR_MODULE_NOT_FOUND' ? 'missing dependency' : error.message;
     context.logger.error(`[local-api] ${requestUrl.pathname} → ${reason}`);
-    if (allowCloud) {
+    if (context.cloudFallback) {
       const cloudResponse = await tryCloudFallback(requestUrl, req, context, error);
       if (cloudResponse) { cloudPreferred.add(requestUrl.pathname); return cloudResponse; }
     }
@@ -1467,7 +1275,7 @@ async function dispatch(requestUrl, req, routes, context) {
 
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
-  loadVerboseState(context.resourceDir);
+  loadVerboseState(context.dataDir);
   const routes = await buildRouteTable(context.apiDir);
 
   const server = createServer(async (req, res) => {
@@ -1494,11 +1302,6 @@ export async function createLocalApiServer(options = {}) {
       const corsOrigin = getSidecarCorsOrigin(req);
       headers['access-control-allow-origin'] = corsOrigin;
       headers['vary'] = appendVary(headers['vary'], 'Origin');
-      // Data source provenance headers (Phase 5)
-      if (!headers['x-wm-data-source']) {
-        headers['x-wm-data-source'] = 'local-sidecar';
-      }
-      headers['x-wm-relay-mode'] = context.localFirst ? 'local-first' : 'sidecar-with-fallback';
 
       if (!skipRecord) {
         recordTraffic({
@@ -1536,51 +1339,42 @@ export async function createLocalApiServer(options = {}) {
 
       res.writeHead(500, { 'content-type': 'application/json', ...makeCorsHeaders(req) });
       res.end(JSON.stringify({ error: 'Internal server error' }));
-    } finally {
-      // Release cached request body to avoid holding large buffers until GC sweep
-      delete req[REQUEST_BODY_CACHE];
     }
   });
-
-  async function gracefulShutdown(signal) {
-    context.logger.log(`[local-api] ${signal} — shutting down gracefully`);
-    moduleCache.clear();
-    failedImports.clear();
-    if (_aisRelayInstance) { try { _aisRelayInstance.stop(); } catch { /* ignore */ } }
-    if (_openSkyRelayInstance) { try { _openSkyRelayInstance.reset(); } catch { /* ignore */ } }
-    if (_localCache) { try { _localCache.persist(); } catch { /* ignore */ } }
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 3000).unref();
-  }
-
-  if (!process.exitHandlersInstalled) {
-    process.exitHandlersInstalled = true;
-    process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
-    process.on('SIGINT',  () => void gracefulShutdown('SIGINT'));
-  }
 
   return {
     context,
     routes,
     server,
     async start() {
-      await new Promise((resolve, reject) => {
-        const onListening = () => {
-          server.off('error', onError);
-          resolve();
-        };
-        const onError = (error) => {
-          server.off('listening', onListening);
-          reject(error);
-        };
-
+      const tryListen = (port) => new Promise((resolve, reject) => {
+        const onListening = () => { server.off('error', onError); resolve(); };
+        const onError = (error) => { server.off('listening', onListening); reject(error); };
         server.once('listening', onListening);
         server.once('error', onError);
-        server.listen(context.port, '127.0.0.1');
+        server.listen(port, '127.0.0.1');
       });
+
+      try {
+        await tryListen(context.port);
+      } catch (err) {
+        if (err?.code === 'EADDRINUSE') {
+          context.logger.log(`[local-api] port ${context.port} busy, falling back to OS-assigned port`);
+          await tryListen(0);
+        } else {
+          throw err;
+        }
+      }
 
       const address = server.address();
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
+      context.port = boundPort;
+
+      const portFile = process.env.LOCAL_API_PORT_FILE;
+      if (portFile) {
+        try { writeFileSync(portFile, String(boundPort)); } catch {}
+      }
+
       context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
       return { port: boundPort };
     },
@@ -1593,11 +1387,6 @@ export async function createLocalApiServer(options = {}) {
 }
 
 if (isMainModule()) {
-  // Minimal pre-startup safety net. process.once so these auto-remove when
-  // createLocalApiServer() registers the full graceful-shutdown handlers.
-  process.once('SIGTERM', () => process.exit(0));
-  process.once('SIGINT',  () => process.exit(0));
-
   try {
     const app = await createLocalApiServer();
     await app.start();

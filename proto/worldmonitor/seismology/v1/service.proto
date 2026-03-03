@@ -4,7 +4,6 @@ package worldmonitor.seismology.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/seismology/v1/list_earthquakes.proto";
-import "worldmonitor/seismology/v1/list_tsunami_warnings.proto";
 
 // SeismologyService provides APIs for earthquake monitoring data sourced from USGS.
 service SeismologyService {
@@ -12,11 +11,6 @@ service SeismologyService {
 
   // ListEarthquakes retrieves recent earthquakes from the USGS GeoJSON feed.
   rpc ListEarthquakes(ListEarthquakesRequest) returns (ListEarthquakesResponse) {
-    option (sebuf.http.config) = {path: "/list-earthquakes"};
-  }
-
-  // ListTsunamiWarnings retrieves active NOAA tsunami warnings and advisories.
-  rpc ListTsunamiWarnings(ListTsunamiWarningsRequest) returns (ListTsunamiWarningsResponse) {
-    option (sebuf.http.config) = {path: "/list-tsunami-warnings"};
+    option (sebuf.http.config) = {path: "/list-earthquakes", method: HTTP_METHOD_GET};
   }
 }

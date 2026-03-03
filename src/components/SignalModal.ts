@@ -1,13 +1,10 @@
 import type { CorrelationSignal } from '@/services/correlation';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
-import type { ForensicsAnomalyOverlay } from '@/types';
 import { suppressTrendingTerm } from '@/services/trending-keywords';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
-import { renderPoleGraph, renderConvergenceRadar } from './ForensicsVisualizations';
-import { submitForensicsFeedback, explainAnomaly } from '@/services/forensics';
 
 export class SignalModal {
   private element: HTMLElement;
@@ -15,6 +12,7 @@ export class SignalModal {
   private audioEnabled = true;
   private audio: HTMLAudioElement | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
+  private escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hide(); };
 
   constructor() {
     this.element = document.createElement('div');
@@ -95,61 +93,15 @@ export class SignalModal {
         });
         this.renderSignals();
       }
-
-      if (target.classList.contains('forensics-feedback-btn')) {
-        const sourceId = target.dataset.sourceId || '';
-        const signalType = target.dataset.signalType || '';
-        const isTruePositive = target.dataset.isTruePositive === 'true';
-        if (sourceId && signalType) {
-          submitForensicsFeedback(sourceId, signalType, isTruePositive).catch(console.error);
-          
-          // Provide visual feedback
-          target.textContent = isTruePositive ? '✅ Logged' : '❌ Logged';
-          target.style.opacity = '0.5';
-          target.style.pointerEvents = 'none';
-          
-          // Also disable the sibling button
-          const sibling = target.parentElement?.querySelector('.forensics-feedback-btn:not(:active)') as HTMLElement;
-          if (sibling && sibling !== target) {
-            sibling.style.opacity = '0.5';
-            sibling.style.pointerEvents = 'none';
-          }
-        }
-      }
-
-      if (target.classList.contains('forensics-explain-btn')) {
-        const anomalyId = target.dataset.anomalyId || '';
-        const evidenceIdsRaw = target.dataset.evidenceIds || '';
-        const evidenceIds = evidenceIdsRaw ? evidenceIdsRaw.split(',') : [];
-        const container = target.parentElement?.nextElementSibling as HTMLElement;
-        
-        if (anomalyId && container) {
-          target.textContent = '🧠 Explaining...';
-          target.style.opacity = '0.7';
-          target.style.pointerEvents = 'none';
-          
-          container.style.display = 'block';
-          container.innerHTML = '<i>Querying semantic search and local LLM...</i>';
-          
-          explainAnomaly(anomalyId, evidenceIds).then(res => {
-            target.textContent = '🧠 Explained';
-            container.innerHTML = `<strong>Explanation:</strong> ${escapeHtml(res.explanation)}`;
-            if (res.supportingEvidenceIds.length > 0) {
-              container.innerHTML += `<br><br><strong>Key Evidence:</strong> ${escapeHtml(res.supportingEvidenceIds.join(', '))}`;
-            }
-          }).catch(err => {
-            target.textContent = '🧠 Explain Context';
-            target.style.opacity = '1';
-            target.style.pointerEvents = 'auto';
-            container.innerHTML = `<span style="color: var(--semantic-critical);">Failed to explain: ${escapeHtml(String(err))}</span>`;
-          });
-        }
-      }
     });
   }
 
   public setLocationClickHandler(handler: (lat: number, lon: number) => void): void {
     this.onLocationClick = handler;
+  }
+
+  private activateEsc(): void {
+    document.addEventListener('keydown', this.escHandler);
   }
 
   public show(signals: CorrelationSignal[]): void {
@@ -159,6 +111,7 @@ export class SignalModal {
     this.currentSignals = [...signals, ...this.currentSignals].slice(0, 50);
     this.renderSignals();
     this.element.classList.add('active');
+    this.activateEsc();
     this.playSound();
   }
 
@@ -166,67 +119,7 @@ export class SignalModal {
     this.currentSignals = [signal];
     this.renderSignals();
     this.element.classList.add('active');
-  }
-
-  public showEvidence(evidence: any): void {
-    if (document.fullscreenElement) return;
-    const content = this.element.querySelector('.signal-modal-content')!;
-    
-    const timeAgo = Math.max(0, Math.floor((Date.now() - evidence.scrapedAt) / 1000));
-    const timeStr = timeAgo < 60 ? `${timeAgo}s ago` : timeAgo < 3600 ? `${Math.floor(timeAgo/60)}m ago` : `${Math.floor(timeAgo/3600)}h ago`;
-
-    let poleHtml = '';
-    if (evidence.extractedPole) {
-      const { persons = [], objects = [], locations = [], events = [] } = evidence.extractedPole;
-      poleHtml = `
-        <div class="evidence-pole-grid">
-          <div id="pole-graph-container" style="width: 100%; height: 300px; grid-column: 1 / -1;"></div>
-          ${persons.length ? `<div class="pole-col"><strong>Persons</strong><ul>${persons.map((p: any) => `<li>${escapeHtml(p.name)}</li>`).join('')}</ul></div>` : ''}
-          ${objects.length ? `<div class="pole-col"><strong>Objects</strong><ul>${objects.map((o: any) => `<li>${escapeHtml(o.name)}</li>`).join('')}</ul></div>` : ''}
-          ${locations.length ? `<div class="pole-col"><strong>Locations</strong><ul>${locations.map((l: any) => `<li>${escapeHtml(l.name)}</li>`).join('')}</ul></div>` : ''}
-          ${events.length ? `<div class="pole-col"><strong>Events</strong><ul>${events.map((e: any) => `<li>${escapeHtml(e.type)}</li>`).join('')}</ul></div>` : ''}
-        </div>
-      `;
-    }
-
-    content.innerHTML = `
-      <div class="signal-item">
-        <div class="signal-header" style="border-left: 4px solid var(--semantic-elevated)">
-          <div class="signal-icon">📄</div>
-          <div class="signal-title-container">
-            <div class="signal-title">${escapeHtml(evidence.title || 'Raw Evidence')}</div>
-            <div class="signal-meta">
-              <span class="signal-type">Source Evidence</span>
-              <span class="signal-time">${escapeHtml(timeStr)}</span>
-            </div>
-          </div>
-        </div>
-        <div class="signal-context">
-          ${evidence.sourceUrl ? `
-          <div class="signal-context-item">
-            <span class="context-label">Source URL</span>
-            <span class="context-value"><a href="${sanitizeUrl(evidence.sourceUrl)}" target="_blank">${escapeHtml(evidence.sourceUrl)}</a></span>
-          </div>` : ''}
-          ${poleHtml}
-          <div class="signal-context-item">
-            <span class="context-label">Raw Content</span>
-            <div class="context-value" style="white-space: pre-wrap; font-family: monospace; max-height: 250px; overflow-y: auto; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">${escapeHtml(evidence.rawContent?.substring(0, 1500) || '')}${evidence.rawContent?.length > 1500 ? '...' : ''}</div>
-          </div>
-        </div>
-      </div>
-      <div class="signal-actions">
-        <button class="signal-dismiss-btn">Close</button>
-      </div>
-    `;
-
-    if (evidence.extractedPole) {
-      // Use setTimeout to ensure DOM is updated before rendering D3 graph
-      setTimeout(() => {
-        renderPoleGraph('#pole-graph-container', evidence.extractedPole);
-      }, 0);
-    }
-
-    this.element.classList.add('active');
+    this.activateEsc();
   }
 
   public showAlert(alert: UnifiedAlert): void {
@@ -299,7 +192,7 @@ export class SignalModal {
       detailsHtml += `
         <div class="signal-context-item">
           <span class="context-label">${t('modals.signal.source')}</span>
-          <span class="context-value">${escapeHtml(cascade.sourceName)} (${cascade.sourceType})</span>
+          <span class="context-value">${escapeHtml(cascade.sourceName)} (${escapeHtml(cascade.sourceType)})</span>
         </div>
         <div class="signal-context-item">
           <span class="context-label">${t('modals.signal.countriesAffected')}</span>
@@ -333,101 +226,19 @@ export class SignalModal {
     `;
 
     this.element.classList.add('active');
-  }
-
-  public showForensicsAnomalies(
-    anomalies: ForensicsAnomalyOverlay[],
-    context?: {
-      runId?: string;
-      domain?: string;
-      completedAt?: number;
-    },
-  ): void {
-    if (document.fullscreenElement) return;
-    if (!anomalies.length) return;
-
-    const content = this.element.querySelector('.signal-modal-content')!;
-    const sorted = [...anomalies].sort((a, b) =>
-      (Number(b.isNearLive) - Number(a.isNearLive))
-      || (b.monitorPriority - a.monitorPriority)
-      || (a.pValue - b.pValue)
-    );
-    const top = sorted.slice(0, 5);
-
-    const nearLiveCount = top.filter((item) => item.isNearLive).length;
-    const minPValue = top.reduce((min, item) => Math.min(min, item.pValue), 1);
-    const completedAtValue = context?.completedAt;
-    const completedAt = typeof completedAtValue === 'number' && Number.isFinite(completedAtValue) && completedAtValue > 0
-      ? new Date(completedAtValue)
-      : null;
-    const runLabel = context?.runId ? context.runId.slice(0, 8) : 'latest';
-    const domainLabel = context?.domain || 'forensics';
-
-    const cardsHtml = top.map((anomaly) => {
-      const severity = anomaly.severity === 'high'
-        ? 'high'
-        : anomaly.severity === 'medium'
-          ? 'medium'
-          : 'low';
-      const severityLabel = anomaly.severity === 'unspecified'
-        ? 'UNSPECIFIED'
-        : anomaly.severity.toUpperCase();
-      const ageMinutes = Number.isFinite(anomaly.ageMinutes) ? Math.max(0, Math.round(anomaly.ageMinutes)) : 0;
-      const freshnessLabel = anomaly.isNearLive ? `near-live ${ageMinutes}m` : `${ageMinutes}m old`;
-      const observedTime = anomaly.observedAt > 0
-        ? new Date(anomaly.observedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-        : 'n/a';
-
-      return `
-        <div class="signal-item forensics-anomaly-card forensics-${severity}">
-          <div class="signal-type">🧪 ${escapeHtml(anomaly.monitorCategory || 'other')} anomaly · ${escapeHtml(anomaly.signalType)}</div>
-          <div class="signal-title">${escapeHtml(anomaly.monitorLabel || anomaly.signalType)} <span class="signal-forensics-severity ${severity}">${escapeHtml(severityLabel)}</span></div>
-          <div class="signal-description">${escapeHtml(anomaly.region || 'global')} · p=${anomaly.pValue.toFixed(3)} · z=${anomaly.legacyZScore.toFixed(2)} · support=${anomaly.supportCount}</div>
-          <div class="signal-meta">
-            <span class="signal-confidence">priority ${(anomaly.monitorPriority * 100).toFixed(0)}%</span>
-            <span>${escapeHtml(freshnessLabel)}</span>
-            <span>obs ${escapeHtml(observedTime)}</span>
-          </div>
-          <div class="signal-location">
-            <button class="location-link" data-lat="${anomaly.lat}" data-lon="${anomaly.lon}">
-              📍 ${t('modals.signal.viewOnMap')}: ${escapeHtml(anomaly.region || `${anomaly.lat.toFixed(2)}°, ${anomaly.lon.toFixed(2)}°`)}
-            </button>
-          </div>
-          <div class="signal-feedback" style="margin-top: 8px; display: flex; gap: 8px;">
-            <button class="forensics-feedback-btn" data-source-id="${escapeHtml(anomaly.sourceId)}" data-signal-type="${escapeHtml(anomaly.signalType)}" data-is-true-positive="true" style="font-size: 12px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color);">✅ Acknowledge</button>
-            <button class="forensics-feedback-btn" data-source-id="${escapeHtml(anomaly.sourceId)}" data-signal-type="${escapeHtml(anomaly.signalType)}" data-is-true-positive="false" style="font-size: 12px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color);">❌ Dismiss</button>
-            <button class="forensics-explain-btn" data-anomaly-id="${escapeHtml(`${anomaly.sourceId}:${anomaly.signalType}`)}" data-evidence-ids="${escapeHtml(anomaly.evidenceIds.join(','))}" style="font-size: 12px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--semantic-info); background: var(--semantic-info-bg); color: var(--semantic-info);">🧠 Explain Context</button>
-          </div>
-          <div class="signal-explanation-container" style="margin-top: 8px; font-size: 12px; color: var(--text-dim); display: none;"></div>
-        </div>
-      `;
-    }).join('');
-
-    content.innerHTML = `
-      <div class="signal-item forensics-digest-summary">
-        <div class="signal-type">🧪 FORENSICS DIGEST</div>
-        <div class="signal-title">${top.length} notable anomaly${top.length === 1 ? '' : 'ies'} · ${escapeHtml(domainLabel)}</div>
-        <div class="signal-description">${nearLiveCount} near-live · min p=${minPValue.toFixed(3)} · run ${escapeHtml(runLabel)}</div>
-        <div class="signal-meta">
-          <span class="signal-confidence">${completedAt ? completedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : 'latest run'}</span>
-        </div>
-      </div>
-      ${cardsHtml}
-    `;
-
-    this.element.classList.add('active');
-    this.playSound();
+    this.activateEsc();
   }
 
   public playSound(): void {
     if (this.audioEnabled && this.audio) {
       this.audio.currentTime = 0;
-      this.audio.play().catch(() => {});
+      this.audio.play()?.catch(() => {});
     }
   }
 
   public hide(): void {
     this.element.classList.remove('active');
+    document.removeEventListener('keydown', this.escHandler);
   }
 
   private renderSignals(): void {
@@ -484,7 +295,7 @@ export class SignalModal {
           ${locationData.lat && locationData.lon ? `
             <div class="signal-location">
               <button class="location-link" data-lat="${locationData.lat}" data-lon="${locationData.lon}">
-                📍 ${t('modals.signal.viewOnMap')}: ${locationData.regionName || `${locationData.lat.toFixed(2)}°, ${locationData.lon.toFixed(2)}°`}
+                📍 ${t('modals.signal.viewOnMap')}: ${locationData.regionName ? escapeHtml(locationData.regionName) : `${locationData.lat.toFixed(2)}°, ${locationData.lon.toFixed(2)}°`}
               </button>
             </div>
           ` : ''}
@@ -507,9 +318,6 @@ export class SignalModal {
               ${signal.data.relatedTopics.map(t => `<span class="signal-topic">${escapeHtml(t)}</span>`).join('')}
             </div>
           ` : ''}
-          ${signal.type === 'triangulation' && (signal.data.relatedTopics?.length ?? 0) >= 3 ? `
-            <div id="radar-${escapeHtml(signal.id)}" style="width: 100%; height: 150px; margin-top: 10px; background: rgba(0,0,0,0.1); border-radius: 8px;"></div>
-          ` : ''}
           ${signal.type === 'keyword_spike' && typeof data?.term === 'string' ? `
             <div class="signal-actions">
               <button class="suppress-keyword-btn" data-term="${escapeHtml(data.term)}">${t('modals.signal.suppress')}</button>
@@ -520,14 +328,6 @@ export class SignalModal {
     }).join('');
 
     content.innerHTML = html;
-
-    this.currentSignals.forEach(signal => {
-      if (signal.type === 'triangulation' && signal.data.relatedTopics && signal.data.relatedTopics.length >= 3) {
-        setTimeout(() => {
-          renderConvergenceRadar(`#radar-${signal.id}`, signal.data.relatedTopics as string[]);
-        }, 0);
-      }
-    });
   }
 
   private formatTime(date: Date): string {

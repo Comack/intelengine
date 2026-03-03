@@ -1,4 +1,4 @@
-import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat, ForensicsAnomalyOverlay, ForensicsTopologyWindowOverlay } from '@/types';
+import type { ConflictZone, Hotspot, NewsItem, MilitaryBase, StrategicWaterway, APTGroup, NuclearFacility, EconomicCenter, GammaIrradiator, Pipeline, UnderseaCable, CableAdvisory, RepairShip, InternetOutage, AIDataCenter, AisDisruptionEvent, SocialUnrestEvent, MilitaryFlight, MilitaryVessel, MilitaryFlightCluster, MilitaryVesselCluster, NaturalEvent, Port, Spaceport, CriticalMineralProject, CyberThreat } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
@@ -14,19 +14,7 @@ import { getNaturalEventIcon } from '@/services/eonet';
 import { getHotspotEscalation, getEscalationChange24h } from '@/services/hotspot-escalation';
 import { getCableHealthRecord } from '@/services/cable-health';
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'forensicsAnomaly' | 'forensicsTopologyWindow' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub';
-
-function buildTopologySparkline(values: number[]): string {
-  if (values.length < 2) return '';
-  const W = 80, H = 22;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const pts = values
-    .map((v, i) => `${(i / (values.length - 1)) * W},${H - ((v - min) / range) * H}`)
-    .join(' ');
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="topo-sparkline"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
-}
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming';
 
 interface TechEventPopupData {
   id: string;
@@ -59,6 +47,30 @@ interface TechEventClusterData {
   count?: number;
   soonCount?: number;
   sampled?: boolean;
+}
+
+interface GpsJammingPopupData {
+  h3: string;
+  lat: number;
+  lon: number;
+  level: 'medium' | 'high';
+  pct: number;
+  good: number;
+  bad: number;
+  total: number;
+}
+
+interface IranEventPopupData {
+  id: string;
+  title: string;
+  category: string;
+  sourceUrl: string;
+  latitude: number;
+  longitude: number;
+  locationName: string;
+  timestamp: string | number;
+  severity: string;
+  relatedEvents?: IranEventPopupData[];
 }
 
 // Finance popup data types
@@ -132,7 +144,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | ForensicsAnomalyOverlay | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -374,10 +386,6 @@ export class MapPopup {
         return this.renderAPTPopup(data.data as APTGroup);
       case 'cyberThreat':
         return this.renderCyberThreatPopup(data.data as CyberThreat);
-      case 'forensicsAnomaly':
-        return this.renderForensicsAnomalyPopup(data.data as ForensicsAnomalyOverlay);
-      case 'forensicsTopologyWindow':
-        return this.renderForensicsTopologyWindowPopup(data.data as unknown as ForensicsTopologyWindowOverlay);
       case 'nuclear':
         return this.renderNuclearPopup(data.data as NuclearFacility);
       case 'economic':
@@ -444,6 +452,10 @@ export class MapPopup {
         return this.renderCentralBankPopup(data.data as CentralBankPopupData);
       case 'commodityHub':
         return this.renderCommodityHubPopup(data.data as CommodityHubPopupData);
+      case 'iranEvent':
+        return this.renderIranEventPopup(data.data as IranEventPopupData);
+      case 'gpsJamming':
+        return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
       default:
         return '';
     }
@@ -838,6 +850,14 @@ export class MapPopup {
       'russia': 'high',
     };
 
+    const enriched = base as MilitaryBase & { kind?: string; catAirforce?: boolean; catNaval?: boolean; catNuclear?: boolean; catSpace?: boolean; catTraining?: boolean };
+    const categories: string[] = [];
+    if (enriched.catAirforce) categories.push('Air Force');
+    if (enriched.catNaval) categories.push('Naval');
+    if (enriched.catNuclear) categories.push('Nuclear');
+    if (enriched.catSpace) categories.push('Space');
+    if (enriched.catTraining) categories.push('Training');
+
     return `
       <div class="popup-header base">
         <span class="popup-title">${escapeHtml(base.name.toUpperCase())}</span>
@@ -846,11 +866,15 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         ${base.description ? `<p class="popup-description">${escapeHtml(base.description)}</p>` : ''}
+        ${enriched.kind ? `<p class="popup-description" style="opacity:0.7;margin-top:2px">${escapeHtml(enriched.kind.replace(/_/g, ' '))}</p>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
             <span class="stat-value">${escapeHtml(typeLabels[base.type] || base.type)}</span>
           </div>
+          ${base.arm ? `<div class="popup-stat"><span class="stat-label">Branch</span><span class="stat-value">${escapeHtml(base.arm)}</span></div>` : ''}
+          ${base.country ? `<div class="popup-stat"><span class="stat-label">Country</span><span class="stat-value">${escapeHtml(base.country)}</span></div>` : ''}
+          ${categories.length > 0 ? `<div class="popup-stat"><span class="stat-label">Categories</span><span class="stat-value">${escapeHtml(categories.join(', '))}</span></div>` : ''}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.coordinates')}</span>
             <span class="stat-value">${base.lat.toFixed(2)}°, ${base.lon.toFixed(2)}°</span>
@@ -1026,9 +1050,10 @@ export class MapPopup {
       'departure_delay': t('popups.flight.departureDelay'),
       'arrival_delay': t('popups.flight.arrivalDelay'),
       'general': t('popups.flight.delaysReported'),
+      'closure': t('popups.flight.closure'),
     };
     const delayTypeLabel = delayTypeLabels[delay.delayType] || t('popups.flight.delays');
-    const icon = delay.delayType === 'ground_stop' ? '🛑' : delay.severity === 'severe' ? '✈️' : '🛫';
+    const icon = delay.delayType === 'closure' ? '🚫' : delay.delayType === 'ground_stop' ? '🛑' : delay.severity === 'severe' ? '✈️' : '🛫';
     const sourceLabels: Record<string, string> = {
       'faa': t('popups.flight.sources.faa'),
       'eurocontrol': t('popups.flight.sources.eurocontrol'),
@@ -1109,294 +1134,6 @@ export class MapPopup {
     `;
   }
 
-  private renderForensicsAnomalyPopup(anomaly: ForensicsAnomalyOverlay): string {
-    const severityClass = anomaly.severity === 'high'
-      ? 'high'
-      : anomaly.severity === 'medium'
-      ? 'elevated'
-      : 'low';
-    const severityLabel = anomaly.severity === 'unspecified'
-      ? t('popups.unknown').toUpperCase()
-      : anomaly.severity.toUpperCase();
-    const freshnessLabel = anomaly.isNearLive
-      ? `Near-live (${Math.max(0, anomaly.ageMinutes)}m)`
-      : `${Math.max(0, anomaly.ageMinutes)}m old`;
-    const monitorCategoryLabel = anomaly.monitorCategory
-      ? anomaly.monitorCategory.charAt(0).toUpperCase() + anomaly.monitorCategory.slice(1)
-      : 'Other';
-    const trajectoryLabels: Record<string, string> = {
-      ais_route_deviation: 'Route deviation',
-      ais_loitering: 'Loitering',
-      ais_silence: 'AIS silence',
-    };
-    const isAisTrajectory = Boolean(trajectoryLabels[anomaly.signalType]);
-    const sourceCoordinateMatch = anomaly.sourceId.match(/@(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
-    const sourceCorridorMatch = anomaly.sourceId.match(/^ais:[a-z_]+:([^@]+)@/i);
-    const corridorLabel = sourceCorridorMatch?.[1]
-      ? sourceCorridorMatch[1]
-        .split(/[\s_-]+/)
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ')
-      : '';
-    const trajectoryDiagnostic = anomaly.signalType === 'ais_silence'
-      ? 'Dark/silent vessel signal pattern'
-      : anomaly.signalType === 'ais_loitering'
-      ? 'Holding/queue behavior around chokepoints'
-      : anomaly.signalType === 'ais_route_deviation'
-      ? 'Route shift away from expected corridor'
-      : '';
-    const priorityPercent = Math.round((anomaly.monitorPriority || 0) * 100);
-    const deviation = anomaly.value - anomaly.calibrationCenter;
-    const deviationPct = Math.abs(anomaly.calibrationCenter) > 0
-      ? (deviation / Math.abs(anomaly.calibrationCenter)) * 100
-      : 0;
-    const significanceScore = Math.max(0, Math.min(100, Math.round(
-      (1 - Math.min(1, anomaly.pValue / 0.25)) * 65
-      + Math.min(25, Math.abs(anomaly.legacyZScore) * 7)
-      + Math.min(10, Math.max(0, anomaly.supportCount - 1) * 4),
-    )));
-    const observedAtLabel = anomaly.observedAt > 0
-      ? new Date(anomaly.observedAt).toLocaleString()
-      : t('popups.unknown');
-    const diagnosticSummary = anomaly.isNearLive
-      ? 'Live deviation pattern still active'
-      : Math.abs(anomaly.legacyZScore) >= 3
-      ? 'High-confidence structural deviation'
-      : 'Baseline deviation requiring follow-up';
-
-    const interpretationItems: string[] = [];
-    if (anomaly.isNearLive) {
-      interpretationItems.push(`Near-live anomaly at ${anomaly.region || 'global'} with ${priorityPercent}% monitor priority.`);
-    }
-    if (Math.abs(deviation) > 0) {
-      const sign = deviation >= 0 ? '+' : '';
-      interpretationItems.push(`Observed value ${Math.round(anomaly.value)} is ${sign}${Math.round(deviation)} from baseline center ${Math.round(anomaly.calibrationCenter)}.`);
-    }
-    if (isAisTrajectory && trajectoryDiagnostic) {
-      interpretationItems.push(trajectoryDiagnostic);
-    }
-    if (interpretationItems.length === 0) {
-      interpretationItems.push('Flagged by calibrated forensics model with elevated nonconformity.');
-    }
-
-    const actionItems: string[] = [];
-    if (anomaly.monitorCategory === 'market') {
-      actionItems.push('Cross-check correlated symbols and prediction contracts for spillover.');
-      actionItems.push('Review macro catalysts and event headlines in the last 6 hours.');
-    } else if (anomaly.monitorCategory === 'maritime') {
-      actionItems.push('Validate corridor status against AIS density and chokepoint disruptions.');
-      actionItems.push('Check for concurrent cable advisories and repair-ship movement.');
-    } else if (anomaly.monitorCategory === 'cyber') {
-      actionItems.push('Correlate with active threat IOCs and outage clusters in-region.');
-      actionItems.push('Escalate to incident triage if anomaly persists across refresh cycles.');
-    } else if (anomaly.monitorCategory === 'security') {
-      actionItems.push('Compare with military/protest layers for multi-signal convergence.');
-      actionItems.push('Prioritize regions with repeated high-severity anomalies.');
-    } else if (anomaly.monitorCategory === 'infrastructure') {
-      actionItems.push('Verify nearby critical assets and service degradation reports.');
-      actionItems.push('Track second-order risk to logistics, power, and communications.');
-    } else {
-      actionItems.push('Validate anomaly against supporting sources and recent event stream.');
-      actionItems.push('Monitor persistence across the next two run cycles.');
-    }
-
-    const provenanceLinks: Array<{ label: string; url: string }> = [];
-    const sourceId = anomaly.sourceId.toLowerCase();
-    const signalType = anomaly.signalType.toLowerCase();
-    if (sourceId.startsWith('market:')) {
-      const symbol = anomaly.sourceId.slice('market:'.length).trim().toUpperCase();
-      if (symbol) {
-        provenanceLinks.push({
-          label: `Yahoo Finance (${symbol})`,
-          url: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}`,
-        });
-      }
-    }
-    if (sourceId.startsWith('prediction:') || signalType.includes('prediction')) {
-      provenanceLinks.push({ label: 'Polymarket', url: 'https://polymarket.com/' });
-    }
-    if (signalType.includes('internet_outage')) {
-      provenanceLinks.push({ label: 'NetBlocks', url: 'https://netblocks.org/' });
-    }
-    if (signalType.includes('protest')) {
-      provenanceLinks.push({ label: 'ACLED', url: 'https://acleddata.com/' });
-    }
-    if (signalType.includes('ais') || signalType.includes('maritime')) {
-      provenanceLinks.push({ label: 'MarineTraffic', url: 'https://www.marinetraffic.com/' });
-    }
-    const query = `${anomaly.sourceId} ${anomaly.signalType} ${anomaly.region || 'global'} anomaly`;
-    provenanceLinks.push({
-      label: 'Web context',
-      url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
-    });
-    const provenanceHtml = provenanceLinks
-      .map((link) => {
-        const href = sanitizeUrl(link.url);
-        if (!href) return '';
-        return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="popup-tag popup-tag-link">${escapeHtml(link.label)}</a>`;
-      })
-      .filter(Boolean)
-      .join('');
-
-    return `
-      <div class="popup-header apt ${severityClass}">
-        <span class="popup-title">Forensics anomaly</span>
-        <span class="popup-badge ${severityClass}">${escapeHtml(severityLabel)}</span>
-        <button class="popup-close">×</button>
-      </div>
-      <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(anomaly.monitorLabel || anomaly.signalType)} · ${escapeHtml(anomaly.region || 'global')}</div>
-        <div class="forensics-popup-summary">
-          <span class="forensics-popup-chip">${escapeHtml(monitorCategoryLabel)}</span>
-          <span class="forensics-popup-chip">${escapeHtml(freshnessLabel)}</span>
-          <span class="forensics-popup-chip">priority ${priorityPercent}%</span>
-        </div>
-        <div class="forensics-popup-meter-wrap">
-          <div class="forensics-popup-meter-label">
-            <span>Anomaly confidence</span>
-            <span>${significanceScore}%</span>
-          </div>
-          <div class="forensics-popup-meter">
-            <div class="forensics-popup-meter-fill ${severityClass}" style="width:${significanceScore}%"></div>
-          </div>
-        </div>
-        <div class="popup-stats">
-          <div class="popup-stat">
-            <span class="stat-label">Monitor focus</span>
-            <span class="stat-value">${escapeHtml(monitorCategoryLabel)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Freshness</span>
-            <span class="stat-value">${escapeHtml(freshnessLabel)}</span>
-          </div>
-          ${isAisTrajectory ? `
-          <div class="popup-stat">
-            <span class="stat-label">Trajectory class</span>
-            <span class="stat-value">${escapeHtml(trajectoryLabels[anomaly.signalType] || anomaly.signalType)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Corridor</span>
-            <span class="stat-value">${escapeHtml(corridorLabel || anomaly.region || 'Unknown')}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Trajectory point</span>
-            <span class="stat-value">${sourceCoordinateMatch?.[1] && sourceCoordinateMatch?.[2]
-              ? `${Number(sourceCoordinateMatch[1]).toFixed(3)}, ${Number(sourceCoordinateMatch[2]).toFixed(3)}`
-              : `${anomaly.lat.toFixed(3)}, ${anomaly.lon.toFixed(3)}`}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Interpretation</span>
-            <span class="stat-value">${escapeHtml(trajectoryDiagnostic || diagnosticSummary)}</span>
-          </div>
-          ` : ''}
-          <div class="popup-stat">
-            <span class="stat-label">P-value</span>
-            <span class="stat-value">${anomaly.pValue.toFixed(4)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Legacy z-score</span>
-            <span class="stat-value">${anomaly.legacyZScore.toFixed(2)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Observed value</span>
-            <span class="stat-value">${Math.round(anomaly.value)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Calibration center</span>
-            <span class="stat-value">${Math.round(anomaly.calibrationCenter)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Deviation</span>
-            <span class="stat-value">${deviation >= 0 ? '+' : ''}${Math.round(deviation)} (${deviationPct >= 0 ? '+' : ''}${deviationPct.toFixed(1)}%)</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Agreement</span>
-            <span class="stat-value">${anomaly.supportCount} source(s)</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Source</span>
-            <span class="stat-value">${escapeHtml(anomaly.sourceId)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Priority</span>
-            <span class="stat-value">${(anomaly.monitorPriority * 100).toFixed(0)}%</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Observed at</span>
-            <span class="stat-value">${escapeHtml(observedAtLabel)}</span>
-          </div>
-        </div>
-        <div class="popup-section">
-          <span class="section-label">Interpretation</span>
-          <ul class="popup-list forensics-popup-list">
-            ${interpretationItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
-          </ul>
-        </div>
-        <div class="popup-section">
-          <span class="section-label">Analyst playbook</span>
-          <ul class="popup-list forensics-popup-list">
-            ${actionItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
-          </ul>
-        </div>
-        <div class="popup-section">
-          <span class="section-label">Source context</span>
-          <div class="popup-tags forensics-popup-links">
-            ${provenanceHtml || '<span class="popup-tag">No source links</span>'}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-
-  private renderForensicsTopologyWindowPopup(entry: ForensicsTopologyWindowOverlay): string {
-    const deltaSign = entry.delta >= 0 ? '+' : '';
-    const slopeSign = entry.slope >= 0 ? '+' : '';
-    const deltaClass = entry.delta > 0.5 ? 'elevated' : entry.delta < -0.5 ? 'low' : 'neutral';
-    const sparkline = buildTopologySparkline(entry.historicalValues ?? []);
-    return `
-      <div class="popup-header apt ${deltaClass}">
-        <span class="popup-title">Topology Window</span>
-        <span class="popup-badge ${deltaClass}">${escapeHtml(entry.metric)}</span>
-        <button class="popup-close">×</button>
-      </div>
-      <div class="popup-body">
-        <div class="popup-subtitle">${escapeHtml(entry.label)} · ${escapeHtml(entry.region)}</div>
-        ${sparkline ? `<div class="popup-sparkline" style="margin:6px 0 2px;opacity:0.85;">${sparkline}</div>` : ''}
-        <div class="popup-stats">
-          <div class="popup-stat">
-            <span class="stat-label">Metric</span>
-            <span class="stat-value">${escapeHtml(entry.metric)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Region</span>
-            <span class="stat-value">${escapeHtml(entry.region)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Latest value</span>
-            <span class="stat-value">${entry.latestValue.toFixed(4)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Short mean</span>
-            <span class="stat-value">${entry.shortMean.toFixed(4)} (${entry.shortWindowRuns} runs)</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Long mean</span>
-            <span class="stat-value">${entry.longMean.toFixed(4)} (${entry.longWindowRuns} runs)</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Delta</span>
-            <span class="stat-value">${deltaSign}${entry.delta.toFixed(4)}</span>
-          </div>
-          <div class="popup-stat">
-            <span class="stat-label">Slope</span>
-            <span class="stat-value">${slopeSign}${entry.slope.toFixed(4)}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }
 
   private renderCyberThreatPopup(threat: CyberThreat): string {
     const severityClass = escapeHtml(threat.severity);
@@ -2847,6 +2584,91 @@ export class MapPopup {
           </div>
         ` : ''}
         ${hub.description ? `<p class="popup-description">${escapeHtml(hub.description)}</p>` : ''}
+      </div>
+    `;
+  }
+
+  private normalizeSeverity(s: string): 'high' | 'medium' | 'low' {
+    const v = (s || '').trim().toLowerCase();
+    if (v === 'high') return 'high';
+    if (v === 'medium') return 'medium';
+    return 'low';
+  }
+
+  private renderIranEventPopup(event: IranEventPopupData): string {
+    const severity = this.normalizeSeverity(event.severity);
+    const timeAgo = event.timestamp ? this.getTimeAgo(new Date(event.timestamp)) : '';
+    const safeUrl = sanitizeUrl(event.sourceUrl);
+
+    const relatedHtml = event.relatedEvents && event.relatedEvents.length > 0 ? `
+        <div class="popup-section">
+          <span class="section-label">${t('popups.iranEvent.relatedEvents')}</span>
+          <ul class="cluster-list">
+            ${event.relatedEvents.map(r => {
+              const rSev = this.normalizeSeverity(r.severity);
+              const rTime = r.timestamp ? this.getTimeAgo(new Date(r.timestamp)) : '';
+              const rTitle = r.title.length > 60 ? r.title.slice(0, 60) + '…' : r.title;
+              return `<li class="cluster-item"><span class="popup-badge ${rSev}" style="font-size:9px;padding:1px 4px;">${escapeHtml(rSev.toUpperCase())}</span> ${escapeHtml(rTitle)}${rTime ? ` <span style="color:var(--text-muted);font-size:10px;">${escapeHtml(rTime)}</span>` : ''}</li>`;
+            }).join('')}
+          </ul>
+        </div>` : '';
+
+    return `
+      <div class="popup-header iranEvent ${severity}">
+        <span class="popup-title">${escapeHtml(event.title)}</span>
+        <span class="popup-badge ${severity}">${escapeHtml(severity.toUpperCase())}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.type')}</span>
+            <span class="stat-value">${escapeHtml(event.category)}</span>
+          </div>
+          ${event.locationName ? `<div class="popup-stat">
+            <span class="stat-label">${t('popups.location')}</span>
+            <span class="stat-value">${escapeHtml(event.locationName)}</span>
+          </div>` : ''}
+          ${timeAgo ? `<div class="popup-stat">
+            <span class="stat-label">${t('popups.time')}</span>
+            <span class="stat-value">${escapeHtml(timeAgo)}</span>
+          </div>` : ''}
+        </div>
+        ${relatedHtml}
+        ${safeUrl ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" class="popup-link">${t('popups.source')} →</a>` : ''}
+      </div>
+    `;
+  }
+
+  private renderGpsJammingPopup(data: GpsJammingPopupData): string {
+    const isHigh = data.level === 'high';
+    const badgeClass = isHigh ? 'critical' : 'medium';
+    const headerColor = isHigh ? '#ff5050' : '#ffb432';
+    return `
+      <div class="popup-header" style="background:${headerColor}">
+        <span class="popup-title">${t('popups.gpsJamming.title')}</span>
+        <span class="popup-badge ${badgeClass}">${escapeHtml(data.level.toUpperCase())}</span>
+        <button class="popup-close">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.gpsJamming.interference')}</span>
+            <span class="stat-value">${data.pct}%</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.gpsJamming.aircraftAffected')}</span>
+            <span class="stat-value">${data.bad} / ${data.total}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.gpsJamming.aircraftNormal')}</span>
+            <span class="stat-value">${data.good}</span>
+          </div>
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.gpsJamming.h3Hex')}</span>
+            <span class="stat-value" style="font-size:10px">${escapeHtml(data.h3)}</span>
+          </div>
+        </div>
       </div>
     `;
   }

@@ -68,72 +68,68 @@ function markSignalSeen(key: string): void {
 
 // Worker message handler
 self.onmessage = (event: MessageEvent<WorkerMessage>) => {
-  try {
-    const message = event.data;
+  const message = event.data;
 
-    switch (message.type) {
-      case 'cluster': {
-        // Deserialize dates (they come as strings over postMessage)
-        const items = message.items.map(item => ({
+  switch (message.type) {
+    case 'cluster': {
+      // Deserialize dates (they come as strings over postMessage)
+      const items = message.items.map(item => ({
+        ...item,
+        pubDate: new Date(item.pubDate),
+      }));
+
+      const getSourceTier = (source: string): number => message.sourceTiers[source] ?? 4;
+      const clusters = clusterNewsCore(items, getSourceTier);
+
+      const result: ClusterResult = {
+        type: 'cluster-result',
+        id: message.id,
+        clusters,
+      };
+      self.postMessage(result);
+      break;
+    }
+
+    case 'correlation': {
+      // Deserialize dates in clusters
+      const clusters = message.clusters.map(cluster => ({
+        ...cluster,
+        firstSeen: new Date(cluster.firstSeen),
+        lastUpdated: new Date(cluster.lastUpdated),
+        allItems: cluster.allItems.map(item => ({
           ...item,
           pubDate: new Date(item.pubDate),
-        }));
+        })),
+      }));
 
-        const getSourceTier = (source: string): number => message.sourceTiers[source] ?? 4;
-        const clusters = clusterNewsCore(items, getSourceTier);
+      const getSourceType = (source: string): SourceType => message.sourceTypes[source] ?? 'other';
 
-        const result: ClusterResult = {
-          type: 'cluster-result',
-          id: message.id,
-          clusters,
-        };
-        self.postMessage(result);
-        break;
-      }
+      const { signals, snapshot } = analyzeCorrelationsCore(
+        clusters,
+        message.predictions,
+        message.markets,
+        previousSnapshot,
+        getSourceType,
+        isRecentDuplicate,
+        markSignalSeen
+      );
 
-      case 'correlation': {
-        // Deserialize dates in clusters
-        const clusters = message.clusters.map(cluster => ({
-          ...cluster,
-          firstSeen: new Date(cluster.firstSeen),
-          lastUpdated: new Date(cluster.lastUpdated),
-          allItems: cluster.allItems.map(item => ({
-            ...item,
-            pubDate: new Date(item.pubDate),
-          })),
-        }));
+      previousSnapshot = snapshot;
 
-        const getSourceType = (source: string): SourceType => message.sourceTypes[source] ?? 'other';
-
-        const { signals, snapshot } = analyzeCorrelationsCore(
-          clusters,
-          message.predictions,
-          message.markets,
-          previousSnapshot,
-          getSourceType,
-          isRecentDuplicate,
-          markSignalSeen
-        );
-
-        previousSnapshot = snapshot;
-
-        const result: CorrelationResult = {
-          type: 'correlation-result',
-          id: message.id,
-          signals,
-        };
-        self.postMessage(result);
-        break;
-      }
-
-      case 'reset': {
-        previousSnapshot = null;
-        recentSignalKeys.clear();
-        break;
-      }
+      const result: CorrelationResult = {
+        type: 'correlation-result',
+        id: message.id,
+        signals,
+      };
+      self.postMessage(result);
+      break;
     }
-  } catch (err) {
-    self.postMessage({ type: 'error', error: String(err) });
+
+    case 'reset': {
+      previousSnapshot = null;
+      recentSignalKeys.clear();
+      break;
+    }
   }
 };
 

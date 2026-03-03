@@ -2,15 +2,18 @@
  * RPC: getEnergyPrices -- EIA Open Data API v2
  * Energy commodity price data (WTI, Brent, etc.)
  */
-
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetEnergyPricesRequest,
   GetEnergyPricesResponse,
   EnergyPrice,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
+
+import { CHROME_UA } from '../../../_shared/constants';
+import { cachedFetchJson } from '../../../_shared/redis';
+
+const REDIS_CACHE_KEY = 'economic:energy:v1';
+const REDIS_CACHE_TTL = 3600; // 1 hr — weekly EIA data
 
 interface EiaSeriesConfig {
   commodity: string;
@@ -53,7 +56,7 @@ async function fetchEiaSeries(
     });
 
     const response = await fetch(`https://api.eia.gov${config.apiPath}?${params}`, {
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(10000),
     });
 
@@ -104,8 +107,12 @@ export async function getEnergyPrices(
   req: GetEnergyPricesRequest,
 ): Promise<GetEnergyPricesResponse> {
   try {
-    const prices = await fetchEnergyPrices(req.commodities);
-    return { prices };
+    const cacheKey = `${REDIS_CACHE_KEY}:${[...req.commodities].sort().join(',') || 'all'}`;
+    const result = await cachedFetchJson<GetEnergyPricesResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
+      const prices = await fetchEnergyPrices(req.commodities);
+      return prices.length > 0 ? { prices } : null;
+    });
+    return result || { prices: [] };
   } catch {
     return { prices: [] };
   }

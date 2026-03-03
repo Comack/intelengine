@@ -4,7 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { ListStablecoinMarketsResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
 
-export type StablecoinResult = ListStablecoinMarketsResponse;
+type StablecoinResult = ListStablecoinMarketsResponse;
 
 function formatLargeNum(v: number): string {
   if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
@@ -29,40 +29,40 @@ export class StablecoinPanel extends Panel {
   private data: StablecoinResult | null = null;
   private loading = true;
   private error: string | null = null;
-  private onDataUpdated: ((data: StablecoinResult) => void) | null = null;
-  private refreshInterval: ReturnType<typeof setInterval> | null = null;
-
   constructor() {
     super({ id: 'stablecoins', title: t('panels.stablecoins'), showCount: false });
     void this.fetchData();
-    this.refreshInterval = setInterval(() => this.fetchData(), 3 * 60000);
   }
 
-  public destroy(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
+  public async fetchData(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const client = new MarketServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+        this.data = await client.listStablecoinMarkets({ coins: [] });
+        if (!this.element?.isConnected) return;
+        this.error = null;
+
+        if (this.data && this.data.stablecoins.length === 0 && attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          if (!this.element?.isConnected) return;
+          continue;
+        }
+        break;
+      } catch (err) {
+        if (this.isAbortError(err)) return;
+        if (!this.element?.isConnected) return;
+        if (attempt < 2) {
+          this.showRetrying();
+          await new Promise(r => setTimeout(r, 20_000));
+          if (!this.element?.isConnected) return;
+          continue;
+        }
+        this.error = err instanceof Error ? err.message : 'Failed to fetch';
+      }
     }
-  }
-
-  public setOnDataUpdated(cb: ((data: StablecoinResult) => void) | null): void {
-    this.onDataUpdated = cb;
-    if (cb && this.data) cb(this.data);
-  }
-
-  private async fetchData(): Promise<void> {
-    try {
-      const client = new MarketServiceClient('', { fetch: fetch.bind(globalThis) });
-      this.data = await client.listStablecoinMarkets({ coins: [] });
-      this.error = null;
-      this.onDataUpdated?.(this.data);
-    } catch (err) {
-      if (this.isAbortError(err)) return;
-      this.error = err instanceof Error ? err.message : 'Failed to fetch';
-    } finally {
-      this.loading = false;
-      this.renderPanel();
-    }
+    this.loading = false;
+    this.renderPanel();
   }
 
   private renderPanel(): void {

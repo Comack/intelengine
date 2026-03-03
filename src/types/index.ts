@@ -1,3 +1,9 @@
+export interface DeductContextDetail {
+  query?: string;
+  geoContext: string;
+  autoSubmit?: boolean;
+}
+
 export type PropagandaRisk = 'low' | 'medium' | 'high';
 
 export interface Feed {
@@ -25,6 +31,10 @@ export interface NewsItem {
   lon?: number;
   locationName?: string;
   lang?: string;
+  // Happy variant: positive content category
+  happyCategory?: import('@/services/positive-classifier').HappyContentCategory;
+  // Image URL extracted from RSS media/enclosure tags
+  imageUrl?: string;
 }
 
 export type VelocityLevel = 'normal' | 'elevated' | 'spike';
@@ -97,7 +107,6 @@ export interface MarketData {
   price: number | null;
   change: number | null;
   sparkline?: number[];
-  observedAt?: number;
 }
 
 export interface CryptoData {
@@ -171,7 +180,6 @@ export interface AisDisruptionEvent {
   type: AisDisruptionType;
   lat: number;
   lon: number;
-  observedAt?: number;
   severity: 'low' | 'elevated' | 'high';
   changePct: number;
   windowHours: number;
@@ -220,49 +228,6 @@ export interface CyberThreat {
   tags: string[];
   firstSeen?: string;
   lastSeen?: string;
-}
-
-export interface ForensicsAnomalyOverlay {
-  id: string;
-  runId: string;
-  sourceId: string;
-  region: string;
-  domain: string;
-  signalType: string;
-  observedAt: number;
-  monitorCategory: 'market' | 'maritime' | 'cyber' | 'infrastructure' | 'security' | 'other';
-  monitorLabel: string;
-  monitorPriority: number;
-  ageMinutes: number;
-  isNearLive: boolean;
-  value: number;
-  pValue: number;
-  legacyZScore: number;
-  calibrationCenter: number;
-  severity: 'low' | 'medium' | 'high' | 'unspecified';
-  isAnomaly: boolean;
-  supportCount: number;
-  lat: number;
-  lon: number;
-  evidenceIds: string[];
-}
-
-export interface ForensicsTopologyWindowOverlay {
-  id: string;
-  metric: string;
-  label: string;
-  region: string;
-  latestValue: number;
-  shortMean: number;
-  longMean: number;
-  delta: number;
-  slope: number;
-  shortWindowRuns: number;
-  longWindowRuns: number;
-  lat: number;
-  lon: number;
-  countryCode?: string;        // ISO 3166-1 Alpha-2 for GeoJSON polygon matching
-  historicalValues?: number[]; // Last ~8 point values (chron order) for sparkline
 }
 
 export interface ConflictZone {
@@ -343,6 +308,16 @@ export interface MilitaryBase {
   arm?: string;               // Armed forces branch (Navy, Air Force, Army, etc.)
   status?: 'active' | 'planned' | 'controversial' | 'closed';
   source?: string;            // Reference URL
+}
+
+export interface MilitaryBaseEnriched extends MilitaryBase {
+  kind?: string;
+  tier?: number;
+  catAirforce?: boolean;
+  catNaval?: boolean;
+  catNuclear?: boolean;
+  catSpace?: boolean;
+  catTraining?: boolean;
 }
 
 export interface CableLandingPoint {
@@ -538,7 +513,6 @@ export interface MapLayers {
   economic: boolean;
   waterways: boolean;
   outages: boolean;
-  forensics: boolean;
   cyberThreats: boolean;
   datacenters: boolean;
   protests: boolean;
@@ -565,14 +539,20 @@ export interface MapLayers {
   commodityHubs: boolean;
   // Gulf FDI layers
   gulfInvestments: boolean;
-  // Signal expansion layers
-  routingAnomalies: boolean;
-  gridStatus: boolean;
-  sarDetections: boolean;
-  portCongestion: boolean;
-  whaleTransfers: boolean;
-  airQuality: boolean;
-  satellites: boolean;
+  // Happy variant layers
+  positiveEvents: boolean;
+  kindness: boolean;
+  happiness: boolean;
+  speciesRecovery: boolean;
+  renewableInstallations: boolean;
+  // Trade route layers
+  tradeRoutes: boolean;
+  // Iran attacks layer
+  iranAttacks: boolean;
+  // GPS/GNSS interference layer
+  gpsJamming: boolean;
+  // Overlay layers
+  dayNight: boolean;
 }
 
 export interface AIDataCenter {
@@ -1269,6 +1249,7 @@ export interface GulfInvestment {
 
 export interface MapProtestCluster {
   id: string;
+  _clusterId?: number;
   lat: number;
   lon: number;
   count: number;
@@ -1286,6 +1267,7 @@ export interface MapProtestCluster {
 
 export interface MapTechHQCluster {
   id: string;
+  _clusterId?: number;
   lat: number;
   lon: number;
   count: number;
@@ -1301,6 +1283,7 @@ export interface MapTechHQCluster {
 
 export interface MapTechEventCluster {
   id: string;
+  _clusterId?: number;
   lat: number;
   lon: number;
   count: number;
@@ -1314,6 +1297,7 @@ export interface MapTechEventCluster {
 
 export interface MapDatacenterCluster {
   id: string;
+  _clusterId?: number;
   lat: number;
   lon: number;
   count: number;

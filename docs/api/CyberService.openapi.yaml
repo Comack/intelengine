@@ -4,18 +4,58 @@ info:
     version: 1.0.0
 paths:
     /api/cyber/v1/list-cyber-threats:
-        post:
+        get:
             tags:
                 - CyberService
             summary: ListCyberThreats
             description: ListCyberThreats retrieves threat indicators from multiple intelligence sources.
             operationId: ListCyberThreats
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListCyberThreatsRequest'
-                required: true
+            parameters:
+                - name: start
+                  in: query
+                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: end
+                  in: query
+                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: page_size
+                  in: query
+                  description: Maximum items per page (1-100).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: type
+                  in: query
+                  description: Optional threat type filter.
+                  required: false
+                  schema:
+                    type: string
+                - name: source
+                  in: query
+                  description: Optional source filter.
+                  required: false
+                  schema:
+                    type: string
+                - name: min_severity
+                  in: query
+                  description: Optional minimum criticality filter.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -23,70 +63,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ListCyberThreatsResponse'
-                "400":
-                    description: Validation error
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-    /api/cyber/v1/list-exploited-vulnerabilities:
-        post:
-            tags:
-                - CyberService
-            summary: ListExploitedVulnerabilities
-            description: ListExploitedVulnerabilities retrieves the CISA KEV catalog.
-            operationId: ListExploitedVulnerabilities
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListExploitedVulnerabilitiesRequest'
-                required: true
-            responses:
-                "200":
-                    description: Successful response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListExploitedVulnerabilitiesResponse'
-                "400":
-                    description: Validation error
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-    /api/cyber/v1/list-info-ops-signals:
-        post:
-            tags:
-                - CyberService
-            summary: ListInfoOpsSignals
-            description: ListInfoOpsSignals detects Wikipedia editing anomalies on geopolitically relevant pages.
-            operationId: ListInfoOpsSignals
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListInfoOpsSignalsRequest'
-                required: true
-            responses:
-                "200":
-                    description: Successful response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListInfoOpsSignalsResponse'
                 "400":
                     description: Validation error
                     content:
@@ -135,10 +111,21 @@ components:
         ListCyberThreatsRequest:
             type: object
             properties:
-                timeRange:
-                    $ref: '#/components/schemas/TimeRange'
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                start:
+                    type: integer
+                    format: int64
+                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                end:
+                    type: integer
+                    format: int64
+                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page (1-100).
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 type:
                     type: string
                     enum:
@@ -174,33 +161,6 @@ components:
                         CriticalityLevel represents a four-tier criticality classification for cyber and risk domains.
                          Maps to existing TS union: 'low' | 'medium' | 'high' | 'critical'.
             description: ListCyberThreatsRequest specifies filters for retrieving cyber threat indicators.
-        TimeRange:
-            type: object
-            properties:
-                start:
-                    type: integer
-                    format: int64
-                    description: 'Start of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-                end:
-                    type: integer
-                    format: int64
-                    description: 'End of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-            description: |-
-                TimeRange represents a time interval defined by a start and end timestamp.
-                 Used for filtering data within a specific time period.
-        PaginationRequest:
-            type: object
-            properties:
-                pageSize:
-                    type: integer
-                    maximum: 100
-                    minimum: 1
-                    format: int32
-                    description: Maximum number of items to return per page (1 to 100).
-                cursor:
-                    type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
         ListCyberThreatsResponse:
             type: object
             properties:
@@ -318,95 +278,3 @@ components:
                     format: int32
                     description: Total count of items matching the query, if known. Zero if the total is unknown.
             description: PaginationResponse contains pagination metadata returned alongside list results.
-        ListExploitedVulnerabilitiesRequest:
-            type: object
-            properties:
-                limit:
-                    type: integer
-                    format: int32
-        ListExploitedVulnerabilitiesResponse:
-            type: object
-            properties:
-                vulnerabilities:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/ExploitedVulnerability'
-        ExploitedVulnerability:
-            type: object
-            properties:
-                cveId:
-                    type: string
-                vendorProject:
-                    type: string
-                product:
-                    type: string
-                vulnerabilityName:
-                    type: string
-                dateAdded:
-                    type: string
-                shortDescription:
-                    type: string
-                requiredAction:
-                    type: string
-                dueDate:
-                    type: string
-                notes:
-                    type: string
-        ListInfoOpsSignalsRequest:
-            type: object
-            properties:
-                limit:
-                    type: integer
-                    format: int32
-                    description: Maximum signals to return (default 100).
-            description: ListInfoOpsSignalsRequest filters information operations signal queries.
-        ListInfoOpsSignalsResponse:
-            type: object
-            properties:
-                signals:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/InfoOpsSignal'
-                sampledAt:
-                    type: string
-                    format: int64
-                    description: Unix milliseconds when the relay buffer was sampled.
-            description: ListInfoOpsSignalsResponse contains detected Wikipedia editing anomalies.
-        InfoOpsSignal:
-            type: object
-            properties:
-                id:
-                    type: string
-                    description: Unique signal identifier.
-                pageTitle:
-                    type: string
-                    description: Wikipedia article title triggering the signal.
-                wiki:
-                    type: string
-                    description: Wikipedia language edition, e.g. "enwiki" or "ruwiki".
-                editType:
-                    type: string
-                    description: 'Detected editing pattern: rapid_revert | edit_war | mass_delete | new_article.'
-                editCount1h:
-                    type: integer
-                    format: int32
-                    description: Number of edits to this article in the last hour.
-                uniqueEditors1h:
-                    type: integer
-                    format: int32
-                    description: Number of unique editors in the last hour.
-                botTraffic:
-                    type: boolean
-                    description: Whether bot accounts are among the top editors.
-                geopoliticalRelevance:
-                    type: number
-                    format: double
-                    description: Geopolitical relevance score (0–1) based on entity registry matching.
-                matchedEntity:
-                    type: string
-                    description: Entity from the registry that matched the page title.
-                detectedAt:
-                    type: string
-                    format: int64
-                    description: Unix milliseconds when the anomaly was detected.
-            description: InfoOpsSignal represents a detected Wikipedia editing anomaly on a geopolitically relevant page.

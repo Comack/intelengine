@@ -10,7 +10,19 @@ export interface PredictionMarket {
   yesPrice: number;     // 0-100 scale (legacy compat)
   volume?: number;
   url?: string;
-  observedAt?: number;
+  endDate?: string;
+}
+
+function parseEndDate(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? raw : undefined;
+}
+
+function isExpired(endDate?: string): boolean {
+  if (!endDate) return false;
+  const ms = Date.parse(endDate);
+  return Number.isFinite(ms) && ms < Date.now();
 }
 
 // Internal Gamma API interfaces
@@ -22,9 +34,6 @@ interface PolymarketMarket {
   volumeNum?: number;
   closed?: boolean;
   slug?: string;
-  updatedAt?: string;
-  createdAt?: string;
-  startDate?: string;
   endDate?: string;
 }
 
@@ -37,56 +46,42 @@ interface PolymarketEvent {
   markets?: PolymarketMarket[];
   tags?: Array<{ slug: string }>;
   closed?: boolean;
-  updatedAt?: string;
-  createdAt?: string;
-  startDate?: string;
   endDate?: string;
 }
 
 // Internal constants and state
 const GAMMA_API = 'https://gamma-api.polymarket.com';
 
-// Railway relay URL for Polymarket proxy (Cloudflare JA3 blocks Vercel)
+// Polymarket proxy URL (Vercel server route injects Railway secret server-side)
+const POLYMARKET_PROXY_URL = '/api/polymarket';
 const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
-const RAILWAY_POLY_URL = wsRelayUrl
+const DIRECT_RAILWAY_POLY_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/polymarket'
   : '';
+const isLocalhostRuntime = typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const PROXY_STRIP_KEYS = new Set(['end_date_min', 'active', 'archived']);
 
-const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket' });
+const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 // Sebuf client for strategy 4
-const client = new PredictionServiceClient('', { fetch: fetch.bind(globalThis) });
+const client = new PredictionServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
 // Track whether direct browser->Polymarket fetch works
 // Cloudflare blocks server-side TLS but browsers pass JA3 fingerprint checks
 let directFetchWorks: boolean | null = null;
 let directFetchProbe: Promise<boolean> | null = null;
-let loggedDirectFetchBlocked = false;
-
-function logDirectFetchBlockedOnce(): void {
-  if (loggedDirectFetchBlocked) return;
-  loggedDirectFetchBlocked = true;
-  console.log('[Polymarket] Direct fetch blocked by Cloudflare, using proxy');
-}
-
 async function probeDirectFetchCapability(): Promise<boolean> {
   if (directFetchWorks !== null) return directFetchWorks;
   if (!directFetchProbe) {
-    directFetchProbe = fetch(`${GAMMA_API}/events?closed=false&order=volume&ascending=false&limit=1`, {
+    directFetchProbe = fetch(`${GAMMA_API}/events?closed=false&active=true&archived=false&order=volume&ascending=false&limit=1`, {
       headers: { 'Accept': 'application/json' },
     })
       .then(resp => {
         directFetchWorks = resp.ok;
-        if (directFetchWorks) {
-          console.log('[Polymarket] Direct browser fetch working');
-        } else {
-          logDirectFetchBlockedOnce();
-        }
         return directFetchWorks;
       })
       .catch(() => {
         directFetchWorks = false;
-        logDirectFetchBlockedOnce();
         return false;
       })
       .finally(() => {
@@ -107,13 +102,11 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
         headers: { 'Accept': 'application/json' },
       });
       if (resp.ok) {
-        if (directFetchWorks !== true) console.log('[Polymarket] Direct browser fetch working');
         directFetchWorks = true;
         return resp;
       }
     } catch {
       directFetchWorks = false;
-      logDirectFetchBlockedOnce();
     }
   }
 
@@ -130,17 +123,26 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
     } catch { /* Tauri command failed, fall through to proxy */ }
   }
 
-  // Proxy params (expects 'tag' not 'tag_slug' for Vercel handler)
   const proxyParams: Record<string, string> = { endpoint };
   for (const [k, v] of Object.entries(params)) {
+    if (PROXY_STRIP_KEYS.has(k)) continue;
     proxyParams[k === 'tag_slug' ? 'tag' : k] = v;
   }
   const proxyQs = new URLSearchParams(proxyParams).toString();
 
-  // Try Railway relay (different IP/TLS fingerprint than Vercel)
-  if (RAILWAY_POLY_URL) {
+  // Try Vercel proxy first; it forwards to Railway with server-side auth headers.
+  try {
+    const resp = await fetch(`${POLYMARKET_PROXY_URL}?${proxyQs}`);
+    if (resp.ok) {
+      const data = await resp.clone().json();
+      if (Array.isArray(data) && data.length > 0) return resp;
+    }
+  } catch { /* Proxy unavailable */ }
+
+  // Local development fallback: allow direct Railway requests.
+  if (isLocalhostRuntime && DIRECT_RAILWAY_POLY_URL) {
     try {
-      const resp = await fetch(`${RAILWAY_POLY_URL}?${proxyQs}`);
+      const resp = await fetch(`${DIRECT_RAILWAY_POLY_URL}?${proxyQs}`);
       if (resp.ok) {
         const data = await resp.clone().json();
         if (Array.isArray(data) && data.length > 0) return resp;
@@ -153,7 +155,8 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
     const resp = await client.listPredictionMarkets({
       category: params.tag_slug ?? '',
       query: '',
-      pagination: { pageSize: parseInt(params.limit ?? '50', 10), cursor: '' },
+      pageSize: parseInt(params.limit ?? '50', 10),
+      cursor: '',
     });
     if (resp.markets && resp.markets.length > 0) {
       // Convert proto PredictionMarket[] to Gamma-compatible Response
@@ -165,6 +168,7 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
         outcomePrices: JSON.stringify([String(m.yesPrice), String(1 - m.yesPrice)]),
         volumeNum: m.volume,
         slug: m.id,
+        endDate: m.closesAt ? new Date(m.closesAt).toISOString() : undefined,
       }));
       return new Response(JSON.stringify(endpoint === 'events'
         ? [{ id: 'sebuf', title: gammaData[0]?.question, slug: '', volume: 0, markets: gammaData }]
@@ -173,8 +177,8 @@ async function polyFetch(endpoint: 'events' | 'markets', params: Record<string, 
     }
   } catch { /* sebuf handler failed (Cloudflare expected) */ }
 
-  // Final fallback: hit production endpoint directly
-  return fetch(`https://worldmonitor.app/api/polymarket?${proxyQs}`);
+  // Final fallback: same-origin proxy
+  return fetch(`${POLYMARKET_PROXY_URL}?${proxyQs}`);
 }
 
 const GEOPOLITICAL_TAGS = [
@@ -216,26 +220,6 @@ function parseMarketPrice(market: PolymarketMarket): number {
   return 50;
 }
 
-function parseTimestamp(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    // Normalize second-resolution timestamps into milliseconds.
-    return value < 1e11 ? Math.round(value * 1000) : Math.round(value);
-  }
-  if (typeof value === 'string') {
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return 0;
-}
-
-function resolveObservedAt(...values: unknown[]): number {
-  for (const value of values) {
-    const parsed = parseTimestamp(value);
-    if (parsed > 0) return parsed;
-  }
-  return Date.now();
-}
-
 function buildMarketUrl(eventSlug?: string, marketSlug?: string): string | undefined {
   if (eventSlug) return `https://polymarket.com/event/${eventSlug}`;
   if (marketSlug) return `https://polymarket.com/market/${marketSlug}`;
@@ -246,6 +230,9 @@ async function fetchEventsByTag(tag: string, limit = 30): Promise<PolymarketEven
   const response = await polyFetch('events', {
     tag_slug: tag,
     closed: 'false',
+    active: 'true',
+    archived: 'false',
+    end_date_min: new Date().toISOString(),
     order: 'volume',
     ascending: 'false',
     limit: String(limit),
@@ -256,9 +243,11 @@ async function fetchEventsByTag(tag: string, limit = 30): Promise<PolymarketEven
 }
 
 async function fetchTopMarkets(): Promise<PredictionMarket[]> {
-  const fetchObservedAt = Date.now();
   const response = await polyFetch('markets', {
     closed: 'false',
+    active: 'true',
+    archived: 'false',
+    end_date_min: new Date().toISOString(),
     order: 'volume',
     ascending: 'false',
     limit: '100',
@@ -276,20 +265,13 @@ async function fetchTopMarkets(): Promise<PredictionMarket[]> {
         yesPrice,
         volume,
         url: buildMarketUrl(undefined, m.slug),
-        observedAt: resolveObservedAt(
-          m.updatedAt,
-          m.createdAt,
-          m.endDate,
-          m.startDate,
-          fetchObservedAt,
-        ),
+        endDate: parseEndDate(m.endDate),
       };
     });
 }
 
 export async function fetchPredictions(): Promise<PredictionMarket[]> {
   return breaker.execute(async () => {
-    const fetchObservedAt = Date.now();
     const tags = SITE_VARIANT === 'tech' ? TECH_TAGS : GEOPOLITICAL_TAGS;
 
     const eventResults = await Promise.all(tags.map(tag => fetchEventsByTag(tag, 20)));
@@ -308,29 +290,23 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
         if (eventVolume < 1000) continue;
 
         if (event.markets && event.markets.length > 0) {
-          const topMarket = event.markets.reduce((best, m) => {
+          const activeCandidates = event.markets.filter(m =>
+            !m.closed && !isExpired(m.endDate)
+          );
+          if (activeCandidates.length === 0) continue;
+
+          const topMarket = activeCandidates.reduce((best, m) => {
             const vol = m.volumeNum ?? (m.volume ? parseFloat(m.volume) : 0);
             const bestVol = best.volumeNum ?? (best.volume ? parseFloat(best.volume) : 0);
             return vol > bestVol ? m : best;
           });
 
-          const yesPrice = parseMarketPrice(topMarket);
           markets.push({
             title: topMarket.question || event.title,
-            yesPrice,
+            yesPrice: parseMarketPrice(topMarket),
             volume: eventVolume,
             url: buildMarketUrl(event.slug),
-            observedAt: resolveObservedAt(
-              topMarket.updatedAt,
-              topMarket.createdAt,
-              topMarket.endDate,
-              topMarket.startDate,
-              event.updatedAt,
-              event.createdAt,
-              event.endDate,
-              event.startDate,
-              fetchObservedAt,
-            ),
+            endDate: parseEndDate(topMarket.endDate ?? event.endDate),
           });
         } else {
           markets.push({
@@ -338,13 +314,7 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
             yesPrice: 50,
             volume: eventVolume,
             url: buildMarketUrl(event.slug),
-            observedAt: resolveObservedAt(
-              event.updatedAt,
-              event.createdAt,
-              event.endDate,
-              event.startDate,
-              fetchObservedAt,
-            ),
+            endDate: parseEndDate(event.endDate),
           });
         }
       }
@@ -363,6 +333,7 @@ export async function fetchPredictions(): Promise<PredictionMarket[]> {
 
     // Sort by volume descending, then filter for meaningful signal
     const result = markets
+      .filter(m => !isExpired(m.endDate))
       .filter(m => {
         const discrepancy = Math.abs(m.yesPrice - 50);
         return discrepancy > 5 || (m.volume && m.volume > 50000);
@@ -468,7 +439,6 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
   const variants = getCountryVariants(country);
 
   try {
-    const fetchObservedAt = Date.now();
     const eventResults = await Promise.all(uniqueTags.map(tag => fetchEventsByTag(tag, 30)));
     const seen = new Set<string>();
     const markets: PredictionMarket[] = [];
@@ -488,13 +458,10 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
         if (isExcluded(event.title)) continue;
 
         if (event.markets && event.markets.length > 0) {
-          // When the event title itself matches (e.g. "French election"), pick
-          // the highest-volume sub-market.  When only a sub-market matched
-          // (e.g. "Macron" inside a "next leader out" event), restrict to
-          // the matching sub-markets so we don't surface irrelevant ones.
           const candidates = eventTitleMatches
-            ? event.markets
+            ? event.markets.filter(m => !m.closed && !isExpired(m.endDate))
             : event.markets.filter(m =>
+                !m.closed && !isExpired(m.endDate) &&
                 variants.some(v => (m.question ?? '').toLowerCase().includes(v)));
           if (candidates.length === 0) continue;
 
@@ -508,17 +475,7 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
             yesPrice: parseMarketPrice(topMarket),
             volume: event.volume ?? 0,
             url: buildMarketUrl(event.slug),
-            observedAt: resolveObservedAt(
-              topMarket.updatedAt,
-              topMarket.createdAt,
-              topMarket.endDate,
-              topMarket.startDate,
-              event.updatedAt,
-              event.createdAt,
-              event.endDate,
-              event.startDate,
-              fetchObservedAt,
-            ),
+            endDate: parseEndDate(topMarket.endDate ?? event.endDate),
           });
         } else {
           markets.push({
@@ -526,13 +483,7 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
             yesPrice: 50,
             volume: event.volume ?? 0,
             url: buildMarketUrl(event.slug),
-            observedAt: resolveObservedAt(
-              event.updatedAt,
-              event.createdAt,
-              event.endDate,
-              event.startDate,
-              fetchObservedAt,
-            ),
+            endDate: parseEndDate(event.endDate),
           });
         }
       }

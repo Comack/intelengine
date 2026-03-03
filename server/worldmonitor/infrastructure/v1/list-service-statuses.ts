@@ -7,29 +7,8 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
-
-/** Run an array of task factories with at most `limit` concurrent executions. */
-async function withConcurrencyLimit<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
-  const results: T[] = new Array(tasks.length);
-  let idx = 0;
-  const workers = Array.from({ length: Math.min(limit, tasks.length) }, async () => {
-    while (idx < tasks.length) {
-      const i = idx++;
-      const task = tasks[i];
-      if (task) results[i] = await task();
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-// Minimal typed shapes for external status page API responses
-interface GcpIncident { end?: string; severity?: string }
-interface InStatusResponse { page?: { status?: string } }
-interface StatusIoResponse { result?: { status_overall?: { status_code?: number; status?: string } } }
-interface SlackStatusResponse { status?: string; active_incidents?: unknown[] }
-interface StripeStatusResponse { largestatus?: string; message?: string }
+import { cachedFetchJson } from '../../../_shared/redis';
+import { CHROME_UA } from '../../../_shared/constants';
 
 // ========================================================================
 // Service status page definitions and parsers
@@ -132,7 +111,7 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
       'Cache-Control': 'no-cache',
     };
     if (service.customParser !== 'incidentio') {
-      headers['User-Agent'] = 'Mozilla/5.0 (compatible; WorldMonitor/1.0)';
+      headers['User-Agent'] = CHROME_UA;
     }
 
     const start = Date.now();
@@ -148,12 +127,12 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
 
     // Custom parsers
     if (service.customParser === 'gcp') {
-      const data = await response.json() as GcpIncident[];
-      const active = Array.isArray(data) ? data.filter((i: GcpIncident) => i.end === undefined || new Date(i.end) > new Date()) : [];
+      const data = await response.json() as any[];
+      const active = Array.isArray(data) ? data.filter((i: any) => i.end === undefined || new Date(i.end) > new Date()) : [];
       if (active.length === 0) {
         return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL', description: 'All services operational', checkedAt: now, latencyMs };
       }
-      const hasHigh = active.some((i: GcpIncident) => i.severity === 'high');
+      const hasHigh = active.some((i: any) => i.severity === 'high');
       return {
         ...base,
         status: hasHigh ? 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE' : 'SERVICE_OPERATIONAL_STATUS_DEGRADED',
@@ -178,7 +157,7 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
     }
 
     if (service.customParser === 'instatus') {
-      const data = await response.json() as InStatusResponse;
+      const data = await response.json() as any;
       const pageStatus = data.page?.status;
       if (pageStatus === 'UP') {
         return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL', description: 'All systems operational', checkedAt: now, latencyMs };
@@ -190,35 +169,35 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
     }
 
     if (service.customParser === 'statusio') {
-      const data = await response.json() as StatusIoResponse;
+      const data = await response.json() as any;
       const overall = data.result?.status_overall;
-      const code = overall?.status_code ?? -1;
+      const code = overall?.status_code;
       if (code === 100) {
-        return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL', description: overall?.status || 'All systems operational', checkedAt: now, latencyMs };
+        return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL', description: overall.status || 'All systems operational', checkedAt: now, latencyMs };
       }
       if (code >= 300 && code < 500) {
-        return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_DEGRADED', description: overall?.status || 'Degraded performance', checkedAt: now, latencyMs };
+        return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_DEGRADED', description: overall.status || 'Degraded performance', checkedAt: now, latencyMs };
       }
       if (code >= 500) {
-        return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE', description: overall?.status || 'Service disruption', checkedAt: now, latencyMs };
+        return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE', description: overall.status || 'Service disruption', checkedAt: now, latencyMs };
       }
       return unknown(overall?.status || 'Unknown status');
     }
 
     if (service.customParser === 'slack') {
-      const data = await response.json() as SlackStatusResponse;
+      const data = await response.json() as any;
       if (data.status === 'ok') {
         return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL', description: 'All systems operational', checkedAt: now, latencyMs };
       }
-      if (data.status === 'active' || (data.active_incidents?.length ?? 0) > 0) {
-        const count = data.active_incidents?.length ?? 1;
+      if (data.status === 'active' || data.active_incidents?.length > 0) {
+        const count = data.active_incidents?.length || 1;
         return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_DEGRADED', description: `${count} active incident(s)`, checkedAt: now, latencyMs };
       }
       return unknown(data.status || 'Unknown');
     }
 
     if (service.customParser === 'stripe') {
-      const data = await response.json() as StripeStatusResponse;
+      const data = await response.json() as any;
       if (data.largestatus === 'up') {
         return { ...base, status: 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL', description: data.message || 'All systems operational', checkedAt: now, latencyMs };
       }
@@ -306,42 +285,42 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
 // ========================================================================
 
 const INFRA_CACHE_KEY = 'infra:service-statuses:v1';
-const INFRA_CACHE_TTL = 300; // 5 minutes
+const INFRA_CACHE_TTL = 1800; // 30 minutes
+
+let fallbackStatusesCache: { data: ServiceStatus[]; ts: number } | null = null;
+
+const STATUS_ORDER: Record<string, number> = {
+  SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE: 0,
+  SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE: 1,
+  SERVICE_OPERATIONAL_STATUS_DEGRADED: 2,
+  SERVICE_OPERATIONAL_STATUS_MAINTENANCE: 3,
+  SERVICE_OPERATIONAL_STATUS_UNSPECIFIED: 4,
+  SERVICE_OPERATIONAL_STATUS_OPERATIONAL: 5,
+};
+
+function filterAndSortStatuses(statuses: ServiceStatus[], req: ListServiceStatusesRequest): ServiceStatus[] {
+  let filtered = statuses;
+  if (req.status && req.status !== 'SERVICE_OPERATIONAL_STATUS_UNSPECIFIED') {
+    filtered = statuses.filter((s) => s.status === req.status);
+  }
+  return [...filtered].sort((a, b) => (STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4));
+}
 
 export async function listServiceStatuses(
   _ctx: ServerContext,
   req: ListServiceStatusesRequest,
 ): Promise<ListServiceStatusesResponse> {
   try {
-    // Check Redis cache first to avoid hammering 30+ external status pages (H-8 fix)
-    const cached = (await getCachedJson(INFRA_CACHE_KEY)) as ServiceStatus[] | null;
-    const results = cached && Array.isArray(cached)
-      ? cached
-      : await (async () => {
-          const fresh = await withConcurrencyLimit(SERVICES.map(svc => () => checkServiceStatus(svc)), 5);
-          await setCachedJson(INFRA_CACHE_KEY, fresh, INFRA_CACHE_TTL);
-          return fresh;
-        })();
+    const results = await cachedFetchJson<ServiceStatus[]>(INFRA_CACHE_KEY, INFRA_CACHE_TTL, async () => {
+      const fresh = await Promise.all(SERVICES.map(checkServiceStatus));
+      return fresh.length > 0 ? fresh : null;
+    });
 
-    // Apply optional status filter
-    let filtered = results;
-    if (req.status && req.status !== 'SERVICE_OPERATIONAL_STATUS_UNSPECIFIED') {
-      filtered = results.filter((s) => s.status === req.status);
-    }
+    const effective = results || fallbackStatusesCache?.data || [];
+    if (results) fallbackStatusesCache = { data: results, ts: Date.now() };
 
-    // Sort: outages first, then degraded, then operational
-    const statusOrder: Record<string, number> = {
-      SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE: 0,
-      SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE: 1,
-      SERVICE_OPERATIONAL_STATUS_DEGRADED: 2,
-      SERVICE_OPERATIONAL_STATUS_MAINTENANCE: 3,
-      SERVICE_OPERATIONAL_STATUS_UNSPECIFIED: 4,
-      SERVICE_OPERATIONAL_STATUS_OPERATIONAL: 5,
-    };
-    filtered.sort((a, b) => (statusOrder[a.status] ?? 4) - (statusOrder[b.status] ?? 4));
-
-    return { statuses: filtered };
+    return { statuses: filterAndSortStatuses(effective, req) };
   } catch {
-    return { statuses: [] };
+    return { statuses: filterAndSortStatuses(fallbackStatusesCache?.data || [], req) };
   }
 }

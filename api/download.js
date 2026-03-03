@@ -4,37 +4,37 @@ export const config = { runtime: 'edge' };
 const RELEASES_URL = 'https://api.github.com/repos/koala73/worldmonitor/releases/latest';
 const RELEASES_PAGE = 'https://github.com/koala73/worldmonitor/releases/latest';
 
-const ALLOWED_DOWNLOAD_HOSTS = new Set([
-  'github.com',
-  'objects.githubusercontent.com',
-  'github-releases.githubusercontent.com',
-]);
-
 const PLATFORM_PATTERNS = {
   'windows-exe': (name) => name.endsWith('_x64-setup.exe'),
   'windows-msi': (name) => name.endsWith('_x64_en-US.msi'),
   'macos-arm64': (name) => name.endsWith('_aarch64.dmg'),
   'macos-x64': (name) => name.endsWith('_x64.dmg') && !name.includes('setup'),
   'linux-appimage': (name) => name.endsWith('_amd64.AppImage'),
+  'linux-appimage-arm64': (name) => name.endsWith('_aarch64.AppImage'),
 };
 
-const VARIANT_PREFIXES = {
-  full: ['world-monitor'],
-  world: ['world-monitor'],
-  tech: ['tech-monitor'],
-  finance: ['finance-monitor'],
+const VARIANT_IDENTIFIERS = {
+  full: ['worldmonitor'],
+  world: ['worldmonitor'],
+  tech: ['techmonitor'],
+  finance: ['financemonitor'],
 };
+
+function canonicalAssetName(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
 
 function findAssetForVariant(assets, variant, platformMatcher) {
-  const prefixes = VARIANT_PREFIXES[variant] ?? null;
-  if (!prefixes) return null;
+  const identifiers = VARIANT_IDENTIFIERS[variant] ?? null;
+  if (!identifiers) return null;
 
   return assets.find((asset) => {
-    const assetName = String(asset?.name || '').toLowerCase();
-    const hasVariantPrefix = prefixes.some((prefix) =>
-      assetName.startsWith(`${prefix.toLowerCase()}_`) || assetName.startsWith(`${prefix.toLowerCase()}-`)
+    const assetName = String(asset?.name || '');
+    const normalizedAssetName = canonicalAssetName(assetName);
+    const hasVariantIdentifier = identifiers.some((identifier) =>
+      normalizedAssetName.includes(identifier)
     );
-    return hasVariantPrefix && platformMatcher(String(asset?.name || ''));
+    return hasVariantIdentifier && platformMatcher(assetName);
   }) ?? null;
 }
 
@@ -70,22 +70,11 @@ export default async function handler(req) {
       return Response.redirect(RELEASES_PAGE, 302);
     }
 
-    let downloadUrl;
-    try {
-      downloadUrl = new URL(asset.browser_download_url);
-    } catch {
-      return new Response('Invalid download URL', { status: 502 });
-    }
-
-    if (!ALLOWED_DOWNLOAD_HOSTS.has(downloadUrl.hostname)) {
-      return new Response('Untrusted download domain', { status: 502 });
-    }
-
     return new Response(null, {
       status: 302,
       headers: {
-        'Location': downloadUrl.href,
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
+        'Location': asset.browser_download_url,
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60, stale-if-error=600',
       },
     });
   } catch {

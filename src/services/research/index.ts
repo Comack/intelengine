@@ -3,21 +3,17 @@ import {
   type ArxivPaper,
   type GithubRepo,
   type HackernewsItem,
-  type ListSocialTrendsResponse,
-  type SocialTrend,
-  type GetRepoMomentumResponse,
-  type RepoMomentum,
 } from '@/generated/client/worldmonitor/research/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 
 // Re-export proto types (no legacy mapping needed -- proto types are clean)
 export type { ArxivPaper, GithubRepo, HackernewsItem };
 
-const client = new ResearchServiceClient('', { fetch: fetch.bind(globalThis) });
+const client = new ResearchServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
-const arxivBreaker = createCircuitBreaker<ArxivPaper[]>({ name: 'ArXiv Papers' });
-const trendingBreaker = createCircuitBreaker<GithubRepo[]>({ name: 'GitHub Trending' });
-const hnBreaker = createCircuitBreaker<HackernewsItem[]>({ name: 'Hacker News' });
+const arxivBreaker = createCircuitBreaker<ArxivPaper[]>({ name: 'ArXiv Papers', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
+const trendingBreaker = createCircuitBreaker<GithubRepo[]>({ name: 'GitHub Trending', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
+const hnBreaker = createCircuitBreaker<HackernewsItem[]>({ name: 'Hacker News', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 export async function fetchArxivPapers(
   category = 'cs.AI',
@@ -28,7 +24,8 @@ export async function fetchArxivPapers(
     const resp = await client.listArxivPapers({
       category,
       query,
-      pagination: { pageSize, cursor: '' },
+      pageSize,
+      cursor: '',
     });
     return resp.papers;
   }, []);
@@ -43,7 +40,8 @@ export async function fetchTrendingRepos(
     const resp = await client.listTrendingRepos({
       language,
       period,
-      pagination: { pageSize, cursor: '' },
+      pageSize,
+      cursor: '',
     });
     return resp.repos;
   }, []);
@@ -56,32 +54,9 @@ export async function fetchHackernewsItems(
   return hnBreaker.execute(async () => {
     const resp = await client.listHackernewsItems({
       feedType,
-      pagination: { pageSize, cursor: '' },
+      pageSize,
+      cursor: '',
     });
     return resp.items;
   }, []);
-}
-
-// ---- Social Trends ----
-const socialBreaker = createCircuitBreaker<ListSocialTrendsResponse>({ name: 'Social Trends' });
-const emptySocialFallback: ListSocialTrendsResponse = { trends: [], sampledAt: '' };
-
-export type { SocialTrend, RepoMomentum };
-
-export async function fetchSocialTrends(platform = '', limit = 30): Promise<SocialTrend[]> {
-  const res = await socialBreaker.execute(async () => {
-    return client.listSocialTrends({ platform, limit });
-  }, emptySocialFallback);
-  return res.trends;
-}
-
-// ---- Repo Momentum ----
-const momentumBreaker = createCircuitBreaker<GetRepoMomentumResponse>({ name: 'Repo Momentum' });
-const emptyMomentumFallback: GetRepoMomentumResponse = { repos: [], computedAt: '' };
-
-export async function fetchRepoMomentum(): Promise<RepoMomentum[]> {
-  const res = await momentumBreaker.execute(async () => {
-    return client.getRepoMomentum({});
-  }, emptyMomentumFallback);
-  return res.repos;
 }

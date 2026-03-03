@@ -4,18 +4,46 @@ info:
     version: 1.0.0
 paths:
     /api/infrastructure/v1/list-internet-outages:
-        post:
+        get:
             tags:
                 - InfrastructureService
             summary: ListInternetOutages
             description: ListInternetOutages retrieves detected internet outages from Cloudflare Radar.
             operationId: ListInternetOutages
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListInternetOutagesRequest'
-                required: true
+            parameters:
+                - name: start
+                  in: query
+                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: end
+                  in: query
+                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  required: false
+                  schema:
+                    type: string
+                    format: int64
+                - name: page_size
+                  in: query
+                  description: Maximum items per page.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Cursor for next page.
+                  required: false
+                  schema:
+                    type: string
+                - name: country
+                  in: query
+                  description: Optional country filter (ISO 3166-1 alpha-2).
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -36,18 +64,19 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/infrastructure/v1/list-service-statuses:
-        post:
+        get:
             tags:
                 - InfrastructureService
             summary: ListServiceStatuses
             description: ListServiceStatuses retrieves operational status of monitored external services.
             operationId: ListServiceStatuses
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListServiceStatusesRequest'
-                required: true
+            parameters:
+                - name: status
+                  in: query
+                  description: Optional status filter. Returns only services in this state.
+                  required: false
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -68,18 +97,32 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/infrastructure/v1/get-temporal-baseline:
-        post:
+        get:
             tags:
                 - InfrastructureService
             summary: GetTemporalBaseline
             description: GetTemporalBaseline checks current activity count against stored baseline for anomaly detection.
             operationId: GetTemporalBaseline
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetTemporalBaselineRequest'
-                required: true
+            parameters:
+                - name: type
+                  in: query
+                  description: 'Activity type: "military_flights", "vessels", "protests", "news", "ais_gaps", "satellite_fires".'
+                  required: false
+                  schema:
+                    type: string
+                - name: region
+                  in: query
+                  description: Geographic region key, defaults to "global".
+                  required: false
+                  schema:
+                    type: string
+                - name: count
+                  in: query
+                  description: Current observed count to compare against baseline.
+                  required: false
+                  schema:
+                    type: number
+                    format: double
             responses:
                 "200":
                     description: Successful response
@@ -132,18 +175,12 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Error'
     /api/infrastructure/v1/get-cable-health:
-        post:
+        get:
             tags:
                 - InfrastructureService
             summary: GetCableHealth
             description: GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
             operationId: GetCableHealth
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetCableHealthRequest'
-                required: true
             responses:
                 "200":
                     description: Successful response
@@ -151,102 +188,6 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetCableHealthResponse'
-                "400":
-                    description: Validation error
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-    /api/infrastructure/v1/list-routing-anomalies:
-        post:
-            tags:
-                - InfrastructureService
-            summary: ListRoutingAnomalies
-            description: ListRoutingAnomalies retrieves BGP hijack, leak, and route flap events from BGPStream.
-            operationId: ListRoutingAnomalies
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListRoutingAnomaliesRequest'
-                required: true
-            responses:
-                "200":
-                    description: Successful response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListRoutingAnomaliesResponse'
-                "400":
-                    description: Validation error
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-    /api/infrastructure/v1/get-grid-status:
-        post:
-            tags:
-                - InfrastructureService
-            summary: GetGridStatus
-            description: GetGridStatus retrieves electricity grid health and carbon intensity from Electricity Maps.
-            operationId: GetGridStatus
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/GetGridStatusRequest'
-                required: true
-            responses:
-                "200":
-                    description: Successful response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/GetGridStatusResponse'
-                "400":
-                    description: Validation error
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-    /api/infrastructure/v1/list-radiation-readings:
-        post:
-            tags:
-                - InfrastructureService
-            summary: ListRadiationReadings
-            description: ListRadiationReadings retrieves recent radiation measurements from the Safecast sensor network.
-            operationId: ListRadiationReadings
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ListRadiationReadingsRequest'
-                required: true
-            responses:
-                "200":
-                    description: Successful response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/ListRadiationReadingsResponse'
                 "400":
                     description: Validation error
                     content:
@@ -295,41 +236,25 @@ components:
         ListInternetOutagesRequest:
             type: object
             properties:
-                timeRange:
-                    $ref: '#/components/schemas/TimeRange'
-                pagination:
-                    $ref: '#/components/schemas/PaginationRequest'
+                start:
+                    type: integer
+                    format: int64
+                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                end:
+                    type: integer
+                    format: int64
+                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum items per page.
+                cursor:
+                    type: string
+                    description: Cursor for next page.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
             description: ListInternetOutagesRequest specifies filters for retrieving internet outages.
-        TimeRange:
-            type: object
-            properties:
-                start:
-                    type: integer
-                    format: int64
-                    description: 'Start of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-                end:
-                    type: integer
-                    format: int64
-                    description: 'End of the time range (inclusive), as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
-            description: |-
-                TimeRange represents a time interval defined by a start and end timestamp.
-                 Used for filtering data within a specific time period.
-        PaginationRequest:
-            type: object
-            properties:
-                pageSize:
-                    type: integer
-                    maximum: 100
-                    minimum: 1
-                    format: int32
-                    description: Maximum number of items to return per page (1 to 100).
-                cursor:
-                    type: string
-                    description: Opaque cursor for fetching the next page. Empty string for the first page.
-            description: PaginationRequest specifies cursor-based pagination parameters for list endpoints.
         ListInternetOutagesResponse:
             type: object
             properties:
@@ -650,176 +575,3 @@ components:
                     format: int64
                     description: 'Evidence timestamp, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: CableHealthEvidence represents a single piece of evidence supporting a health assessment.
-        ListRoutingAnomaliesRequest:
-            type: object
-            properties:
-                limit:
-                    type: integer
-                    format: int32
-                    description: Maximum events to return (default 50, max 200).
-            description: ListRoutingAnomaliesRequest filters BGP routing anomaly queries.
-        ListRoutingAnomaliesResponse:
-            type: object
-            properties:
-                anomalies:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/RoutingAnomaly'
-            description: ListRoutingAnomaliesResponse contains detected BGP routing events.
-        RoutingAnomaly:
-            type: object
-            properties:
-                id:
-                    type: string
-                    description: Unique event identifier.
-                type:
-                    type: string
-                    enum:
-                        - ROUTING_ANOMALY_TYPE_UNSPECIFIED
-                        - ROUTING_ANOMALY_TYPE_BGP_HIJACK
-                        - ROUTING_ANOMALY_TYPE_BGP_LEAK
-                        - ROUTING_ANOMALY_TYPE_ROUTE_FLAP
-                    description: RoutingAnomalyType classifies the BGP routing event.
-                prefix:
-                    type: string
-                    description: Affected IP prefix, e.g. "8.8.8.0/24".
-                victimAsn:
-                    type: string
-                    description: ASN of the legitimate prefix owner.
-                attackerAsn:
-                    type: string
-                    description: ASN of the offending network (empty for route flaps).
-                victimName:
-                    type: string
-                    description: Human-readable name of the victim AS.
-                attackerName:
-                    type: string
-                    description: Human-readable name of the attacker AS.
-                country:
-                    type: string
-                    description: ISO 3166-1 alpha-2 country of the victim network.
-                lat:
-                    type: number
-                    format: double
-                    description: Approximate latitude of the victim network's country centroid.
-                lon:
-                    type: number
-                    format: double
-                    description: Approximate longitude of the victim network's country centroid.
-                severity:
-                    type: string
-                    description: 'Qualitative severity: low | medium | high | critical.'
-                detectedAt:
-                    type: string
-                    format: int64
-                    description: Unix milliseconds when the event was first detected.
-                description:
-                    type: string
-                    description: Human-readable event description.
-            description: RoutingAnomaly represents a detected BGP hijack, leak, or route flap event.
-        GetGridStatusRequest:
-            type: object
-            description: GetGridStatusRequest has no required parameters.
-        GetGridStatusResponse:
-            type: object
-            properties:
-                zones:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/GridZone'
-                fetchedAt:
-                    type: string
-                    format: int64
-                    description: Unix milliseconds when data was fetched.
-            description: GetGridStatusResponse contains electricity grid health data for strategic zones.
-        GridZone:
-            type: object
-            properties:
-                zoneId:
-                    type: string
-                    description: Electricity Maps zone identifier, e.g. "US-CAL-CISO".
-                zoneName:
-                    type: string
-                    description: Human-readable zone name, e.g. "California ISO".
-                lat:
-                    type: number
-                    format: double
-                    description: Approximate latitude of the zone centroid.
-                lon:
-                    type: number
-                    format: double
-                    description: Approximate longitude of the zone centroid.
-                carbonIntensity:
-                    type: number
-                    format: double
-                    description: Grid carbon intensity in gCO2eq/kWh.
-                renewablePct:
-                    type: number
-                    format: double
-                    description: Renewable energy share, 0–100%.
-                stressLevel:
-                    type: string
-                    enum:
-                        - GRID_STRESS_UNSPECIFIED
-                        - GRID_STRESS_NORMAL
-                        - GRID_STRESS_ELEVATED
-                        - GRID_STRESS_HIGH
-                        - GRID_STRESS_CRITICAL
-                    description: GridStressLevel classifies the operational stress of a power grid zone.
-                powerImportExportMw:
-                    type: number
-                    format: double
-                    description: Net power flow in MW (positive = importing, negative = exporting).
-                observedAt:
-                    type: string
-                    format: int64
-                    description: Unix milliseconds of the observation.
-            description: GridZone represents the energy grid health for a specific balancing authority or region.
-        ListRadiationReadingsRequest:
-            type: object
-            properties:
-                limit:
-                    type: integer
-                    format: int32
-                    description: Maximum number of readings to return.
-            description: Request to list recent radiation readings.
-        ListRadiationReadingsResponse:
-            type: object
-            properties:
-                readings:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/RadiationReading'
-            description: Response containing radiation readings.
-        RadiationReading:
-            type: object
-            properties:
-                id:
-                    type: string
-                    description: Unique measurement identifier.
-                latitude:
-                    type: number
-                    format: double
-                    description: Latitude of the sensor.
-                longitude:
-                    type: number
-                    format: double
-                    description: Longitude of the sensor.
-                cpm:
-                    type: number
-                    format: double
-                    description: Radiation level in counts per minute (CPM).
-                capturedAt:
-                    type: integer
-                    format: int64
-                    description: 'Measurement timestamp (Unix epoch ms).. Warning: Values > 2^53 may lose precision in JavaScript'
-                deviceId:
-                    type: string
-                    description: Device identifier.
-                locationName:
-                    type: string
-                    description: Location name or description.
-                elevated:
-                    type: boolean
-                    description: Whether the reading is above normal background levels.
-            description: A real-time radiation measurement from the Safecast sensor network.

@@ -25,14 +25,18 @@ import type {
   UcdpGeoEvent,
   CyberThreat,
   CableHealthRecord,
-  ForensicsAnomalyOverlay,
-  ForensicsTopologyWindowOverlay,
 } from '@/types';
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';
+import type { PositiveGeoEvent } from '@/services/positive-events-geo';
+import type { KindnessPoint } from '@/services/kindness-data';
+import type { HappinessData } from '@/services/happiness-data';
+import type { SpeciesRecovery } from '@/services/conservation-data';
+import type { RenewableInstallation } from '@/services/renewable-installations';
+import type { GpsJamHex } from '@/services/gps-interference';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -76,7 +80,7 @@ export class MapContainer {
     this.isMobile = isMobileDevice();
 
     // Use deck.gl on desktop with WebGL support, SVG on mobile
-    this.useDeckGL = !this.isMobile && this.hasWebGLSupport();
+    this.useDeckGL = this.shouldUseDeckGL();
 
     this.init();
   }
@@ -92,6 +96,14 @@ export class MapContainer {
     } catch {
       return false;
     }
+  }
+
+  private shouldUseDeckGL(): boolean {
+    if (!this.hasWebGLSupport()) return false;
+    if (!this.isMobile) return true;
+    const mem = (navigator as any).deviceMemory;
+    if (mem !== undefined && mem < 3) return false;
+    return true;
   }
 
   private initSvgMap(logMessage: string): void {
@@ -130,6 +142,14 @@ export class MapContainer {
       this.deckGLMap?.render();
     } else {
       this.svgMap?.render();
+    }
+  }
+
+  public setIsResizing(isResizing: boolean): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setIsResizing(isResizing);
+    } else {
+      this.svgMap?.setIsResizing(isResizing);
     }
   }
 
@@ -219,21 +239,6 @@ export class MapContainer {
     } else {
       this.svgMap?.setOutages(outages);
     }
-  }
-
-  public setForensicsAnomalies(anomalies: ForensicsAnomalyOverlay[]): void {
-    if (this.useDeckGL) {
-      this.deckGLMap?.setForensicsAnomalies(anomalies);
-    } else {
-      this.svgMap?.setForensicsAnomalies(anomalies);
-    }
-  }
-
-  public setTopologyWindowOverlay(overlay: ForensicsTopologyWindowOverlay[]): void {
-    if (this.useDeckGL) {
-      this.deckGLMap?.setTopologyWindowOverlay(overlay);
-    }
-    // SvgMap: no topology window layer (DeckGL-only feature)
   }
 
   public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
@@ -334,11 +339,25 @@ export class MapContainer {
     }
   }
 
+  public setGpsJamming(hexes: GpsJamHex[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setGpsJamming(hexes);
+    }
+  }
+
   public setCyberThreats(threats: CyberThreat[]): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setCyberThreats(threats);
     } else {
       this.svgMap?.setCyberThreats(threats);
+    }
+  }
+
+  public setIranEvents(events: import('@/services/conflict').IranEvent[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setIranEvents(events);
+    } else {
+      this.svgMap?.setIranEvents(events);
     }
   }
 
@@ -348,6 +367,41 @@ export class MapContainer {
     } else {
       this.svgMap?.setNewsLocations(data);
     }
+  }
+
+  public setPositiveEvents(events: PositiveGeoEvent[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setPositiveEvents(events);
+    }
+    // SVG map does not support positive events layer
+  }
+
+  public setKindnessData(points: KindnessPoint[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setKindnessData(points);
+    }
+    // SVG map does not support kindness layer
+  }
+
+  public setHappinessScores(data: HappinessData): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setHappinessScores(data);
+    }
+    // SVG map does not support choropleth overlay
+  }
+
+  public setSpeciesRecoveryZones(species: SpeciesRecovery[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setSpeciesRecoveryZones(species);
+    }
+    // SVG map does not support species recovery layer
+  }
+
+  public setRenewableInstallations(installations: RenewableInstallation[]): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setRenewableInstallations(installations);
+    }
+    // SVG map does not support renewable installations layer
   }
 
   public updateHotspotActivity(news: NewsItem[]): void {
@@ -379,39 +433,6 @@ export class MapContainer {
     } else {
       this.svgMap?.highlightAssets(assets);
     }
-  }
-
-  // Signal expansion layer setters
-  public setRoutingAnomalies(data: any[]): void {
-    this.deckGLMap?.setRoutingAnomalies(data);
-  }
-
-  public setGridStatus(data: any[]): void {
-    this.deckGLMap?.setGridStatus(data);
-  }
-
-  public setSarDetections(data: any[]): void {
-    this.deckGLMap?.setSarDetections(data);
-  }
-
-  public setPortCongestion(data: any[]): void {
-    this.deckGLMap?.setPortCongestion(data);
-  }
-
-  public setWhaleTransfers(data: any[]): void {
-    this.deckGLMap?.setWhaleTransfers(data);
-  }
-
-  public setAirQuality(data: any[]): void {
-    this.deckGLMap?.setAirQuality(data);
-  }
-
-  public setSatellites(data: any[]): void {
-    this.deckGLMap?.setSatellites(data);
-  }
-
-  public setSpaceWeather(data: any): void {
-    this.deckGLMap?.setSpaceWeather(data);
   }
 
   // Callback setters - MapComponent uses different names
@@ -577,14 +598,6 @@ export class MapContainer {
     }
   }
 
-  public triggerForensicsAnomalyClick(id: string): void {
-    if (this.useDeckGL) {
-      this.deckGLMap?.triggerForensicsAnomalyClick(id);
-    } else {
-      this.svgMap?.triggerForensicsAnomalyClick(id);
-    }
-  }
-
   public flashLocation(lat: number, lon: number, durationMs?: number): void {
     if (this.useDeckGL) {
       this.deckGLMap?.flashLocation(lat, lon, durationMs);
@@ -593,10 +606,19 @@ export class MapContainer {
     }
   }
 
-  // Country click + highlight (deck.gl only)
   public onCountryClicked(callback: (country: CountryClickPayload) => void): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setOnCountryClick(callback);
+    } else {
+      this.svgMap?.setOnCountryClick(callback);
+    }
+  }
+
+  public fitCountry(code: string): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.fitCountry(code);
+    } else {
+      this.svgMap?.fitCountry(code);
     }
   }
 

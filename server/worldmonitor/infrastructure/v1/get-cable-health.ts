@@ -7,15 +7,16 @@ import type {
   CableHealthStatus,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
-import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
+import { CHROME_UA } from '../../../_shared/constants';
 
 // ========================================================================
 // Constants
 // ========================================================================
 
 const CACHE_KEY = 'cable-health-v1';
-const CACHE_TTL = 180; // 3 minutes
+const CACHE_TTL = 600; // 10 min — cable health not time-critical
 
 // In-memory fallback: serves stale data when both Redis and NGA are down
 let fallbackCache: GetCableHealthResponse | null = null;
@@ -121,7 +122,7 @@ async function fetchNgaWarnings(): Promise<NgaWarning[]> {
   try {
     const res = await fetch(
       'https://msi.nga.mil/api/publications/broadcast-warn?output=json&status=A',
-      { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
+      { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
     );
     if (!res.ok) return [];
     const data = await res.json();
@@ -347,7 +348,7 @@ export function computeHealthMap(signals: Signal[]): Record<string, CableHealthR
 
     const lastUpdated = effectiveSignals
       .map((s) => s.ts)
-      .sort((a, b) => b - a)[0] ?? 0;
+      .sort((a, b) => b - a)[0]!;
 
     healthMap[cableId] = {
       status,
@@ -370,25 +371,25 @@ export async function getCableHealth(
   _req: GetCableHealthRequest,
 ): Promise<GetCableHealthResponse> {
   try {
-    const cached = (await getCachedJson(CACHE_KEY)) as GetCableHealthResponse | null;
-    if (cached) {
-      fallbackCache = cached;
-      return cached;
+    const result = await cachedFetchJson<GetCableHealthResponse>(CACHE_KEY, CACHE_TTL, async () => {
+      const ngaData = await fetchNgaWarnings();
+      const signals = processNgaSignals(ngaData);
+      const cables = computeHealthMap(signals);
+
+      const response: GetCableHealthResponse = {
+        generatedAt: Date.now(),
+        cables,
+      };
+
+      return response;
+    });
+
+    if (result) {
+      fallbackCache = result;
+      return result;
     }
 
-    const ngaData = await fetchNgaWarnings();
-    const signals = processNgaSignals(ngaData);
-    const cables = computeHealthMap(signals);
-
-    const result: GetCableHealthResponse = {
-      generatedAt: Date.now(),
-      cables,
-    };
-
-    fallbackCache = result;
-    await setCachedJson(CACHE_KEY, result, CACHE_TTL).catch(() => {});
-
-    return result;
+    return fallbackCache || { generatedAt: Date.now(), cables: {} };
   } catch {
     if (fallbackCache) return fallbackCache;
     return { generatedAt: Date.now(), cables: {} };

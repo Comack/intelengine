@@ -1,10 +1,11 @@
 /**
- * ML Web Worker for ONNX inference using @huggingface/transformers
+ * ML Web Worker for ONNX inference using @xenova/transformers
  * Handles embeddings, sentiment analysis, summarization, and NER
  */
 
-import { pipeline, env } from '@huggingface/transformers';
+import { pipeline, env } from '@xenova/transformers';
 import { MODEL_CONFIGS, type ModelConfig } from '@/config/ml-config';
+import { storeVectors, searchVectors, getCount, resetStore, sanitizeTitle, type VectorSearchResult } from './vector-db';
 
 // Configure transformers.js
 env.allowLocalModels = false;
@@ -69,6 +70,36 @@ interface ResetMessage {
   type: 'reset';
 }
 
+interface VectorStoreIngestMessage {
+  type: 'vector-store-ingest';
+  id: string;
+  items: Array<{
+    text: string;
+    pubDate: number;
+    source: string;
+    url: string;
+    tags?: string[];
+  }>;
+}
+
+interface VectorStoreSearchMessage {
+  type: 'vector-store-search';
+  id: string;
+  queries: string[];
+  topK: number;
+  minScore: number;
+}
+
+interface VectorStoreCountMessage {
+  type: 'vector-store-count';
+  id: string;
+}
+
+interface VectorStoreResetMessage {
+  type: 'vector-store-reset';
+  id: string;
+}
+
 type MLWorkerMessage =
   | InitMessage
   | LoadModelMessage
@@ -79,14 +110,16 @@ type MLWorkerMessage =
   | NERMessage
   | SemanticClusterMessage
   | StatusMessage
-  | ResetMessage;
+  | ResetMessage
+  | VectorStoreIngestMessage
+  | VectorStoreSearchMessage
+  | VectorStoreCountMessage
+  | VectorStoreResetMessage;
 
 // Loaded pipelines (using unknown since pipeline types vary)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const loadedPipelines = new Map<string, any>();
 const loadingPromises = new Map<string, Promise<void>>();
-// Reference counting: tracks how many in-flight operations use each model
-const pipelineRefCount = new Map<string, number>();
 
 function getModelConfig(modelId: string): ModelConfig | undefined {
   return MODEL_CONFIGS.find(m => m.id === modelId);
@@ -124,107 +157,72 @@ async function loadModel(modelId: string): Promise<void> {
     });
 
     loadedPipelines.set(modelId, pipe);
+    loadingPromises.delete(modelId);
     console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
 
     // Notify manager that model is now available (no id = unsolicited notification)
     self.postMessage({ type: 'model-loaded', modelId });
-  })().finally(() => {
-    loadingPromises.delete(modelId);
-  });
+  })();
 
   loadingPromises.set(modelId, loadPromise);
   return loadPromise;
 }
 
-function acquirePipeline(modelId: string): void {
-  pipelineRefCount.set(modelId, (pipelineRefCount.get(modelId) ?? 0) + 1);
-}
-
-function releasePipeline(modelId: string): void {
-  const count = (pipelineRefCount.get(modelId) ?? 1) - 1;
-  if (count <= 0) {
-    pipelineRefCount.delete(modelId);
-  } else {
-    pipelineRefCount.set(modelId, count);
-  }
-}
-
-function unloadModel(modelId: string): boolean {
-  const refCount = pipelineRefCount.get(modelId) ?? 0;
-  if (refCount > 0) {
-    console.warn(`[MLWorker] Cannot unload model ${modelId}: ${refCount} operation(s) in progress`);
-    return false;
-  }
+function unloadModel(modelId: string): void {
   const pipe = loadedPipelines.get(modelId);
   if (pipe) {
     loadedPipelines.delete(modelId);
     console.log(`[MLWorker] Unloaded model: ${modelId}`);
   }
-  return true;
 }
 
 async function embedTexts(texts: string[]): Promise<number[][]> {
   await loadModel('embeddings');
-  acquirePipeline('embeddings');
-  try {
-    const pipe = loadedPipelines.get('embeddings')!;
+  const pipe = loadedPipelines.get('embeddings')!;
 
-    const results: number[][] = [];
-    for (const text of texts) {
-      const output = await pipe(text, { pooling: 'mean', normalize: true });
-      results.push(Array.from(output.data as Float32Array));
-    }
-
-    return results;
-  } finally {
-    releasePipeline('embeddings');
+  const results: number[][] = [];
+  for (const text of texts) {
+    const output = await pipe(text, { pooling: 'mean', normalize: true });
+    results.push(Array.from(output.data as Float32Array));
   }
+
+  return results;
 }
 
 async function summarizeTexts(texts: string[], modelId = 'summarization'): Promise<string[]> {
   await loadModel(modelId);
-  acquirePipeline(modelId);
-  try {
-    const pipe = loadedPipelines.get(modelId)!;
+  const pipe = loadedPipelines.get(modelId)!;
 
-    const results: string[] = [];
-    for (const text of texts) {
-      const output = await pipe(`summarize: ${text}`, {
-        max_new_tokens: 64,
-        min_length: 10,
-      });
-      const result = (output as Array<{ generated_text: string }>)[0];
-      results.push(result?.generated_text ?? '');
-    }
-
-    return results;
-  } finally {
-    releasePipeline(modelId);
+  const results: string[] = [];
+  for (const text of texts) {
+    const output = await pipe(`summarize: ${text}`, {
+      max_new_tokens: 64,
+      min_length: 10,
+    });
+    const result = (output as Array<{ generated_text: string }>)[0];
+    results.push(result?.generated_text ?? '');
   }
+
+  return results;
 }
 
 async function classifySentiment(texts: string[]): Promise<Array<{ label: string; score: number }>> {
   await loadModel('sentiment');
-  acquirePipeline('sentiment');
-  try {
-    const pipe = loadedPipelines.get('sentiment')!;
+  const pipe = loadedPipelines.get('sentiment')!;
 
-    const results: Array<{ label: string; score: number }> = [];
-    for (const text of texts) {
-      const output = await pipe(text);
-      const result = (output as Array<{ label: string; score: number }>)[0];
-      if (result) {
-        results.push({
-          label: result.label.toLowerCase() === 'positive' ? 'positive' : 'negative',
-          score: result.score,
-        });
-      }
+  const results: Array<{ label: string; score: number }> = [];
+  for (const text of texts) {
+    const output = await pipe(text);
+    const result = (output as Array<{ label: string; score: number }>)[0];
+    if (result) {
+      results.push({
+        label: result.label.toLowerCase() === 'positive' ? 'positive' : 'negative',
+        score: result.score,
+      });
     }
-
-    return results;
-  } finally {
-    releasePipeline('sentiment');
   }
+
+  return results;
 }
 
 interface NEREntity {
@@ -237,33 +235,28 @@ interface NEREntity {
 
 async function extractEntities(texts: string[]): Promise<NEREntity[][]> {
   await loadModel('ner');
-  acquirePipeline('ner');
-  try {
-    const pipe = loadedPipelines.get('ner')!;
+  const pipe = loadedPipelines.get('ner')!;
 
-    const results: NEREntity[][] = [];
-    for (const text of texts) {
-      const output = await pipe(text);
-      const entities = (output as Array<{
-        entity_group: string;
-        score: number;
-        word: string;
-        start: number;
-        end: number;
-      }>).map(e => ({
-        text: e.word,
-        type: e.entity_group,
-        confidence: e.score,
-        start: e.start,
-        end: e.end,
-      }));
-      results.push(entities);
-    }
-
-    return results;
-  } finally {
-    releasePipeline('ner');
+  const results: NEREntity[][] = [];
+  for (const text of texts) {
+    const output = await pipe(text);
+    const entities = (output as Array<{
+      entity_group: string;
+      score: number;
+      word: string;
+      start: number;
+      end: number;
+    }>).map(e => ({
+      text: e.word,
+      type: e.entity_group,
+      confidence: e.score,
+      start: e.start,
+      end: e.end,
+    }));
+    results.push(entities);
   }
+
+  return results;
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -281,6 +274,19 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
   const denominator = Math.sqrt(normA) * Math.sqrt(normB);
   return denominator === 0 ? 0 : dotProduct / denominator;
+}
+
+function cosineSimilarityF32(a: Float32Array, b: Float32Array): number {
+  let dot = 0;
+  let nA = 0;
+  let nB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    nA += a[i]! * a[i]!;
+    nB += b[i]! * b[i]!;
+  }
+  const denom = Math.sqrt(nA) * Math.sqrt(nB);
+  return denom === 0 ? 0 : dot / denom;
 }
 
 function semanticCluster(
@@ -341,26 +347,22 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
       }
 
       case 'unload-model': {
-        const unloaded = unloadModel(message.modelId);
+        unloadModel(message.modelId);
         self.postMessage({
           type: 'model-unloaded',
           id: message.id,
           modelId: message.modelId,
-          skipped: !unloaded,
         });
         break;
       }
 
       case 'embed': {
         const embeddings = await embedTexts(message.texts);
-        const flat = new Float32Array(embeddings.flat());
-        const response = {
+        self.postMessage({
           type: 'embed-result',
           id: message.id,
           embeddings,
-          embeddingBuffer: flat,
-        };
-        self.postMessage(response, [flat.buffer]);
+        });
         break;
       }
 
@@ -404,6 +406,79 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
         break;
       }
 
+      case 'vector-store-ingest': {
+        const EMBED_DIM = 384;
+        const embeddings = await embedTexts(message.items.map(i => sanitizeTitle(i.text)));
+        const valid: Array<{
+          text: string;
+          embedding: Float32Array;
+          pubDate: number;
+          source: string;
+          url: string;
+          tags?: string[];
+        }> = [];
+        for (let i = 0; i < message.items.length; i++) {
+          const emb = embeddings[i];
+          if (!emb || emb.length !== EMBED_DIM) continue;
+          const item = message.items[i]!;
+          valid.push({
+            text: item.text,
+            embedding: new Float32Array(emb),
+            pubDate: item.pubDate,
+            source: item.source,
+            url: item.url,
+            ...(item.tags?.length ? { tags: item.tags } : {}),
+          });
+        }
+        const stored = valid.length > 0 ? await storeVectors(valid) : 0;
+        self.postMessage({
+          type: 'vector-store-ingest-result',
+          id: message.id,
+          stored,
+        });
+        break;
+      }
+
+      case 'vector-store-search': {
+        const clampedTopK = Math.max(1, Math.min(20, message.topK));
+        const clampedMinScore = Math.max(0, Math.min(1, message.minScore));
+        const queries = message.queries.slice(0, 5).map(q => sanitizeTitle(q));
+        const queryEmbeddings = await embedTexts(queries);
+        const queryF32: Float32Array[] = [];
+        for (const emb of queryEmbeddings) {
+          if (emb && emb.length > 0) queryF32.push(new Float32Array(emb));
+        }
+        let results: VectorSearchResult[] = [];
+        if (queryF32.length > 0) {
+          results = await searchVectors(queryF32, clampedTopK, clampedMinScore, cosineSimilarityF32);
+        }
+        self.postMessage({
+          type: 'vector-store-search-result',
+          id: message.id,
+          results,
+        });
+        break;
+      }
+
+      case 'vector-store-count': {
+        const count = await getCount();
+        self.postMessage({
+          type: 'vector-store-count-result',
+          id: message.id,
+          count,
+        });
+        break;
+      }
+
+      case 'vector-store-reset': {
+        await resetStore();
+        self.postMessage({
+          type: 'vector-store-reset-result',
+          id: message.id,
+        });
+        break;
+      }
+
       case 'status': {
         self.postMessage({
           type: 'status-result',
@@ -415,8 +490,6 @@ self.onmessage = async (event: MessageEvent<MLWorkerMessage>) => {
 
       case 'reset': {
         loadedPipelines.clear();
-        loadingPromises.clear();
-        pipelineRefCount.clear();
         self.postMessage({ type: 'reset-complete' });
         break;
       }

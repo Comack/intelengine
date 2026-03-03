@@ -17,6 +17,12 @@ import type {
   ClimateAnomaly,
 } from '../../../../src/generated/server/worldmonitor/climate/v1/service_server';
 
+import { CHROME_UA } from '../../../_shared/constants';
+import { cachedFetchJson } from '../../../_shared/redis';
+
+const REDIS_CACHE_KEY = 'climate:anomalies:v1';
+const REDIS_CACHE_TTL = 10800; // 3h — Open-Meteo Archive uses ERA5 reanalysis with 2-7 day lag
+
 /** The 15 monitored zones matching the legacy api/climate-anomalies.js list. */
 const ZONES: { name: string; lat: number; lon: number }[] = [
   { name: 'Ukraine', lat: 48.4, lon: 31.2 },
@@ -85,7 +91,7 @@ async function fetchZone(
 ): Promise<ClimateAnomaly | null> {
   const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${zone.lat}&longitude=${zone.lon}&start_date=${startDate}&end_date=${endDate}&daily=temperature_2m_mean,precipitation_sum&timezone=UTC`;
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  const response = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20_000) });
   if (!response.ok) {
     throw new Error(`Open-Meteo ${response.status} for ${zone.name}`);
   }
@@ -133,28 +139,35 @@ export const listClimateAnomalies: ClimateServiceHandler['listClimateAnomalies']
   _ctx: ServerContext,
   _req: ListClimateAnomaliesRequest,
 ): Promise<ListClimateAnomaliesResponse> => {
-  // Compute 30-day date range
-  const endDate = new Date().toISOString().slice(0, 10);
-  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
+  let result: ListClimateAnomaliesResponse | null = null;
+  try {
+    result = await cachedFetchJson<ListClimateAnomaliesResponse>(
+      REDIS_CACHE_KEY,
+      REDIS_CACHE_TTL,
+      async () => {
+        const endDate = new Date().toISOString().slice(0, 10);
+        const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .slice(0, 10);
 
-  // Fetch all 15 zones in parallel
-  const results = await Promise.allSettled(
-    ZONES.map((zone) => fetchZone(zone, startDate, endDate)),
-  );
+        const results = await Promise.allSettled(
+          ZONES.map((zone) => fetchZone(zone, startDate, endDate)),
+        );
 
-  // Collect fulfilled non-null results, log errors
-  const anomalies: ClimateAnomaly[] = [];
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      if (result.value != null) {
-        anomalies.push(result.value);
-      }
-    } else {
-      console.error('[CLIMATE]', result.reason?.message ?? result.reason);
-    }
+        const anomalies: ClimateAnomaly[] = [];
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            if (r.value != null) anomalies.push(r.value);
+          } else {
+            console.error('[CLIMATE]', r.reason?.message ?? r.reason);
+          }
+        }
+
+        return anomalies.length > 0 ? { anomalies, pagination: undefined } : null;
+      },
+    );
+  } catch {
+    return { anomalies: [], pagination: undefined };
   }
-
-  return { anomalies, pagination: undefined };
+  return result || { anomalies: [], pagination: undefined };
 };

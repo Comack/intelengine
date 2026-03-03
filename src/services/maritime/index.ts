@@ -3,10 +3,6 @@ import {
   type AisDensityZone as ProtoDensityZone,
   type AisDisruption as ProtoDisruption,
   type GetVesselSnapshotResponse,
-  type ListSarDetectionsResponse,
-  type SarDarkShip,
-  type GetPortCongestionResponse,
-  type PortCongestionStatus,
 } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import type { AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
@@ -15,8 +11,8 @@ import { isFeatureAvailable } from '../runtime-config';
 
 // ---- Proto fallback (desktop safety when relay URL is unavailable) ----
 
-const client = new MaritimeServiceClient('', { fetch: fetch.bind(globalThis) });
-const snapshotBreaker = createCircuitBreaker<GetVesselSnapshotResponse>({ name: 'Maritime Snapshot' });
+const client = new MaritimeServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const snapshotBreaker = createCircuitBreaker<GetVesselSnapshotResponse>({ name: 'Maritime Snapshot', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const emptySnapshotFallback: GetVesselSnapshotResponse = { snapshot: undefined };
 
 const DISRUPTION_TYPE_REVERSE: Record<string, AisDisruptionType> = {
@@ -96,7 +92,7 @@ interface SnapshotCandidateReport extends AisPositionData {
 
 interface AisSnapshotResponse {
   sequence?: number;
-  timestamp?: string | number;
+  timestamp?: string;
   status?: {
     connected?: boolean;
     vessels?: number;
@@ -131,15 +127,16 @@ let latestStatus: SnapshotStatus = {
 
 // ---- Constants ----
 
-const SNAPSHOT_POLL_INTERVAL_MS = 10 * 1000;
-const SNAPSHOT_STALE_MS = 20 * 1000;
+const SNAPSHOT_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const SNAPSHOT_STALE_MS = 6 * 60 * 1000;
 const CALLBACK_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_CALLBACK_TRACKED_VESSELS = 20000;
 
 // ---- Raw Relay URL (for candidate reports path) ----
 
+const SNAPSHOT_PROXY_URL = '/api/ais-snapshot';
 const wsRelayUrl = import.meta.env.VITE_WS_RELAY_URL || '';
-const RAILWAY_SNAPSHOT_URL = wsRelayUrl
+const DIRECT_RAILWAY_SNAPSHOT_URL = wsRelayUrl
   ? wsRelayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '') + '/ais/snapshot'
   : '';
 const LOCAL_SNAPSHOT_FALLBACK = 'http://localhost:3004/ais/snapshot';
@@ -153,7 +150,6 @@ function shouldIncludeCandidates(): boolean {
 
 function parseSnapshot(data: unknown): {
   sequence: number;
-  snapshotAt: number;
   status: SnapshotStatus;
   disruptions: AisDisruptionEvent[];
   density: AisDensityZone[];
@@ -165,15 +161,8 @@ function parseSnapshot(data: unknown): {
   if (!Array.isArray(raw.disruptions) || !Array.isArray(raw.density)) return null;
 
   const status = raw.status || {};
-  const parsedSnapshotAt = typeof raw.timestamp === 'number'
-    ? (raw.timestamp > 1e11 ? Math.round(raw.timestamp) : Math.round(raw.timestamp * 1000))
-    : Date.parse(raw.timestamp || '');
-  const snapshotAt = Number.isFinite(parsedSnapshotAt) && parsedSnapshotAt > 0
-    ? parsedSnapshotAt
-    : Date.now();
   return {
     sequence: Number.isFinite(raw.sequence as number) ? Number(raw.sequence) : 0,
-    snapshotAt,
     status: {
       connected: Boolean(status.connected),
       vessels: Number.isFinite(status.vessels as number) ? Number(status.vessels) : 0,
@@ -190,23 +179,15 @@ function parseSnapshot(data: unknown): {
 async function fetchRawRelaySnapshot(includeCandidates: boolean): Promise<unknown> {
   const query = `?candidates=${includeCandidates ? 'true' : 'false'}`;
 
-  // Desktop sidecar: use embedded AIS relay directly (no Railway needed)
-  const { isDesktopRuntime, getApiBaseUrl } = await import('@/services/runtime');
-  if (isDesktopRuntime()) {
-    try {
-      const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-      const token = await tryInvokeTauri<string>('get_local_api_token');
-      const sidecarBase = getApiBaseUrl() || 'http://127.0.0.1:46123';
-      const sidecarHeaders: Record<string, string> = { Accept: 'application/json' };
-      if (token) sidecarHeaders['Authorization'] = `Bearer ${token}`;
-      const sidecarResp = await fetch(`${sidecarBase}/api/local-ais-snapshot${query}`, { headers: sidecarHeaders });
-      if (sidecarResp.ok) return sidecarResp.json();
-    } catch { /* sidecar not available — fall through */ }
-  }
+  try {
+    const proxied = await fetch(`${SNAPSHOT_PROXY_URL}${query}`, { headers: { Accept: 'application/json' } });
+    if (proxied.ok) return proxied.json();
+  } catch { /* Proxy unavailable -- fall through */ }
 
-  if (RAILWAY_SNAPSHOT_URL) {
+  // Local development fallback only.
+  if (isLocalhost && DIRECT_RAILWAY_SNAPSHOT_URL) {
     try {
-      const railway = await fetch(`${RAILWAY_SNAPSHOT_URL}${query}`, { headers: { Accept: 'application/json' } });
+      const railway = await fetch(`${DIRECT_RAILWAY_SNAPSHOT_URL}${query}`, { headers: { Accept: 'application/json' } });
       if (railway.ok) return railway.json();
     } catch { /* Railway unavailable -- fall through */ }
   }
@@ -231,13 +212,12 @@ async function fetchSnapshotPayload(includeCandidates: boolean): Promise<unknown
   } catch (rawError) {
     // Desktop fallback: use proto route when relay URL/local relay is unavailable.
     const response = await snapshotBreaker.execute(async () => {
-      return client.getVesselSnapshot({});
+      return client.getVesselSnapshot({ neLat: 0, neLon: 0, swLat: 0, swLon: 0 });
     }, emptySnapshotFallback);
 
     if (response.snapshot) {
       return {
         sequence: 0, // Proto payload does not include relay sequence.
-        timestamp: response.snapshot.snapshotAt || Date.now(),
         status: { connected: true, vessels: 0, messages: 0 },
         disruptions: response.snapshot.disruptions.map(toDisruptionEvent),
         density: response.snapshot.densityZones.map(toDensityZone),
@@ -252,6 +232,10 @@ async function fetchSnapshotPayload(includeCandidates: boolean): Promise<unknown
 // ---- Callback Emission ----
 
 function pruneCallbackTimestampIndex(now: number): void {
+  if (lastCallbackTimestampByMmsi.size <= MAX_CALLBACK_TRACKED_VESSELS) {
+    return;
+  }
+
   const threshold = now - CALLBACK_RETENTION_MS;
   for (const [mmsi, ts] of lastCallbackTimestampByMmsi) {
     if (ts < threshold) {
@@ -263,29 +247,13 @@ function pruneCallbackTimestampIndex(now: number): void {
     return;
   }
 
+  const oldest = Array.from(lastCallbackTimestampByMmsi.entries())
+    .sort((a, b) => a[1] - b[1]);
   const toDelete = lastCallbackTimestampByMmsi.size - MAX_CALLBACK_TRACKED_VESSELS;
-  // O(n × toDelete) partial selection instead of O(n log n) full sort —
-  // much faster when only a handful of entries need eviction (common case).
-  const evict: [string, number][] = [];
-  let cutoff = -Infinity;
-  for (const [mmsi, ts] of lastCallbackTimestampByMmsi) {
-    if (evict.length < toDelete) {
-      evict.push([mmsi, ts]);
-      if (ts > cutoff) cutoff = ts;
-    } else if (ts < cutoff) {
-      let mi = 0;
-      for (let j = 1; j < evict.length; j++) {
-        if (evict[j]![1] > evict[mi]![1]) mi = j;
-      }
-      evict[mi] = [mmsi, ts];
-      cutoff = evict[0]![1];
-      for (let j = 1; j < evict.length; j++) {
-        if (evict[j]![1] > cutoff) cutoff = evict[j]![1];
-      }
-    }
-  }
-  for (const [mmsi] of evict) {
-    lastCallbackTimestampByMmsi.delete(mmsi);
+  for (let i = 0; i < toDelete; i++) {
+    const entry = oldest[i];
+    if (!entry) break;
+    lastCallbackTimestampByMmsi.delete(entry[0]);
   }
 }
 
@@ -328,6 +296,9 @@ function emitCandidateReports(reports: SnapshotCandidateReport[]): void {
 
 async function pollSnapshot(force = false): Promise<void> {
   if (!isAisConfigured()) return;
+  // Skip polling when tab is hidden to avoid wasting relay bandwidth.
+  // The interval keeps running so polling resumes instantly on focus.
+  if (!force && isClientRuntime && document.hidden) return;
   if (inFlight && !force) return;
 
   inFlight = true;
@@ -337,12 +308,7 @@ async function pollSnapshot(force = false): Promise<void> {
     const snapshot = parseSnapshot(payload);
     if (!snapshot) throw new Error('Invalid snapshot payload');
 
-    latestDisruptions = snapshot.disruptions.map((event) => ({
-      ...event,
-      observedAt: Number.isFinite(event.observedAt) && event.observedAt && event.observedAt > 0
-        ? event.observedAt
-        : snapshot.snapshotAt,
-    }));
+    latestDisruptions = snapshot.disruptions;
     latestDensity = snapshot.density;
     latestStatus = snapshot.status;
     lastPollAt = Date.now();
@@ -377,6 +343,36 @@ function startPolling(): void {
   pollInterval = setInterval(() => {
     void pollSnapshot(false);
   }, SNAPSHOT_POLL_INTERVAL_MS);
+}
+
+function pausePolling(): void {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+function resumePolling(): void {
+  if (!isPolling || pollInterval) return;
+  // Avoid overlapping relay requests if a poll is already in flight.
+  if (!inFlight) {
+    void pollSnapshot(false);
+  }
+  pollInterval = setInterval(() => {
+    void pollSnapshot(false);
+  }, SNAPSHOT_POLL_INTERVAL_MS);
+}
+
+// Pause AIS polling when the browser tab is hidden to avoid wasting
+// Railway relay bandwidth on backgrounded tabs.
+if (isClientRuntime) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      pausePolling();
+    } else {
+      resumePolling();
+    }
+  });
 }
 
 // ---- Exported Functions ----
@@ -431,30 +427,4 @@ export async function fetchAisSignals(): Promise<{ disruptions: AisDisruptionEve
     disruptions: latestDisruptions,
     density: latestDensity,
   };
-}
-
-// ---- SAR Detections ----
-const sarBreaker = createCircuitBreaker<ListSarDetectionsResponse>({ name: 'SAR Detections' });
-const emptySarFallback: ListSarDetectionsResponse = { detections: [], fetchedAt: '' };
-
-export type { SarDarkShip };
-
-export async function fetchSarDetections(limit = 50): Promise<SarDarkShip[]> {
-  const res = await sarBreaker.execute(async () => {
-    return client.listSarDetections({ limit });
-  }, emptySarFallback);
-  return res.detections;
-}
-
-// ---- Port Congestion ----
-const portBreaker = createCircuitBreaker<GetPortCongestionResponse>({ name: 'Port Congestion' });
-const emptyPortFallback: GetPortCongestionResponse = { ports: [], computedAt: '' };
-
-export type { PortCongestionStatus };
-
-export async function fetchPortCongestion(): Promise<PortCongestionStatus[]> {
-  const res = await portBreaker.execute(async () => {
-    return client.getPortCongestion({});
-  }, emptyPortFallback);
-  return res.ports;
 }

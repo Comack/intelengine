@@ -2,14 +2,10 @@
 // source: worldmonitor/research/v1/service.proto
 
 export interface ListArxivPapersRequest {
-  pagination?: PaginationRequest;
-  category: string;
-  query: string;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  category: string;
+  query: string;
 }
 
 export interface ListArxivPapersResponse {
@@ -33,7 +29,8 @@ export interface PaginationResponse {
 }
 
 export interface ListTrendingReposRequest {
-  pagination?: PaginationRequest;
+  pageSize: number;
+  cursor: string;
   language: string;
   period: string;
 }
@@ -54,7 +51,8 @@ export interface GithubRepo {
 }
 
 export interface ListHackernewsItemsRequest {
-  pagination?: PaginationRequest;
+  pageSize: number;
+  cursor: string;
   feedType: string;
 }
 
@@ -111,44 +109,6 @@ export interface TechEventCoords {
   virtual: boolean;
 }
 
-export interface ListSocialTrendsRequest {
-  platform: string;
-  limit: number;
-}
-
-export interface ListSocialTrendsResponse {
-  trends: SocialTrend[];
-  sampledAt: string;
-}
-
-export interface SocialTrend {
-  topic: string;
-  platform: string;
-  mentionCount1h: number;
-  velocity: number;
-  topPosts: string[];
-  matchedEntities: string[];
-  observedAt: string;
-}
-
-export interface GetRepoMomentumRequest {
-}
-
-export interface GetRepoMomentumResponse {
-  repos: RepoMomentum[];
-  computedAt: string;
-}
-
-export interface RepoMomentum {
-  repo: string;
-  ownerEntity: string;
-  stars1d: number;
-  forks1d: number;
-  prOpens1d: number;
-  momentumScore: number;
-  computedAt: string;
-}
-
 export interface FieldViolation {
   field: string;
   description: string;
@@ -198,8 +158,6 @@ export interface ResearchServiceHandler {
   listTrendingRepos(ctx: ServerContext, req: ListTrendingReposRequest): Promise<ListTrendingReposResponse>;
   listHackernewsItems(ctx: ServerContext, req: ListHackernewsItemsRequest): Promise<ListHackernewsItemsResponse>;
   listTechEvents(ctx: ServerContext, req: ListTechEventsRequest): Promise<ListTechEventsResponse>;
-  listSocialTrends(ctx: ServerContext, req: ListSocialTrendsRequest): Promise<ListSocialTrendsResponse>;
-  getRepoMomentum(ctx: ServerContext, req: GetRepoMomentumRequest): Promise<GetRepoMomentumResponse>;
 }
 
 export function createResearchServiceRoutes(
@@ -208,12 +166,19 @@ export function createResearchServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/research/v1/list-arxiv-papers",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListArxivPapersRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListArxivPapersRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            category: params.get("category") ?? "",
+            query: params.get("query") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listArxivPapers", body);
             if (bodyViolations) {
@@ -251,12 +216,19 @@ export function createResearchServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/research/v1/list-trending-repos",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListTrendingReposRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListTrendingReposRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            language: params.get("language") ?? "",
+            period: params.get("period") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listTrendingRepos", body);
             if (bodyViolations) {
@@ -294,12 +266,18 @@ export function createResearchServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/research/v1/list-hackernews-items",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListHackernewsItemsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListHackernewsItemsRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            feedType: params.get("feed_type") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listHackernewsItems", body);
             if (bodyViolations) {
@@ -337,12 +315,19 @@ export function createResearchServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/research/v1/list-tech-events",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListTechEventsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListTechEventsRequest = {
+            type: params.get("type") ?? "",
+            mappable: params.get("mappable") === "true",
+            limit: Number(params.get("limit") ?? "0"),
+            days: Number(params.get("days") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listTechEvents", body);
             if (bodyViolations) {
@@ -358,92 +343,6 @@ export function createResearchServiceRoutes(
 
           const result = await handler.listTechEvents(ctx, body);
           return new Response(JSON.stringify(result as ListTechEventsResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "POST",
-      path: "/api/research/v1/list-social-trends",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListSocialTrendsRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("listSocialTrends", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
-          const result = await handler.listSocialTrends(ctx, body);
-          return new Response(JSON.stringify(result as ListSocialTrendsResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "POST",
-      path: "/api/research/v1/get-repo-momentum",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetRepoMomentumRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("getRepoMomentum", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
-          const result = await handler.getRepoMomentum(ctx, body);
-          return new Response(JSON.stringify(result as GetRepoMomentumResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

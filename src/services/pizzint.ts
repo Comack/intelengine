@@ -11,7 +11,7 @@ import {
 
 // ---- Sebuf client ----
 
-const client = new IntelligenceServiceClient('', { fetch: fetch.bind(globalThis) });
+const client = new IntelligenceServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
 // ---- Circuit breakers ----
 
@@ -19,14 +19,16 @@ const pizzintBreaker = createCircuitBreaker<PizzIntStatus>({
   name: 'PizzINT',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 2 * 60 * 1000
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
 });
 
 const gdeltBreaker = createCircuitBreaker<GdeltTensionPair[]>({
   name: 'GDELT Tensions',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
-  cacheTtlMs: 10 * 60 * 1000
+  cacheTtlMs: 10 * 60 * 1000,
+  persistCache: true,
 });
 
 // ---- Proto → legacy adapters ----

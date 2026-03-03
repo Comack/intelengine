@@ -21,13 +21,6 @@ export type DataSourceId =
   | 'outages'    // Internet outages
   | 'cyber_threats' // Cyber threat IOC layer
   | 'weather'    // Weather alerts
-  | 'forensics'  // Operational forensics runs/anomaly overlays
-  | 'faa_delays' // Airport delay feed
-  | 'cable_ops'  // Cable advisories + repair ships
-  | 'cable_health' // Cable health diagnostics
-  | 'eonet'      // NASA EONET natural events
-  | 'gdelt_tension' // GDELT tension stream
-  | 'tech_events' // Tech conference/event stream
   | 'economic'   // Economic indicators (FRED)
   | 'oil'        // EIA oil analytics
   | 'spending'        // USASpending.gov
@@ -39,7 +32,12 @@ export type DataSourceId =
   | 'unhcr'          // UNHCR displacement data
   | 'climate'        // Climate anomaly data (Open-Meteo)
   | 'worldpop'       // WorldPop population exposure
-  | 'signal_expansion'; // Signal expansion APIs (BGP, grid, SAR, etc.)
+  | 'giving'         // Global giving activity data
+  | 'bis'            // BIS central bank data
+  | 'wto_trade'      // WTO trade policy data
+  | 'supply_chain'   // Supply chain disruption intelligence
+  | 'security_advisories'  // Government travel/security advisories
+  | 'gpsjam';              // GPS/GNSS interference
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -90,13 +88,6 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   outages: { name: 'Internet Outages', requiredForRisk: false, panelId: 'outages' },
   cyber_threats: { name: 'Cyber Threat IOCs', requiredForRisk: false, panelId: 'map' },
   weather: { name: 'Weather Alerts', requiredForRisk: false, panelId: 'weather' },
-  forensics: { name: 'Forensics Signals', requiredForRisk: false, panelId: 'forensics' },
-  faa_delays: { name: 'Airport Delay Alerts', requiredForRisk: false, panelId: 'map' },
-  cable_ops: { name: 'Cable Operations', requiredForRisk: false, panelId: 'map' },
-  cable_health: { name: 'Cable Health', requiredForRisk: false, panelId: 'map' },
-  eonet: { name: 'Natural Events (EONET)', requiredForRisk: false, panelId: 'map' },
-  gdelt_tension: { name: 'GDELT Tension Stream', requiredForRisk: false, panelId: 'intel' },
-  tech_events: { name: 'Tech Events', requiredForRisk: false, panelId: 'events' },
   economic: { name: 'Economic Data (FRED)', requiredForRisk: false, panelId: 'economic' },
   oil: { name: 'Oil Analytics (EIA)', requiredForRisk: false, panelId: 'economic' },
   spending: { name: 'Gov Spending', requiredForRisk: false, panelId: 'economic' },
@@ -108,7 +99,12 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   unhcr: { name: 'UNHCR Displacement', requiredForRisk: false, panelId: 'displacement' },
   climate: { name: 'Climate Anomalies', requiredForRisk: false, panelId: 'climate' },
   worldpop: { name: 'Population Exposure', requiredForRisk: false, panelId: 'population-exposure' },
-  signal_expansion: { name: 'Signal Expansion', requiredForRisk: false, panelId: 'map' },
+  giving: { name: 'Global Giving Activity', requiredForRisk: false, panelId: 'giving' },
+  bis: { name: 'BIS Central Banks', requiredForRisk: false, panelId: 'economic' },
+  wto_trade: { name: 'WTO Trade Policy', requiredForRisk: false, panelId: 'trade-policy' },
+  supply_chain: { name: 'Supply Chain Intelligence', requiredForRisk: false, panelId: 'supply-chain' },
+  security_advisories: { name: 'Security Advisories', requiredForRisk: false, panelId: 'security-advisories' },
+  gpsjam: { name: 'GPS/GNSS Interference', requiredForRisk: false, panelId: 'map' },
 };
 
 class DataFreshnessTracker {
@@ -350,15 +346,8 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   predictions: 'Prediction feed unavailable—scenario signals may be stale',
   pizzint: 'PizzINT monitor unavailable—location/tension tracking degraded',
   outages: 'Internet disruptions may be unreported—outage monitoring offline',
-  forensics: 'Operational forensics runs unavailable—calibrated anomaly diagnostics may be stale',
   cyber_threats: 'Cyber IOC map points unavailable—malicious infrastructure visibility reduced',
   weather: 'Severe weather warnings may be missed—weather alerts unavailable',
-  faa_delays: 'Airport delay feed unavailable—aviation disruption monitoring degraded',
-  cable_ops: 'Cable operations advisories unavailable—subsea infrastructure visibility reduced',
-  cable_health: 'Cable health diagnostics unavailable—fault/degradation scoring may be stale',
-  eonet: 'Natural event feed unavailable—hazard escalation monitoring degraded',
-  gdelt_tension: 'Country tension stream unavailable—cross-border escalation tracking degraded',
-  tech_events: 'Tech events feed unavailable—conference density/immediacy signals degraded',
   economic: 'Economic indicators stale—Fed/Treasury data not updating',
   oil: 'Oil market analytics unavailable—EIA data not updating',
   spending: 'Government spending data unavailable',
@@ -370,7 +359,12 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   unhcr: 'UNHCR displacement data unavailable—refugee flows unknown',
   climate: 'Climate anomaly data unavailable—extreme weather patterns undetected',
   worldpop: 'Population exposure data unavailable—affected population unknown',
-  signal_expansion: 'Signal expansion data unavailable—BGP, grid, SAR, and AQI feeds offline',
+  giving: 'Global giving activity data unavailable',
+  bis: 'Central bank policy data may be stale—BIS feed unavailable',
+  wto_trade: 'Trade policy intelligence unavailable—WTO data not updating',
+  supply_chain: 'Supply chain disruption status unavailable—chokepoint monitoring offline',
+  security_advisories: 'Government travel advisory data unavailable—security alerts may be missed',
+  gpsjam: 'GPS/GNSS interference data unavailable—jamming zones undetected',
 };
 
 /**

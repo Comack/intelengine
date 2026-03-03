@@ -25,7 +25,7 @@ message GetMacroSignalsResponse {
   bool unavailable = 7;
 }
 
-// MacroSignals contains all 7 individual signal computations plus BDI.
+// MacroSignals contains all 7 individual signal computations.
 message MacroSignals {
   // JPY-based liquidity squeeze detection.
   LiquiditySignal liquidity = 1;
@@ -35,14 +35,12 @@ message MacroSignals {
   MacroRegimeSignal macro_regime = 3;
   // BTC price vs moving averages and VWAP.
   TechnicalTrendSignal technical_trend = 4;
-  // Bitcoin mining hashrate momentum.
+  // Bitcoin mining hash rate momentum.
   HashRateSignal hash_rate = 5;
-  // Mining profitability estimate.
-  MiningCostSignal mining_cost = 6;
+  // Price momentum via Mayer Multiple.
+  PriceMomentumSignal price_momentum = 6;
   // Crypto Fear & Greed index.
   FearGreedSignal fear_greed = 7;
-  // Baltic Dry Index shipping cost indicator.
-  BalticDryIndexSignal baltic_dry_index = 8;
 }
 
 // LiquiditySignal tracks JPY 30d rate of change as a liquidity proxy.
@@ -93,17 +91,17 @@ message TechnicalTrendSignal {
   repeated double sparkline = 7;
 }
 
-// HashRateSignal tracks Bitcoin hashrate momentum.
+// HashRateSignal tracks Bitcoin hash rate momentum.
 message HashRateSignal {
   // "GROWING", "DECLINING", "STABLE", or "UNKNOWN".
   string status = 1;
-  // Hashrate change over 30 days as percentage.
+  // Hash rate change over 30 days as percentage.
   optional double change_30d = 2;
 }
 
-// MiningCostSignal estimates mining profitability from BTC price thresholds.
-message MiningCostSignal {
-  // "PROFITABLE", "TIGHT", "SQUEEZE", or "UNKNOWN".
+// PriceMomentumSignal uses the Mayer Multiple (price/SMA200) as a market-adaptive signal.
+message PriceMomentumSignal {
+  // "STRONG", "MODERATE", "WEAK", or "UNKNOWN".
   string status = 1;
 }
 
@@ -132,16 +130,4 @@ message FearGreedSignal {
 message MacroMeta {
   // Last 30 QQQ close prices for sparkline.
   repeated double qqq_sparkline = 1;
-}
-
-// BalticDryIndexSignal tracks the Baltic Dry Index shipping cost indicator.
-message BalticDryIndexSignal {
-  // Raw BDI value (published once per business day).
-  double value = 1;
-  // 7-day percentage change.
-  double change_7d_pct = 2;
-  // Trend direction: rising | falling | stable.
-  string trend = 3;
-  // Unix milliseconds of the latest BDI publication.
-  int64 updated_at = 4;
 }

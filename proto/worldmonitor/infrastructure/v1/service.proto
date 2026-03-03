@@ -8,9 +8,6 @@ import "worldmonitor/infrastructure/v1/list_service_statuses.proto";
 import "worldmonitor/infrastructure/v1/get_temporal_baseline.proto";
 import "worldmonitor/infrastructure/v1/get_cable_health.proto";
 import "worldmonitor/infrastructure/v1/record_baseline_snapshot.proto";
-import "worldmonitor/infrastructure/v1/list_routing_anomalies.proto";
-import "worldmonitor/infrastructure/v1/get_grid_status.proto";
-import "worldmonitor/infrastructure/v1/list_radiation_readings.proto";
 
 // InfrastructureService provides APIs for internet outage monitoring from Cloudflare Radar,
 // external service status tracking, and temporal baseline anomaly detection.
@@ -19,17 +16,17 @@ service InfrastructureService {
 
   // ListInternetOutages retrieves detected internet outages from Cloudflare Radar.
   rpc ListInternetOutages(ListInternetOutagesRequest) returns (ListInternetOutagesResponse) {
-    option (sebuf.http.config) = {path: "/list-internet-outages"};
+    option (sebuf.http.config) = {path: "/list-internet-outages", method: HTTP_METHOD_GET};
   }
 
   // ListServiceStatuses retrieves operational status of monitored external services.
   rpc ListServiceStatuses(ListServiceStatusesRequest) returns (ListServiceStatusesResponse) {
-    option (sebuf.http.config) = {path: "/list-service-statuses"};
+    option (sebuf.http.config) = {path: "/list-service-statuses", method: HTTP_METHOD_GET};
   }
 
   // GetTemporalBaseline checks current activity count against stored baseline for anomaly detection.
   rpc GetTemporalBaseline(GetTemporalBaselineRequest) returns (GetTemporalBaselineResponse) {
-    option (sebuf.http.config) = {path: "/get-temporal-baseline"};
+    option (sebuf.http.config) = {path: "/get-temporal-baseline", method: HTTP_METHOD_GET};
   }
 
   // RecordBaselineSnapshot batch-updates baseline statistics using Welford's online algorithm.
@@ -39,21 +36,6 @@ service InfrastructureService {
 
   // GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
   rpc GetCableHealth(GetCableHealthRequest) returns (GetCableHealthResponse) {
-    option (sebuf.http.config) = {path: "/get-cable-health"};
-  }
-
-  // ListRoutingAnomalies retrieves BGP hijack, leak, and route flap events from BGPStream.
-  rpc ListRoutingAnomalies(ListRoutingAnomaliesRequest) returns (ListRoutingAnomaliesResponse) {
-    option (sebuf.http.config) = {path: "/list-routing-anomalies"};
-  }
-
-  // GetGridStatus retrieves electricity grid health and carbon intensity from Electricity Maps.
-  rpc GetGridStatus(GetGridStatusRequest) returns (GetGridStatusResponse) {
-    option (sebuf.http.config) = {path: "/get-grid-status"};
-  }
-
-  // ListRadiationReadings retrieves recent radiation measurements from the Safecast sensor network.
-  rpc ListRadiationReadings(ListRadiationReadingsRequest) returns (ListRadiationReadingsResponse) {
-    option (sebuf.http.config) = {path: "/list-radiation-readings"};
+    option (sebuf.http.config) = {path: "/get-cable-health", method: HTTP_METHOD_GET};
   }
 }

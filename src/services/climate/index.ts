@@ -4,16 +4,9 @@ import {
   type AnomalySeverity as ProtoAnomalySeverity,
   type AnomalyType as ProtoAnomalyType,
   type ListClimateAnomaliesResponse,
-  type ListAirQualityReadingsResponse,
-  type AirQualityReading,
-  type GetPollutionGridResponse,
-  type PollutionGridTile,
-  type GetWeatherForecastResponse,
-  type WeatherForecastZone,
-  type ListDeforestationAlertsResponse,
-  type DeforestationAlert,
 } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
 
 // Re-export consumer-friendly type matching legacy shape exactly.
 // Consumers import this type from '@/services/climate' and see the same
@@ -35,14 +28,20 @@ export interface ClimateFetchResult {
   anomalies: ClimateAnomaly[];
 }
 
-const client = new ClimateServiceClient('', { fetch: fetch.bind(globalThis) });
-const breaker = createCircuitBreaker<ListClimateAnomaliesResponse>({ name: 'Climate Anomalies' });
+const client = new ClimateServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const breaker = createCircuitBreaker<ListClimateAnomaliesResponse>({ name: 'Climate Anomalies', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 const emptyClimateFallback: ListClimateAnomaliesResponse = { anomalies: [] };
 
 export async function fetchClimateAnomalies(): Promise<ClimateFetchResult> {
+  const hydrated = getHydratedData('climateAnomalies') as ListClimateAnomaliesResponse | undefined;
+  if (hydrated) {
+    const anomalies = (hydrated.anomalies ?? []).map(toDisplayAnomaly).filter(a => a.severity !== 'normal');
+    return { ok: true, anomalies };
+  }
+
   const response = await breaker.execute(async () => {
-    return client.listClimateAnomalies({ minSeverity: 'ANOMALY_SEVERITY_UNSPECIFIED' });
+    return client.listClimateAnomalies({ minSeverity: 'ANOMALY_SEVERITY_UNSPECIFIED', pageSize: 0, cursor: '' });
   }, emptyClimateFallback);
   const anomalies = (response.anomalies ?? [])
     .map(toDisplayAnomaly)
@@ -98,58 +97,4 @@ function mapType(t: ProtoAnomalyType): ClimateAnomaly['type'] {
     case 'ANOMALY_TYPE_MIXED': return 'mixed';
     default: return 'warm';
   }
-}
-
-// ---- Air Quality ----
-const aqiBreaker = createCircuitBreaker<ListAirQualityReadingsResponse>({ name: 'Air Quality' });
-const emptyAqiFallback: ListAirQualityReadingsResponse = { readings: [], fetchedAt: '' };
-
-export type { AirQualityReading };
-
-export async function fetchAirQualityReadings(limit = 50): Promise<AirQualityReading[]> {
-  const res = await aqiBreaker.execute(async () => {
-    return client.listAirQualityReadings({ limit });
-  }, emptyAqiFallback);
-  return res.readings;
-}
-
-// ---- Pollution Grid ----
-const pollutionBreaker = createCircuitBreaker<GetPollutionGridResponse>({ name: 'Pollution Grid' });
-const emptyPollutionFallback: GetPollutionGridResponse = { tiles: [], acquiredAt: '' };
-
-export type { PollutionGridTile };
-
-export async function fetchPollutionGrid(
-  latMin = -60, latMax = 60, lonMin = -180, lonMax = 180,
-): Promise<PollutionGridTile[]> {
-  const res = await pollutionBreaker.execute(async () => {
-    return client.getPollutionGrid({ latMin, latMax, lonMin, lonMax });
-  }, emptyPollutionFallback);
-  return res.tiles;
-}
-
-// ---- Weather Forecast ----
-const forecastBreaker = createCircuitBreaker<GetWeatherForecastResponse>({ name: 'Weather Forecast' });
-const emptyForecastFallback: GetWeatherForecastResponse = { zones: [], fetchedAt: '' };
-
-export type { WeatherForecastZone };
-
-export async function fetchWeatherForecast(): Promise<WeatherForecastZone[]> {
-  const res = await forecastBreaker.execute(async () => {
-    return client.getWeatherForecast({});
-  }, emptyForecastFallback);
-  return res.zones;
-}
-
-// ---- Deforestation Alerts ----
-const deforestBreaker = createCircuitBreaker<ListDeforestationAlertsResponse>({ name: 'Deforestation Alerts' });
-const emptyDeforestFallback: ListDeforestationAlertsResponse = { alerts: [], fetchedAt: '' };
-
-export type { DeforestationAlert };
-
-export async function fetchDeforestationAlerts(limit = 50): Promise<DeforestationAlert[]> {
-  const res = await deforestBreaker.execute(async () => {
-    return client.listDeforestationAlerts({ limit, strategicOnly: false });
-  }, emptyDeforestFallback);
-  return res.alerts;
 }

@@ -85,6 +85,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 }) as typeof fetch;
 
 const layers = {
+  gpsJamming: false,
   conflicts: false,
   bases: false,
   cables: false,
@@ -98,7 +99,6 @@ const layers = {
   economic: false,
   waterways: false,
   outages: false,
-  forensics: false,
   cyberThreats: false,
   datacenters: false,
   protests: false,
@@ -121,14 +121,14 @@ const layers = {
   centralBanks: false,
   commodityHubs: false,
   gulfInvestments: false,
-  // Signal expansion layers
-  routingAnomalies: false,
-  gridStatus: false,
-  sarDetections: false,
-  portCongestion: false,
-  whaleTransfers: false,
-  airQuality: false,
-  satellites: false,
+  positiveEvents: false,
+  kindness: false,
+  happiness: false,
+  speciesRecovery: false,
+  renewableInstallations: false,
+  tradeRoutes: false,
+  iranAttacks: false,
+  dayNight: false,
 };
 
 await initI18n();

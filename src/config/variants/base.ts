@@ -8,10 +8,10 @@ export { AI_DATA_CENTERS } from '../ai-datacenters';
 
 // Refresh intervals - shared across all variants
 export const REFRESH_INTERVALS = {
-  feeds: 5 * 60 * 1000,
-  markets: 4 * 60 * 1000,
-  crypto: 4 * 60 * 1000,
-  predictions: 5 * 60 * 1000,
+  feeds: 15 * 60 * 1000,
+  markets: 8 * 60 * 1000,
+  crypto: 8 * 60 * 1000,
+  predictions: 10 * 60 * 1000,
   ais: 10 * 60 * 1000,
 };
 
@@ -35,6 +35,7 @@ export const STORAGE_KEYS = {
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',
+  liveChannels: 'worldmonitor-live-channels',
 } as const;
 
 // Type definitions for variant configs

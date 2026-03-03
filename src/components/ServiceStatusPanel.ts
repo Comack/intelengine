@@ -1,7 +1,7 @@
 
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { isDesktopRuntime, getLocalFirstMode } from '@/services/runtime';
+import { getLocalApiPort, isDesktopRuntime } from '@/services/runtime';
 import {
   getDesktopReadinessChecks,
   getKeyBackedAvailabilitySummary,
@@ -11,7 +11,6 @@ import {
   fetchServiceStatuses,
   type ServiceStatusResult as ServiceStatus,
 } from '@/services/infrastructure';
-import { getAllApiSources, subscribeDataSources } from '@/services/data-source-tracker';
 import { h, replaceChildren, type DomChild } from '@/utils/dom-utils';
 
 interface LocalBackendStatus {
@@ -40,50 +39,38 @@ export class ServiceStatusPanel extends Panel {
   private loading = true;
   private error: string | null = null;
   private filter: CategoryFilter = 'all';
-  private refreshInterval: ReturnType<typeof setInterval> | null = null;
   private localBackend: LocalBackendStatus | null = null;
-  private localFirstMode = false;
-  private unsubDataSources: (() => void) | null = null;
 
   constructor() {
     super({ id: 'service-status', title: t('panels.serviceStatus'), showCount: false });
     void this.fetchStatus();
-    this.refreshInterval = setInterval(() => this.fetchStatus(), 60000);
-    if (isDesktopRuntime()) {
-      void getLocalFirstMode().then(enabled => {
-        this.localFirstMode = enabled;
-        this.render();
-      });
-    }
-    this.unsubDataSources = subscribeDataSources(() => this.render());
   }
 
-  public destroy(): void {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-    }
-    if (this.unsubDataSources) {
-      this.unsubDataSources();
-      this.unsubDataSources = null;
-    }
-    super.destroy();
-  }
+  private lastServicesJson = '';
 
-  private async fetchStatus(): Promise<void> {
+  public async fetchStatus(): Promise<boolean> {
     try {
       const data = await fetchServiceStatuses();
+      if (!this.element?.isConnected) return false;
       if (!data.success) throw new Error('Failed to load status');
 
+      const fingerprint = data.services.map(s => `${s.name}:${s.status}`).join(',');
+      const changed = fingerprint !== this.lastServicesJson;
+      this.lastServicesJson = fingerprint;
       this.services = data.services;
       this.error = null;
+      return changed;
     } catch (err) {
-      if (this.isAbortError(err)) return;
+      if (this.isAbortError(err)) return false;
+      if (!this.element?.isConnected) return false;
       this.error = err instanceof Error ? err.message : 'Failed to fetch';
       console.error('[ServiceStatus] Fetch error:', err);
+      return true;
     } finally {
       this.loading = false;
-      this.render();
+      if (this.element?.isConnected) {
+        this.render();
+      }
     }
   }
 
@@ -125,10 +112,8 @@ export class ServiceStatusPanel extends Panel {
     const issues = filtered.filter(s => s.status !== 'operational');
 
     replaceChildren(this.content,
-      this.buildLocalFirstBanner(),
       this.buildBackendStatus(),
       this.buildDesktopReadiness(),
-      this.buildApiSourceSection(),
       this.buildSummary(filtered),
       this.buildFilters(),
       h('div', { className: 'service-status-list' },
@@ -147,7 +132,7 @@ export class ServiceStatusPanel extends Panel {
       );
     }
 
-    const port = this.localBackend.port ?? 46123;
+    const port = this.localBackend.port ?? getLocalApiPort();
     const remote = this.localBackend.remoteBase ?? 'https://worldmonitor.app';
 
     return h('div', { className: 'service-status-backend' },
@@ -180,7 +165,7 @@ export class ServiceStatusPanel extends Panel {
   private buildDesktopReadiness(): DomChild {
     if (!isDesktopRuntime()) return false;
 
-    const checks = getDesktopReadinessChecks(Boolean(this.localBackend?.enabled), this.localFirstMode);
+    const checks = getDesktopReadinessChecks(Boolean(this.localBackend?.enabled));
     const keySummary = getKeyBackedAvailabilitySummary();
     const nonParity = getNonParityFeatures();
 
@@ -199,35 +184,6 @@ export class ServiceStatusPanel extends Panel {
         h('ul', null,
           ...nonParity.map(feature =>
             h('li', null, h('strong', null, feature.panel), `: ${feature.fallback}`),
-          ),
-        ),
-      ),
-    );
-  }
-
-  private buildLocalFirstBanner(): DomChild {
-    if (!this.localFirstMode) return false;
-    return h('div', { className: 'local-first-banner' },
-      h('span', { className: 'local-first-banner-icon' }, '\u2B21'),
-      h('strong', null, 'Local-First Mode'),
-      ' \u2014 all data sourced from local sidecar. Cloud enrichment disabled.',
-    );
-  }
-
-  private buildApiSourceSection(): DomChild {
-    if (!isDesktopRuntime()) return false;
-    const sources = getAllApiSources();
-    if (sources.size === 0) return false;
-
-    return h('div', { className: 'service-status-api-sources' },
-      h('div', { className: 'api-sources-title' }, 'API Data Sources'),
-      h('div', { className: 'api-sources-list' },
-        ...Array.from(sources.entries()).map(([path, source]) =>
-          h('div', { className: 'api-source-row' },
-            h('span', { className: 'api-source-path' }, path),
-            h('span', { className: `api-source-badge ${source}` },
-              source === 'local-sidecar' ? 'Local' : source === 'cloud' ? 'Cloud' : 'Unknown',
-            ),
           ),
         ),
       ),

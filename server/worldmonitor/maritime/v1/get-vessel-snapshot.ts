@@ -1,5 +1,3 @@
-declare const process: { env: Record<string, string | undefined> };
-
 import type {
   ServerContext,
   GetVesselSnapshotRequest,
@@ -11,25 +9,33 @@ import type {
   AisDisruptionSeverity,
 } from '../../../../src/generated/server/worldmonitor/maritime/v1/service_server';
 
+import { CHROME_UA } from '../../../_shared/constants';
+
 // ========================================================================
 // Helpers
 // ========================================================================
 
 function getRelayBaseUrl(): string | null {
-  // In sidecar mode with AISSTREAM_API_KEY present, the embedded relay handles AIS.
-  // Route to the sidecar's own /api/local-ais-snapshot endpoint.
-  const mode = process.env.LOCAL_API_MODE || '';
-  if ((mode.includes('sidecar') || mode === 'tauri-sidecar') && process.env.AISSTREAM_API_KEY && !process.env.WS_RELAY_URL) {
-    const port = process.env.LOCAL_API_PORT || '46123';
-    return `http://127.0.0.1:${port}`;
-  }
-
   const relayUrl = process.env.WS_RELAY_URL;
   if (!relayUrl) return null;
   return relayUrl
     .replace('wss://', 'https://')
     .replace('ws://', 'http://')
     .replace(/\/$/, '');
+}
+
+function getRelayRequestHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': CHROME_UA,
+  };
+  const relaySecret = process.env.RELAY_SHARED_SECRET;
+  if (relaySecret) {
+    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
+    headers[relayHeader] = relaySecret;
+    headers.Authorization = `Bearer ${relaySecret}`;
+  }
+  return headers;
 }
 
 const DISRUPTION_TYPE_MAP: Record<string, AisDisruptionType> = {
@@ -44,7 +50,7 @@ const SEVERITY_MAP: Record<string, AisDisruptionSeverity> = {
 };
 
 // In-memory cache (matches old /api/ais-snapshot behavior)
-const SNAPSHOT_CACHE_TTL_MS = 10_000; // 10 seconds -- matches client poll interval
+const SNAPSHOT_CACHE_TTL_MS = 300_000; // 5 min -- matches client poll interval
 let cachedSnapshot: VesselSnapshot | undefined;
 let cacheTimestamp = 0;
 let inFlightRequest: Promise<VesselSnapshot | undefined> | null = null;
@@ -79,14 +85,10 @@ async function fetchVesselSnapshotFromRelay(): Promise<VesselSnapshot | undefine
     const relayBaseUrl = getRelayBaseUrl();
     if (!relayBaseUrl) return undefined;
 
-    // Sidecar embedded relay uses /api/local-ais-snapshot; Railway relay uses /ais/snapshot
-    const isSidecar = relayBaseUrl.includes('127.0.0.1') && !process.env.WS_RELAY_URL;
-    const snapshotPath = isSidecar ? '/api/local-ais-snapshot?candidates=false' : '/ais/snapshot?candidates=false';
-
     const response = await fetch(
-      `${relayBaseUrl}${snapshotPath}`,
+      `${relayBaseUrl}/ais/snapshot?candidates=false`,
       {
-        headers: { Accept: 'application/json' },
+        headers: getRelayRequestHeaders(),
         signal: AbortSignal.timeout(10000),
       },
     );

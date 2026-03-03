@@ -15,7 +15,6 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'economic',
   'waterways',
   'outages',
-  'forensics',
   'cyberThreats',
   'datacenters',
   'protests',
@@ -33,6 +32,9 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'accelerators',
   'techHQs',
   'techEvents',
+  'tradeRoutes',
+  'iranAttacks',
+  'gpsJamming',
 ];
 
 const TIME_RANGES: TimeRange[] = ['1h', '6h', '24h', '48h', '7d', 'all'];
@@ -46,6 +48,7 @@ export interface ParsedMapUrlState {
   timeRange?: TimeRange;
   layers?: MapLayers;
   country?: string;
+  expanded?: boolean;
 }
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -79,6 +82,9 @@ export function parseMapUrlState(
   const countryParam = params.get('country');
   const country = countryParam && /^[A-Z]{2}$/i.test(countryParam.trim()) ? countryParam.trim().toUpperCase() : undefined;
 
+  const expandedParam = params.get('expanded');
+  const expanded = expandedParam === '1' ? true : undefined;
+
   const layersParam = params.get('layers');
   let layers: MapLayers | undefined;
   if (layersParam !== null) {
@@ -109,6 +115,7 @@ export function parseMapUrlState(
     timeRange,
     layers,
     country,
+    expanded,
   };
 }
 
@@ -121,6 +128,7 @@ export function buildMapUrl(
     timeRange: TimeRange;
     layers: MapLayers;
     country?: string;
+    expanded?: boolean;
   }
 ): string {
   const url = new URL(baseUrl);
@@ -140,6 +148,10 @@ export function buildMapUrl(
 
   if (state.country) {
     params.set('country', state.country);
+  }
+
+  if (state.expanded) {
+    params.set('expanded', '1');
   }
 
   url.search = params.toString();

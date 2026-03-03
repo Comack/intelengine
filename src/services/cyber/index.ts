@@ -2,8 +2,6 @@ import {
   CyberServiceClient,
   type CyberThreat as ProtoCyberThreat,
   type ListCyberThreatsResponse,
-  type ListInfoOpsSignalsResponse,
-  type InfoOpsSignal,
 } from '@/generated/client/worldmonitor/cyber/v1/service_client';
 import type {
   CyberThreat,
@@ -16,8 +14,8 @@ import { createCircuitBreaker } from '@/utils';
 
 // ---- Client + Circuit Breaker ----
 
-const client = new CyberServiceClient('', { fetch: fetch.bind(globalThis) });
-const breaker = createCircuitBreaker<ListCyberThreatsResponse>({ name: 'Cyber Threats' });
+const client = new CyberServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const breaker = createCircuitBreaker<ListCyberThreatsResponse>({ name: 'Cyber Threats', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 
 const emptyFallback: ListCyberThreatsResponse = { threats: [], pagination: undefined };
 
@@ -90,11 +88,10 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
 
   const resp = await breaker.execute(async () => {
     return client.listCyberThreats({
-      timeRange: {
-        start: now - days * 24 * 60 * 60 * 1000,
-        end: now,
-      },
-      pagination: { pageSize: limit, cursor: '' },
+      start: now - days * 24 * 60 * 60 * 1000,
+      end: now,
+      pageSize: limit,
+      cursor: '',
       type: 'CYBER_THREAT_TYPE_UNSPECIFIED',
       source: 'CYBER_THREAT_SOURCE_UNSPECIFIED',
       minSeverity: 'CRITICALITY_LEVEL_UNSPECIFIED',
@@ -102,17 +99,4 @@ export async function fetchCyberThreats(options: { limit?: number; days?: number
   }, emptyFallback);
 
   return resp.threats.map(toCyberThreat);
-}
-
-// ---- Info Ops Signals ----
-const infoOpsBreaker = createCircuitBreaker<ListInfoOpsSignalsResponse>({ name: 'Info Ops Signals' });
-const emptyInfoOpsFallback: ListInfoOpsSignalsResponse = { signals: [], sampledAt: '' };
-
-export type { InfoOpsSignal };
-
-export async function fetchInfoOpsSignals(limit = 50): Promise<InfoOpsSignal[]> {
-  const res = await infoOpsBreaker.execute(async () => {
-    return client.listInfoOpsSignals({ limit });
-  }, emptyInfoOpsFallback);
-  return res.signals;
 }

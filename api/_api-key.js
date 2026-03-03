@@ -1,5 +1,3 @@
-import { timingSafeEqual } from 'node:crypto';
-
 const DESKTOP_ORIGIN_PATTERNS = [
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
@@ -7,49 +5,62 @@ const DESKTOP_ORIGIN_PATTERNS = [
   /^asset:\/\/localhost$/,
 ];
 
+const BROWSER_ORIGIN_PATTERNS = [
+  /^https:\/\/(.*\.)?worldmonitor\.app$/,
+  /^https:\/\/worldmonitor-[a-z0-9-]+\.vercel\.app$/,
+  ...(process.env.NODE_ENV === 'production' ? [] : [
+    /^https?:\/\/localhost(:\d+)?$/,
+    /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+  ]),
+];
+
 function isDesktopOrigin(origin) {
   return Boolean(origin) && DESKTOP_ORIGIN_PATTERNS.some(p => p.test(origin));
 }
 
-function isValidKey(key, validKeys) {
-  const keyBuf = Buffer.from(key);
-  return validKeys.some((k) => {
-    const kBuf = Buffer.from(k);
-    return kBuf.length === keyBuf.length && timingSafeEqual(kBuf, keyBuf);
-  });
+function isTrustedBrowserOrigin(origin) {
+  return Boolean(origin) && BROWSER_ORIGIN_PATTERNS.some(p => p.test(origin));
+}
+
+function extractOriginFromReferer(referer) {
+  if (!referer) return '';
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return '';
+  }
 }
 
 export function validateApiKey(req) {
-  // Bypass all key checks when running inside the authenticated local sidecar.
-  // Require both sentinels so a stray LOCAL_API_TOKEN in a cloud environment
-  // cannot silently skip key validation.
-  if (process.env.LOCAL_API_MODE === 'tauri-sidecar' && process.env.LOCAL_API_TOKEN) {
-    const auth = req.headers.get('Authorization') || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-    if (!token) return { valid: false, required: true, error: 'Bearer token required for local API' };
-    const expected = Buffer.from(process.env.LOCAL_API_TOKEN);
-    const provided = Buffer.from(token);
-    if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) {
-      return { valid: false, required: true, error: 'Invalid local API token' };
-    }
-    return { valid: true, required: true };
-  }
-
   const key = req.headers.get('X-WorldMonitor-Key');
-  const origin = req.headers.get('Origin') || '';
+  // Same-origin browser requests don't send Origin (per CORS spec).
+  // Fall back to Referer to identify trusted same-origin callers.
+  const origin = req.headers.get('Origin') || extractOriginFromReferer(req.headers.get('Referer')) || '';
 
+  // Desktop app — always require API key
   if (isDesktopOrigin(origin)) {
     if (!key) return { valid: false, required: true, error: 'API key required for desktop access' };
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
-    if (!isValidKey(key, validKeys)) return { valid: false, required: true, error: 'Invalid API key' };
+    if (!validKeys.includes(key)) return { valid: false, required: true, error: 'Invalid API key' };
     return { valid: true, required: true };
   }
 
+  // Trusted browser origin (worldmonitor.app, Vercel previews, localhost dev) — no key needed
+  if (isTrustedBrowserOrigin(origin)) {
+    if (key) {
+      const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+      if (!validKeys.includes(key)) return { valid: false, required: true, error: 'Invalid API key' };
+    }
+    return { valid: true, required: false };
+  }
+
+  // Explicit key provided from unknown origin — validate it
   if (key) {
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
-    if (!isValidKey(key, validKeys)) return { valid: false, required: true, error: 'Invalid API key' };
+    if (!validKeys.includes(key)) return { valid: false, required: true, error: 'Invalid API key' };
     return { valid: true, required: true };
   }
 
-  return { valid: false, required: false };
+  // No origin, no key — require API key (blocks unauthenticated curl/scripts)
+  return { valid: false, required: true, error: 'API key required' };
 }

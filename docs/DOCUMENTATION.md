@@ -2,24 +2,23 @@
 
 AI-powered real-time global intelligence dashboard aggregating news, markets, geopolitical data, and infrastructure monitoring into a unified situation awareness interface.
 
-🌐 **[Live Demo: worldmonitor.app](https://worldmonitor.app)** | 💻 **[Tech Variant: tech.worldmonitor.app](https://tech.worldmonitor.app)** | 📈 **[Finance Variant: finance.worldmonitor.app](https://finance.worldmonitor.app)**
+🌐 **[Live Demo: worldmonitor.app](https://worldmonitor.app)** | 💻 **[Tech Variant: tech.worldmonitor.app](https://tech.worldmonitor.app)**
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
 ![D3.js](https://img.shields.io/badge/D3.js-F9A03C?style=flat&logo=d3.js&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.5.3-blue)
+![Version](https://img.shields.io/badge/version-2.5.1-blue)
 
 ![World Monitor Dashboard](../new-world-monitor.png)
 
 ## Platform Variants
 
-World Monitor runs three specialized variants from a single codebase, each optimized for different monitoring needs:
+World Monitor runs two specialized variants from a single codebase, each optimized for different monitoring needs:
 
 | Variant | URL | Focus |
 |---------|-----|-------|
 | **🌍 World Monitor** | [worldmonitor.app](https://worldmonitor.app) | Geopolitical intelligence, military tracking, conflict monitoring, infrastructure security |
 | **💻 Tech Monitor** | [tech.worldmonitor.app](https://tech.worldmonitor.app) | Technology sector intelligence, AI/startup ecosystems, cloud infrastructure, tech events |
-| **📈 Finance Monitor** | [finance.worldmonitor.app](https://finance.worldmonitor.app) | Global markets, trading, central banks, Gulf FDI, macro signals, financial intelligence |
 
 A compact **variant switcher** in the header allows seamless navigation between variants while preserving your map position and panel configuration.
 
@@ -47,13 +46,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 | **Country Instability Index** | Real-time stability scores for 20 monitored countries |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
-| **Deterministic Forensics** | Shadow-run orchestration with semi-supervised feedback, generative AI explanations, and multi-horizon causal DAGs |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
-| **Radiation Monitoring** | Safecast decentralized radiation sensor readings with map layer visualization |
-| **Port Congestion** | Strategic port health index for global shipping chokepoints |
-| **Tsunami Warnings** | NWS real-time tsunami alert feed with coastal risk indicators |
-| **Info-Ops Detection** | Wikimedia edit-war monitoring as early warning for information operations |
-| **Space Weather** | NOAA Kp-index, solar X-ray flux, and aurora forecasts impacting satellite/grid |
 
 ### News Coverage
 
@@ -109,33 +102,7 @@ The tech variant ([tech.worldmonitor.app](https://tech.worldmonitor.app)) provid
 
 ---
 
-## Finance Monitor
-
-The finance variant ([finance.worldmonitor.app](https://finance.worldmonitor.app)) provides specialized intelligence for global markets, macroeconomic signals, and financial risk monitoring.
-
-### Finance Intelligence Panels
-
-| Panel | Purpose |
-|-------|---------|
-| **Market Overview** | Real-time equity indices, forex rates, and commodity prices |
-| **Central Bank Watch** | FOMC, ECB, BOJ policy decisions and interest rate tracking |
-| **Gulf FDI Intelligence** | Saudi Vision 2030, UAE/QIA sovereign wealth flows, emerging market deals |
-| **Macro Signals** | Baltic Dry Index, gold/silver spot prices, VIX, yield curves |
-| **Whale Transfers** | Large-value cryptocurrency transfers signaling capital flows |
-| **Regulatory Filings** | SEC EDGAR 8-K and 10-Q real-time filing alerts |
-| **Commodity Tracker** | Oil, gas, agricultural, and precious metals price feeds |
-| **Safe Haven Tracker** | Gold/silver correlation with geopolitical escalation |
-
-### Finance News Categories
-
-- **Markets & Trading** - Equity, bond, forex, and derivatives market news
-- **Central Banks** - Policy rate decisions, quantitative easing, inflation guidance
-- **Commodities** - Energy, agriculture, metals market movements
-- **Crypto & DeFi** - Digital asset markets, blockchain developments
-- **M&A & Deals** - Corporate acquisitions, IPOs, major capital market transactions
-- **Macro & Policy** - IMF, World Bank, fiscal stimulus, sanctions
-
----
+## Features
 
 ### Interactive Global Map
 
@@ -176,9 +143,6 @@ Layers are organized into logical groups for efficient monitoring:
 | **Hotspots** | Intelligence hotspots with activity levels based on news correlation |
 | **Sanctions** | Countries under economic sanctions regimes |
 | **Protests** | Live social unrest events from ACLED and GDELT |
-| **Conflict Incidents** | Real-time geocoded conflict events from Liveuamap |
-| **Info Ops** | Wikipedia edit anomaly detection on geopolitically sensitive pages |
-| **Tsunami Warnings** | NOAA/NWS active tsunami warnings and advisories |
 
 **Military & Strategic**
 | Layer | Description |
@@ -189,9 +153,6 @@ Layers are organized into logical groups for efficient monitoring:
 | **APT Groups** | State-sponsored cyber threat actors with geographic attribution |
 | **Spaceports** | 12 major launch facilities (NASA, SpaceX, Roscosmos, CNSA, ESA, ISRO, JAXA) |
 | **Critical Minerals** | Strategic mineral deposits (lithium, cobalt, rare earths) with operator info |
-| **Satellites** | 20,000+ tracked objects via CelesTrak TLE data |
-| **Space Weather** | NOAA SWPC Kp-index, solar X-ray flux, aurora forecasts |
-| **ACARS Messages** | Aircraft text communications (VHF/HF/Satellite) |
 
 **Infrastructure**
 | Layer | Description |
@@ -200,10 +161,6 @@ Layers are organized into logical groups for efficient monitoring:
 | **Pipelines** | 88 operating oil & gas pipelines across all continents |
 | **Internet Outages** | Network disruptions via Cloudflare Radar |
 | **AI Datacenters** | 111 major AI compute clusters (≥10,000 GPUs) |
-| **Power Grid** | Carbon intensity, renewable mix, and grid stress via Electricity Maps |
-| **BGP Routing** | Routing anomalies and internet hijacks via IODA/BGPStream |
-| **Radiation** | Real-time CPM readings from Safecast global sensor network |
-| **Port Congestion** | Vessel wait times and congestion indices for 15 strategic ports |
 
 **Transport**
 | Layer | Description |
@@ -219,20 +176,13 @@ Layers are organized into logical groups for efficient monitoring:
 | **Natural** | USGS earthquakes (M4.5+) + NASA EONET events (storms, wildfires, volcanoes, floods) |
 | **Weather** | NWS severe weather warnings |
 
-**Economic & Labels**
+**Overlays & Labels**
 | Layer | Description |
 |-------|-------------|
+| **Day/Night** | Real-time solar terminator overlay showing day and night zones (updates every 5 minutes) |
 | **Economic** | Tabbed economic panel with FRED indicators, EIA oil analytics, and USASpending.gov government contracts |
 | **Countries** | Country boundary labels |
 | **Waterways** | Strategic waterways and chokepoints |
-
-**Environmental**
-| Layer | Description |
-|-------|-------------|
-| **Air Quality** | Real-time AQI readings from World Air Quality Index (WAQI) |
-| **Pollution** | NO2/SO2 concentration from Sentinel-5P satellite |
-| **Deforestation** | GLAD/RADD real-time deforestation alerts via Global Forest Watch |
-| **Weather Forecasts** | High-resolution global weather and flood risk via Open-Meteo |
 
 ### Intelligence Panels
 
@@ -244,7 +194,6 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Country Instability Index** | Real-time stability scores for 20 monitored countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
-| **Deterministic Forensics** | Shadow-run orchestration with semi-supervised feedback, generative AI explanations, and multi-horizon causal DAGs |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
 
@@ -412,7 +361,7 @@ This provides a unified command center for all intelligence findings, whether ge
 
 ### Signal Types
 
-The system detects 23 distinct signal types across news, markets, military, infrastructure, environmental, and intelligence domains:
+The system detects 12 distinct signal types across news, markets, military, and infrastructure domains:
 
 **News & Source Signals**
 
@@ -446,26 +395,6 @@ The system detects 23 distinct signal types across news, markets, military, infr
 | **🌍 Geographic Convergence** | 3+ event types in same 1°×1° grid cell | Multiple independent data streams converging on same location—heightened regional activity |
 | **🔺 Hotspot Escalation** | Multi-component score exceeds threshold with rising trend | Hotspot showing corroborated escalation across news, CII, convergence, and military data |
 | **✈ Military Surge** | Transport/fighter activity 2× baseline in theater | Unusual military airlift concentration—potential deployment or crisis response |
-
-**Environmental & Infrastructure Signals**
-
-| Signal | Trigger | What It Means |
-|--------|---------|---------------|
-| **☢ Radiation Spike** | Safecast CPM reading above 100 CPM threshold | Elevated radiation detected — possible nuclear incident, industrial accident, or equipment malfunction |
-| **⚡ Grid Stress** | Carbon intensity >700 or renewables <10% | Power grid under stress — possible demand surge, generation failure, or infrastructure disruption |
-| **🌊 Tsunami Warning** | NWS tsunami warning/watch/advisory issued | Seismic-triggered ocean wave threat — coastal evacuation may be in effect |
-| **📡 Routing Anomaly** | BGP hijack or significant route leak detected | Internet traffic may be intercepted or misdirected — possible state-sponsored attack |
-| **🚢 Port Congestion** | Congestion index >70 or wait time >24 hours | Strategic chokepoint bottleneck — supply chain delays likely |
-| **🛰 Space Weather** | Kp-index ≥7 (severe geomagnetic storm) | Satellite communications, GPS, and power grids may be disrupted |
-
-**Social & Intelligence Signals**
-
-| Signal | Trigger | What It Means |
-|--------|---------|---------------|
-| **📝 Edit War** | ≥3 Wikipedia edits in 1 hour on sensitive page with revert patterns | Possible information operation or breaking news driving rapid content changes |
-| **🐋 Whale Transfer** | Large-value crypto transfer (>$1M) across blockchains | Capital movement that often precedes market volatility or signals jurisdictional flight |
-| **📋 Regulatory Filing** | SEC 8-K or 10-Q filing detected | Material corporate event — acquisition, legal action, or financial restatement |
-| **🌊 Dark Ship** | SAR satellite detects vessel not broadcasting AIS | Possible sanctions evasion, illegal activity, or covert naval movement |
 
 ### How It Works
 
@@ -549,170 +478,6 @@ The entity registry spans strategically significant sectors:
 | **Consumer** | Tesla, Walmart, Costco, Home Depot | EV, retail, grocery, housing |
 
 This broad coverage enables correlation detection across diverse geopolitical and market events.
-
----
-
-## Intelligence Forensics & Analysis
-
-The forensics pipeline provides deterministic, multi-modal analysis of signal telemetry to identify and explain complex anomalies. It continuously monitors the environment via background shadow runs and tier-2 source shadow fetching.
-
-### Forensics Orchestrator
-
-The system runs "shadow runs" that process batches of signals through a dynamic, multi-phase pipeline. The orchestrator uses a **Reinforcement Learning Policy (Epsilon-Greedy MAB)** to dynamically order execution phases based on state hashes, optimizing for information gain and computational efficiency.
-
-| Phase | Description |
-|-------|-------------|
-| **Signal Collect** | Ingestion of raw telemetry from news, markets, and infrastructure trackers. Exact `observedAt` timestamps are propagated. |
-| **Extract POLE** | Automatic extraction of Persons, Objects, Locations, and Events from raw evidence (URLs, PDFs). |
-| **Topology TDA** | Enriches signals with topological baselines and deviation metrics. |
-| **Weak Fusion** | Use of Weak Supervision (EM algorithm) to learn source accuracies and fuse signals without labels. |
-| **Conformal Anomaly** | Rigorous anomaly detection using inductive conformal prediction to calculate exact p-values for value and timing. |
-| **Causal Discovery** | Detection of directed relationships (A → B) and temporal lags between signal types. |
-| **Explainability** | Computation of counterfactual levers to show which specific signals drove an anomaly. |
-
-### Signal Ingestion & Transformation
-
-The pipeline ingests raw telemetry and intelligence from across the dashboard, normalizing them into a unified `ForensicsSignalInput` schema (`domain`, `signalType`, `value`, `confidence`, `observedAt`). The `ForensicsSignalBuilder` acts as the translation layer:
-
-1. **Geopolitical & Conflict (`buildCountryRiskSignals`)**:
-   - Converts event bursts, UCDP conflict intensities, HAPI political violence metrics, displacement outflows, and climate stress into forensic signals.
-   - Values are logarithmically scaled based on severity, fatalities, and event counts.
-2. **Maritime & Trajectory (`buildAisTrajectorySignals`)**:
-   - Classifies maritime events into specific signal types: `ais_silence` (dark ships/transponder gaps), `ais_loitering` (congestion), and `ais_route_deviation`.
-   - Confidence and values are derived from vessel counts, duration (windowHours), and severity baseline.
-3. **Market & Macro (`buildMarketSignals`, `buildMacroSignals`, `buildEtfSignals`, `buildStablecoinSignals`)**:
-   - Analyzes raw market data to emit signals like `market_change_pct`, `market_volatility`, and `prediction_conviction`.
-   - Incorporates deep macro signals such as `macro_liquidity_extreme`, `macro_regime_rotation`, `macro_technical_dislocation`, and ETF/Stablecoin flow pressures.
-4. **General Intelligence (`buildIntelligenceSignals`)**:
-   - Sweeps the main application's signal aggregator (which tracks protests, military flights, internet outages, etc.).
-   - Re-weights them for forensic analysis by combining raw counts, maximum severity, and geographic convergence scores.
-
-These normalized signals, alongside exact timestamps, form the structured matrix that the Weak Supervision and Conformal Anomaly phases process.
-
-### Weak Supervision Fusion
-
-To combine signals from disparate, unlabeled sources, the pipeline uses an **Expectation-Maximization (EM)** algorithm:
-
-1. **Source Accuracy Learning**: Iteratively estimates the true accuracy of each signal source based on consensus and independence.
-2. **Semi-Supervised Feedback (Anchor Labels)**: Analysts can acknowledge or dismiss anomalies in the UI. These human-in-the-loop decisions are saved to the `forensics-blackboard` and injected into the EM loop as hard-coded soft labels (1.0 or 0.0), forcing the algorithm to anchor its learned weights around human-validated truth.
-3. **Dependency Penalty**: Pairwise correlation analysis penalizes redundant signals to prevent double-counting correlated inputs (e.g., two news outlets repeating the same wire).
-4. **Probabilistic Fusion**: Outputs a unified `ForensicsFusedSignal` with a 0-100 score, exact probability bounds, and a list of weighted contributors.
-
-To support high-performance scaling of these O(N³) statistical loops, the math is optionally offloaded to a Python/NumPy microservice (`forensics-worker`), removing the computational constraints of the single-threaded Node.js event loop.
-
-#### Semi-Supervised Feedback Loop Data Flow
-
-When an analyst interacts with the Forensics UI:
-- **Action**: User clicks `✅ Acknowledge` or `❌ Dismiss` on an anomaly card.
-- **Service**: The frontend calls `SubmitForensicsFeedback(sourceId, signalType, isTruePositive)`.
-- **Storage**: The backend persists the feedback in Redis via the `forensics-blackboard`.
-- **Injection**: On the next shadow run, the orchestrator retrieves all feedback for the current signal set.
-- **Math**: In the EM algorithm's E-step, if a `source:type` pair has feedback, its `softLabel` is hard-coded to 1.0 or 0.0, overriding the probabilistic estimate.
-- **Result**: The algorithm recalculates all other source accuracies based on this ground-truth anchor, significantly reducing false positives over time.
-
-### Conformal Anomaly Detection
-
-Instead of relying on rigid thresholds, the system utilizes **Inductive Conformal Prediction** to identify anomalies with statistical rigor:
-
-- **Dual Nonconformity Measures**: Calculates nonconformity for both the signal's *value* (magnitude) and *timing* (interval since the last event).
-- **CADES Combination**: Combines the value and timing p-values using Bonferroni correction to emit a single unified p-value.
-- Anomalies are flagged if the combined p-value falls below the configured alpha threshold (typically α=0.05).
-
-### Financial Topology (Topological Data Analysis)
-
-The pipeline uses **Topological Data Analysis (TDA)** to map the shape and structure of financial and geopolitical signal networks, identifying hidden coordination and systemic risks before they manifest as direct market crashes.
-
-- **Persistent Homology**: Computes the H0 (connected components) and H1 (cycles/loops) persistence of the signal graph across multiple distance scales.
-- **Topological Shape Index (TSI)**: A composite metric deriving the overall structural integrity of the market from the normalized persistence of components and cycles.
-- **Betti Numbers (β1)**: Tracks the count of robust 1-dimensional cycles (e.g., A affects B, B affects C, C affects A). High cycle density indicates systemic fragility or coordinated rotation.
-- **Hyperedge Coordination**: Uses higher-order network analysis to detect 3-way and 4-way signal coordination across different domains (e.g., a simultaneous anomaly in Crypto, Oil, and Tech).
-- **Derived Signals**: The TDA engine emits its own signals (`topology_tsi`, `topology_beta1`, `topology_cycle_risk`, `topology_hyperedge_density`) which are then fed into the Conformal Anomaly and Weak Supervision phases.
-
-### Causal Discovery
-
-The Causal Discovery engine identifies directed relationships and temporal lags between different signal types (e.g., `pipeline_disruption` → `market_move_oil`) across three distinct temporal horizons:
-
-- **Tactical**: 15-minute buckets looking back 2 hours. Detects immediate kinetic reactions.
-- **Operational**: 6-hour buckets looking back 3 days. Maps unfolding geopolitical escalations.
-- **Strategic**: 1-day buckets looking back 30 days. Identifies long-term structural dependencies.
-
-Discovery is driven by:
-- **Activation Bucketing**: Signals are bucketed based on the horizon's resolution. Thresholds are computed using the 70th percentile of positive signal values within each bucket.
-- **Conditional Lift**: Calculates the probability of signal B activating given signal A's prior activation, divided by B's baseline probability. The baseline is adjusted for the lookback window width to prevent false positives in high-frequency signal types.
-- **Minimum Description Length (MDL)**: Computes a causal score based on MDL gain, filtering out weak or coincidental relationships.
-- **Deduplication**: When an edge is detected across multiple horizons, the engine prioritizes the horizon with the highest MDL gain and `causal_score`.
-
-#### Multi-Horizon Visualization
-
-The Forensics Graph renderer (`ForensicsVisualizations.ts`) styles causal edges by their detected horizon:
-- **Tactical**: Solid red lines (#ef4444) indicate immediate, high-priority causal links.
-- **Operational**: Dashed orange lines (#f97316) indicate unfolding multi-day relationships.
-- **Strategic**: Dotted blue lines (#3b82f6) indicate long-term structural dependencies.
-
-### High-Performance Offloading (Python/NumPy)
-
-To enable massive scaling, the forensics pipeline supports a high-performance worker architecture:
-- **Stat-Offloading**: The $O(N^3)$ loops for calculating signal accuracies and dependency penalties are moved to a dedicated Python microservice (`forensics-worker/main.py`).
-- **NumPy Optimization**: Uses optimized linear algebra routines to process thousands of global signals simultaneously, which would otherwise block the Node.js event loop.
-- **Automatic Routing**: The orchestrator automatically routes heavy fusion requests to the worker if the `FORENSICS_WORKER_URL` environment variable is set.
-
-### Explainability (Counterfactual Levers & Generative AI)
-
-To make AI-driven anomalies understandable, the system provides both mathematical and natural language explainability:
-
-- **Generative Context Synthesis**: Analysts can trigger an "Explain Context" request. The backend fetches the raw text of every piece of evidence (news, alerts, sensor data) tied to the anomaly and uses a local Ollama LLM (`llama3`) to synthesize a human-readable explanation of the statistical event.
-- **Counterfactual Levers**: Reconstructs the logit (log-odds) that led to an anomaly classification. It iteratively simulates flipping each contributing signal from a positive to a negative vote, allowing analysts to interact with a "what-if" sandbox.
-- **Leverage Impact**: Computes the "delta logit" required to un-flag the anomaly, visualizing exactly which inputs drove the alert.
-
-#### Generative AI Explainability Data Flow
-
-1. **Request**: User clicks `🧠 Explain Context` on an anomaly card.
-2. **Identification**: The UI sends the `anomaly_id` and all associated `evidence_ids` to the `ExplainAnomaly` RPC.
-3. **Retrieval**: The backend fetches the full text content, titles, and summaries for all evidence IDs from the Redis-backed `Evidence Service`.
-4. **Prompting**: A structured prompt is constructed: *"You are an intelligence analyst. Explain the following anomaly based on the provided evidence..."*, including the concatenated raw evidence text.
-5. **Synthesis**: The prompt is dispatched to the local Ollama instance (or configured cloud fallback).
-6. **Delivery**: The synthesized natural language situation report is streamed back to the UI and displayed directly within the anomaly card.
-
-### Evidence Ingestion & POLE Extraction
-
-The **Evidence Service** backs every forensic signal with ground truth data.
-
-- **Algorithmic Scraper**: Uses robust extraction (JSON-LD, semantic tag parsing, noise stripping) to ingest raw web content without heavy headless browsers.
-- **Proxy Fallback**: Transparently falls back to a Railway relay proxy to bypass IP blocks and bot protections.
-- **POLE Graph**: Converts unstructured text into a structured graph of Persons, Objects, Locations, and Events, which are fed back into the orchestrator as primary signals.
-
-### Data Freshness & Shadow Fetching
-
-To ensure forensics operate on the most accurate timeline:
-
-- **Shadow Fetching**: Tier-2 sources (weather, flights, cables) are silently fetched in the background even if their UI layers are disabled, ensuring the forensics baseline remains complete.
-- **Freshness Profiles**: Signals degrade according to specific profiles (FAST, SLOW, CONFLICT, EVENT). A signal's confidence incorporates a computed freshness penalty based on its `observedAt` timestamp versus the current time, gracefully aging out stale intelligence.
-
-### Deterministic Visualizations
-
-Advanced visualization components allow analysts to interact with forensic data natively within the map and panels:
-
-- **Interactive Causal Graph**: A D3.js force-directed DAG showing how signals propagate through the system. Hot anomaly nodes glow red, while causal edges illustrate delays and direction.
-- **POLE Relationship Map**: D3.js visualization of the entity graph extracted from evidence. Nodes are color-coded (Events=Red, Persons=Blue, Objects=Orange, Locations=Green).
-- **Convergence Radar**: A Venn-diagram visualization depicting the overlap and triangulation of different topics.
-- **Topology Map Overlays**: A DeckGL scatter/column layer on the globe representing topological drill-downs, color-coded by delta direction (amber=rising, cyan=falling, slate=stable).
-- **Phase Trace Swimlanes**: Inline SVG timelines showing the precise execution order, duration bars, and status colors of the forensics pipeline's phases.
-- **Counterfactual Sandbox**: Interactive explainability sliders that allow analysts to simulate "what-if" scenarios.
-
-### Integrated Forensics Dashboard
-
-To make forensics deeply actionable, the `ForensicsPanel` consolidates intelligence into dense UI representations:
-
-- **Monitor Streams**: Grouped lists (Market Shock, Maritime Disruption, Cyber Spike) displaying the `p-value`, priority score, and age of the most critical anomalous signals.
-- **Trajectory Clusters**: Aggregated views tracking anomalous vessel behavior across global corridors (e.g., `ais_route_deviation`, `ais_silence`).
-- **Topology Drift & Baselines**: Diagnostic cards alerting users to the degradation of historical signal baselines and standard-deviation drifts over sliding windows.
-- **Run Trend Summaries**: Sparkline-powered cards tracking the frequency and maximum fused scores of flagged anomalies across sequential shadow runs.
-
-### Historical Timeline DVR
-
-A global playback controller with automatic playback allows for high-fidelity historical review. Analysts can scrubber through saved dashboard snapshots to watch cascading events unfold in real-time speed or accelerated time.
-
----
 
 ### Entity Registry Architecture
 
@@ -2906,11 +2671,11 @@ News Feeds → Clustering → Velocity Analysis → Hotspot Correlation
                 ↓                                    ↓
          Keyword Monitors              Strategic Risk Overview
                                                      ↑
-Military Flights → Near-Hotspot Detection ───────────┤
+Military Flights → Near-Hotspot Detection ──────────┤
                                                      ↑
-AIS Vessels → Chokepoint Monitoring ─────────────────┤
+AIS Vessels → Chokepoint Monitoring ────────────────┤
                                                      ↑
-ACLED/GDELT → Protest Events ────────────────────────┤
+ACLED/GDELT → Protest Events ───────────────────────┤
                        ↓
                 CII Unrest Score
 ```
@@ -3151,110 +2916,9 @@ To prevent map clutter, natural events are filtered:
 
 ---
 
-## Wildfire Detection (NASA FIRMS)
+## Military Surge Detection
 
-The Wildfire layer supplements the EONET/GDACS natural events feed with near real-time satellite fire data from NASA FIRMS (Fire Information for Resource Management System).
-
-### Data Sources
-
-| Instrument | Satellite | Spatial Resolution | Latency |
-|------------|-----------|-------------------|---------|
-| **MODIS** | Terra / Aqua | 1 km | ~3 hours |
-| **VIIRS 375m** | Suomi-NPP / NOAA-20 | 375 m | ~3 hours |
-
-VIIRS is preferred for its higher resolution; MODIS provides wider historical coverage.
-
-### What It Adds Beyond EONET
-
-- **Conflict-zone fire detection** — clusters of hotspots in non-forested areas (urban, agricultural, industrial) can indicate strikes, explosions, or infrastructure fires rather than natural wildfires.
-- **Precise coordinates** — FIRMS returns per-pixel hotspot lat/lon rather than polygon centroids.
-- **Brightness temperature** — `frp` (Fire Radiative Power) and `bright_ti4` fields indicate fire intensity.
-
-Requires `NASA_FIRMS_API_KEY` (free registration at [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/)). Layer is hidden when the key is absent.
-
----
-
-## Radiation Monitoring (Safecast)
-
-The Radiation layer displays live CPM (counts per minute) readings from the Safecast global sensor network — a citizen-science network deployed after the 2011 Fukushima disaster.
-
-### Coverage & Thresholds
-
-| Reading | Level | Indicator |
-|---------|-------|-----------|
-| < 50 CPM | Normal background | ✅ Green |
-| 50–100 CPM | Elevated | 🟡 Yellow |
-| > 100 CPM | Alert threshold | 🔴 Red |
-
-### Signal Value
-
-Radiation spikes near nuclear facilities, military sites, or industrial zones can indicate:
-
-- Nuclear plant incidents or coolant failures
-- Radiological dispersal device (dirty bomb) events
-- Industrial accidents involving radioactive materials
-- Equipment calibration anomalies (verified via neighboring sensors)
-
-Data is sourced from the [Safecast API](https://api.safecast.org/) using a 30-minute lookback window. No API key required.
-
----
-
-## Space Domain Intelligence
-
-The Space layers track orbital objects and space weather conditions with implications for communications, GPS, and grid stability.
-
-### Satellite Tracking (CelesTrak)
-
-The Satellites layer displays 20,000+ tracked objects using Two-Line Element (TLE) data from [CelesTrak](https://celestrak.org/NORAD/elements/):
-
-| Object Class | Examples | Strategic Relevance |
-|-------------|---------|---------------------|
-| **Reconnaissance** | USA-224, KH-11 | Imaging over conflict zones |
-| **Communications** | Starlink, Inmarsat | Battlefield comms, internet resilience |
-| **Navigation** | GPS Block III, GLONASS | Precision weapons, civilian positioning |
-| **Early Warning** | SBIRS GEO, Oko | ICBM launch detection |
-| **ASAT Debris** | Cosmos 1408 field | Orbital hazard zones |
-
-TLE data updates every 24 hours (orbital elements change slowly).
-
-### Space Weather (NOAA SWPC)
-
-The Space Weather panel displays NOAA Space Weather Prediction Center data:
-
-| Metric | Source | Threshold | Impact |
-|--------|--------|-----------|--------|
-| **Kp-index** | SWPC geomagnetic | Kp ≥ 5 (G1 storm) | HF radio disruption; Kp ≥ 7 triggers alert |
-| **Solar X-Ray Flux** | GOES X-ray | X-class flare | Radio blackouts on sunlit side |
-| **Aurora Forecast** | OVATION model | Equatorward extent | Power grid induced currents |
-
-A `space_weather` signal fires when Kp ≥ 7 (severe storm), warning operators of potential satellite communication outages, GPS degradation, and power grid stress.
-
----
-
-## Information Operations Detection (Wikimedia SSE)
-
-The Info Ops layer monitors the Wikimedia EventStreams SSE feed for edit-war patterns on geopolitically sensitive Wikipedia pages — an early warning signal for breaking news and coordinated information operations.
-
-### Detection Logic
-
-1. **Page candidates** — the system watches articles for conflict zones, heads of state, military units, and major infrastructure.
-2. **Edit frequency** — pages receiving ≥3 edits within 60 minutes are flagged.
-3. **Revert patterns** — consecutive reverts on the same section indicate a content dispute.
-4. **Bot exclusion** — edits by known bots (`AnomieBOT`, `ClueBot NG`) are filtered to reduce noise.
-
-### Signal Meaning
-
-An `edit_war` signal on a sensitive article can indicate:
-
-- A breaking news event that editors are racing to update (conflict escalation, leader death, major attack)
-- A coordinated influence operation attempting to change historical or factual framing
-- A domestic policy event causing partisan editing
-
-No API key required — the Wikimedia EventStreams feed is fully open.
-
----
-
-
+The system detects unusual concentrations of military activity using two complementary algorithms.
 
 ### Baseline-Based Surge Detection
 
@@ -3541,11 +3205,6 @@ Different data sources update at different frequencies based on volatility and A
 | **Economic data** | 30 min | FRED data rarely changes intraday |
 | **Military tracking** | 5 min | Activity patterns need timely updates |
 | **PizzINT** | 10 min | Foot traffic changes slowly |
-| **Signal expansion** | 5 min | Aggregated refresh for 30 new intelligence APIs |
-| **Satellite positions** | 5 min | CelesTrak TLE updates |
-| **Space weather** | 5 min | NOAA SWPC Kp-index updates |
-| **Radiation** | 5 min | Safecast sensor readings |
-| **Tsunami warnings** | 5 min | NWS alert checks |
 
 ### Real-Time Streams
 
@@ -3578,7 +3237,6 @@ Historical filtering is client-side—all data is fetched but filtered for displ
 | **Build** | Vite | Fast HMR, optimized production builds |
 | **Map (Desktop)** | deck.gl + MapLibre GL | WebGL-accelerated rendering for large datasets |
 | **Map (Mobile)** | D3.js + TopoJSON | SVG fallback for battery efficiency |
-| **Analysis** | D3.js | Interactive causal DAGs and relationship graphs |
 | **Concurrency** | Web Workers | Off-main-thread clustering and correlation |
 | **AI/ML** | ONNX Runtime Web | Browser-based inference for offline summarization |
 | **Networking** | WebSocket + REST | Real-time AIS stream, HTTP for other APIs |
@@ -3608,7 +3266,7 @@ The map uses a hybrid rendering strategy optimized for each platform:
 
 - **deck.gl**: High-performance WebGL visualization layers
 - **MapLibre GL**: Open-source map rendering engine
-- **D3.js**: SVG map rendering, interactive causal DAGs, and entity relationship graphs
+- **D3.js**: SVG map rendering, zoom behavior (mobile fallback)
 - **TopoJSON**: Efficient geographic data encoding
 - **ONNX Runtime**: Browser-based ML inference
 - **Custom HTML escaping**: XSS prevention (DOMPurify pattern)
@@ -3692,23 +3350,6 @@ The dashboard fetches data from various public APIs and data sources:
 | OpenSky Network | Military aircraft tracking | Yes (free) |
 | Wingbits | Aircraft enrichment (owner, operator) | Yes (free) |
 | PizzINT | Pentagon-area activity metrics | No |
-| Safecast | Radiation monitoring (CPM) | No |
-| CelesTrak | Satellite TLE orbital data | No |
-| NOAA SWPC | Space weather (Kp-index, solar flux) | No |
-| NWS Alerts | Tsunami warnings | No |
-| Wikimedia | Wikipedia recent changes (edit anomalies) | No |
-| Bluesky (AT Protocol) | Social trend monitoring | No |
-| Electricity Maps | Power grid carbon intensity | Yes (free tier) |
-| Portcast | Port congestion data | Yes (commercial) |
-| Global Fishing Watch | SAR dark ship detections | Yes (free research) |
-| Liveuamap | Conflict incident mapping | Yes (enterprise) |
-| SEC EDGAR | Regulatory filings (8-K, 10-Q) | No |
-| CISA | Known Exploited Vulnerabilities (KEV) | No |
-| Open-Meteo | Weather and flood forecasts | No |
-| Global Forest Watch | Deforestation alerts | No |
-| Sentinel Hub | Sentinel-5P pollution data | Yes (free tier) |
-| WAQI | Air quality index readings | No |
-| GitHub Events | Repository momentum tracking | No |
 
 ### Optional API Keys
 
@@ -3725,10 +3366,6 @@ Some features require API credentials. Without them, the corresponding layer is 
 | `CLOUDFLARE_API_TOKEN` | Internet outages | Free Cloudflare account with Radar access |
 | `ACLED_ACCESS_TOKEN` | Protest data (server-side) | Free registration at acleddata.com |
 | `WINGBITS_API_KEY` | Aircraft enrichment | Contact [Wingbits](https://wingbits.com) for API access |
-| `PORTCAST_API_KEY` | Port congestion data | Commercial API at [portcast.io](https://www.portcast.io/) |
-| `GLOBAL_FISHING_WATCH_API_KEY` | SAR dark ship detections | Free research tier at [globalfishingwatch.org](https://globalfishingwatch.org/) |
-| `ELECTRICITY_MAPS_API_KEY` | Power grid data | Free tier at [electricitymaps.com](https://www.electricitymaps.com/) |
-| `LIVEUAMAP_API_KEY` | Conflict incidents | Enterprise API at [liveuamap.com](https://liveuamap.com/) |
 
 The dashboard functions fully without these keys—affected layers simply don't appear. Core functionality (news, markets, earthquakes, weather) requires no configuration.
 
@@ -3774,79 +3411,46 @@ src/
 │   ├── entities.ts           # 100+ entity definitions (companies, indices, commodities, countries)
 │   └── panels.ts             # Panel configs, layer defaults, mobile optimizations
 ├── services/
-│   ├── aviation/             # Airport delay monitoring (FAA)
-│   │   └── index.ts
-│   ├── climate/              # Pollution, air quality, deforestation, weather forecasts
-│   │   └── index.ts
-│   ├── conflict/             # ACLED, UCDP events, Liveuamap incidents, humanitarian
-│   │   └── index.ts
-│   ├── cyber/                # URLhaus, OTX, AbuseIPDB, CISA KEV, info-ops detection
-│   │   └── index.ts
-│   ├── displacement/         # UNHCR displacement flows and population exposure
-│   │   └── index.ts
-│   ├── economic/             # FRED, EIA, macro signals, SEC filings, World Bank
-│   │   └── index.ts
-│   ├── infrastructure/       # Internet outages, radiation, routing anomalies, grid
-│   │   └── index.ts
-│   ├── intelligence/         # Risk scores, forensics, GDELT, sanctioned entities
-│   │   └── index.ts
-│   ├── maritime/             # AIS vessel tracking, port congestion, SAR dark ships
-│   │   └── index.ts
-│   ├── market/               # Stock quotes, crypto, whale transfers, ETFs
-│   │   └── index.ts
-│   ├── military/             # Aircraft tracking, ACARS, theater posture, USNI
-│   │   └── index.ts
-│   ├── news/                 # Article summarization and dedup
-│   │   └── index.ts
-│   ├── prediction/           # Polymarket prediction markets
-│   │   └── index.ts
-│   ├── research/             # arXiv, HackerNews, GitHub momentum, Bluesky trends
-│   │   └── index.ts
-│   ├── unrest/               # Social unrest events
-│   │   └── index.ts
-│   ├── wildfires/            # NASA FIRMS fire detections
-│   │   └── index.ts
 │   ├── ais.ts                # WebSocket vessel tracking with density analysis
-│   ├── cable-activity.ts     # Undersea cable activity monitoring
-│   ├── cable-health.ts       # Cable health scoring
-│   ├── cached-risk-scores.ts # Theater posture API client with caching
-│   ├── cached-theater-posture.ts # Theater posture API client with caching
-│   ├── clustering.ts         # Jaccard similarity clustering
-│   ├── correlation.ts        # Signal detection engine
-│   ├── country-instability.ts    # CII scoring algorithm
-│   ├── cross-module-integration.ts # Unified alerts and strategic risk
-│   ├── data-freshness.ts     # Real-time data staleness tracking
-│   ├── earthquakes.ts        # USGS integration (also feeds seismology domain)
-│   ├── entity-extraction.ts  # News-to-entity matching for market correlation
-│   ├── entity-index.ts       # Entity lookup maps (by alias, keyword, sector)
-│   ├── eonet.ts              # NASA EONET natural events + GDACS merge
-│   ├── evidence.ts           # POLE graph ingestion and retrieval
-│   ├── focal-point-detector.ts   # Intelligence synthesis layer
-│   ├── forensics.ts          # Forensics engine client
-│   ├── gdacs.ts              # UN GDACS disaster alerts
-│   ├── gdelt-intel.ts        # GDELT Doc API topic intelligence
-│   ├── geo-convergence.ts        # Geographic convergence detection
-│   ├── hotspot-escalation.ts # Multi-factor hotspot escalation
-│   ├── infrastructure-cascade.ts # Dependency graph and cascade analysis
-│   ├── live-news.ts          # YouTube live news streams
+│   ├── military-vessels.ts   # Naval vessel identification and tracking
 │   ├── military-flights.ts   # Aircraft tracking via OpenSky relay
 │   ├── military-surge.ts     # Surge detection with news correlation
-│   ├── military-vessels.ts   # Naval vessel identification and tracking
-│   ├── parallel-analysis.ts  # Concurrent headline analysis
+│   ├── cached-theater-posture.ts # Theater posture API client with caching
+│   ├── wingbits.ts           # Aircraft enrichment (owner, operator, type)
 │   ├── pizzint.ts            # Pentagon Pizza Index + GDELT tensions
 │   ├── protests.ts           # ACLED + GDELT integration
+│   ├── gdelt-intel.ts        # GDELT Doc API topic intelligence
+│   ├── gdacs.ts              # UN GDACS disaster alerts
+│   ├── eonet.ts              # NASA EONET natural events + GDACS merge
+│   ├── flights.ts            # FAA delay parsing
+│   ├── outages.ts            # Cloudflare Radar integration
 │   ├── rss.ts                # RSS parsing with circuit breakers
-│   ├── runtime.ts            # Runtime detection and URL rewriting
-│   ├── runtime-config.ts     # Secrets and feature toggles
-│   ├── signal-aggregator.ts  # Central signal collection & grouping
-│   ├── space.ts              # Satellite TLE and space weather client
-│   ├── storage.ts            # IndexedDB snapshots & baselines
-│   ├── summarization.ts      # AI briefings with fallback chain
-│   ├── tauri-bridge.ts       # Tauri command bridge
-│   ├── velocity.ts           # Velocity & sentiment analysis
+│   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
+│   ├── earthquakes.ts        # USGS integration
 │   ├── weather.ts            # NWS alerts
-│   ├── wingbits.ts           # Aircraft enrichment (owner, operator, type)
-│   └── analysis-core.ts      # Shared signal types, circuit breaker, scoring
+│   ├── fred.ts               # Federal Reserve data
+│   ├── oil-analytics.ts      # EIA oil prices, production, inventory
+│   ├── usa-spending.ts       # USASpending.gov contracts & awards
+│   ├── polymarket.ts         # Prediction markets (filtered)
+│   ├── clustering.ts         # Jaccard similarity clustering
+│   ├── correlation.ts        # Signal detection engine
+│   ├── velocity.ts           # Velocity & sentiment analysis
+│   ├── related-assets.ts     # Infrastructure near news events
+│   ├── activity-tracker.ts   # New item detection & highlighting
+│   ├── analysis-worker.ts    # Web Worker manager
+│   ├── ml-worker.ts          # Browser ML inference (ONNX)
+│   ├── summarization.ts      # AI briefings with fallback chain
+│   ├── parallel-analysis.ts  # Concurrent headline analysis
+│   ├── storage.ts            # IndexedDB snapshots & baselines
+│   ├── data-freshness.ts     # Real-time data staleness tracking
+│   ├── signal-aggregator.ts  # Central signal collection & grouping
+│   ├── focal-point-detector.ts   # Intelligence synthesis layer
+│   ├── entity-index.ts       # Entity lookup maps (by alias, keyword, sector)
+│   ├── entity-extraction.ts  # News-to-entity matching for market correlation
+│   ├── country-instability.ts    # CII scoring algorithm
+│   ├── geo-convergence.ts        # Geographic convergence detection
+│   ├── infrastructure-cascade.ts # Dependency graph and cascade analysis
+│   └── cross-module-integration.ts # Unified alerts and strategic risk
 ├── workers/
 │   └── analysis.worker.ts    # Off-thread clustering & correlation
 ├── utils/
@@ -3856,49 +3460,23 @@ src/
 │   └── analysis-constants.ts # Shared thresholds for worker sync
 ├── styles/
 └── types/
-api/                          # Vercel Edge serverless routes
-├── [domain]/v1/[[...path]].ts # Primary catch-all gateway — routes all sebuf RPC calls
-│                              # to generated route tables in src/generated/server/
-├── eia/[[...path]].js        # EIA petroleum data legacy proxy
-├── internal/forensics/v1/    # Internal forensics worker task endpoint
-├── youtube/embed.js          # YouTube embed helper
-├── youtube/live.js           # YouTube live stream lookup
-├── rss-proxy.js              # Domain-allowlisted RSS/XML proxy (100+ feeds)
-├── story.js                  # Story/snapshot sharing endpoint
-├── og-story.js               # OpenGraph meta for shared stories
-├── register-interest.js      # Waitlist / interest registration
-├── version.js                # Version metadata endpoint
-├── fwdstart.js               # Desktop startup forwarding helper
-├── download.js               # Desktop installer download helper
-├── _api-key.js               # Shared API key validation helper
-└── _cors.js                  # Shared CORS helper
-server/
-├── cors.ts                   # CORS and origin validation
-├── error-mapper.ts           # Error normalization for all handlers
-├── router.ts                 # Static route matching for generated RPC routes
-├── _shared/
-│   ├── redis.ts              # Upstash Redis cache helpers and key prefixing
-│   └── hash.ts               # Stable hash keys for cache entries
-└── worldmonitor/
-    ├── aviation/v1/          # FAA airport delays
-    ├── climate/v1/           # Open-Meteo forecasts, WAQI AQI, Sentinel-5P, GFW deforestation
-    ├── conflict/v1/          # ACLED, UCDP, Liveuamap incidents, UNHCR reports
-    ├── cyber/v1/             # URLhaus, OTX, AbuseIPDB, CISA KEV, Wikimedia info-ops
-    ├── displacement/v1/      # UNHCR displacement statistics, population exposure
-    ├── economic/v1/          # FRED, EIA, macro signals, SEC EDGAR filings, World Bank
-    ├── evidence/v1/          # POLE graph ingestion (ingest-evidence, list-evidence, get-evidence)
-    ├── infrastructure/v1/    # Cloudflare outages, Safecast radiation, BGP routing, Electricity Maps, cable health
-    ├── intelligence/v1/      # Risk scores, forensics engine, GDELT, PizzINT, sanctioned entities
-    ├── maritime/v1/          # AIS snapshots, navigational warnings, Portcast congestion, GFW SAR
-    ├── market/v1/            # Finnhub/Yahoo quotes, CoinGecko, whale transfers, ETF flows
-    ├── military/v1/          # OpenSky flights, ACARS messages, Wingbits enrichment, USNI fleet
-    ├── news/v1/              # Groq/OpenRouter article summarization
-    ├── prediction/v1/        # Polymarket filtered markets
-    ├── research/v1/          # arXiv, HackerNews, GitHub Events, Bluesky social trends
-    ├── seismology/v1/        # USGS earthquakes, NWS tsunami warnings
-    ├── space/v1/             # CelesTrak TLE satellites, NOAA SWPC space weather
-    ├── unrest/v1/            # ACLED/GDELT social unrest events
-    └── wildfire/v1/          # NASA FIRMS MODIS/VIIRS fire detections
+api/                          # Vercel Edge serverless proxies
+├── cloudflare-outages.js     # Proxies Cloudflare Radar
+├── coingecko.js              # Crypto prices with validation
+├── eia/[[...path]].js        # EIA petroleum data (oil prices, production)
+├── faa-status.js             # FAA ground stops/delays
+├── finnhub.js                # Stock quotes (batch, primary)
+├── fred-data.js              # Federal Reserve economic data
+├── gdelt-doc.js              # GDELT Doc API (topic intelligence)
+├── gdelt-geo.js              # GDELT Geo API (event geolocation)
+├── polymarket.js             # Prediction markets with validation
+├── yahoo-finance.js          # Stock indices/commodities (backup)
+├── opensky-relay.js          # Military aircraft tracking
+├── wingbits.js               # Aircraft enrichment proxy
+├── risk-scores.js            # Pre-computed CII and strategic risk (Redis cached)
+├── theater-posture.js        # Theater-level force aggregation (Redis cached)
+├── groq-summarize.js         # AI summarization with Groq API
+└── openrouter-summarize.js   # AI summarization fallback via OpenRouter
 ```
 
 ## Usage
@@ -3990,21 +3568,6 @@ Aggregates **70+ RSS feeds** from major news outlets, government sources, and sp
 - **CoinGecko**: Cryptocurrency prices
 - **FRED**: Federal Reserve economic data
 - **Polymarket**: Prediction market odds
-- **Safecast**: Real-time radiation monitoring (global CPM readings)
-- **CelesTrak**: Satellite orbital elements (TLE data for 20,000+ objects)
-- **NOAA SWPC**: Space weather alerts (Kp-index, solar X-ray flux)
-- **NWS Tsunami**: Active tsunami warnings and advisories
-- **Wikimedia**: Wikipedia recent changes for info-ops detection
-- **Bluesky**: Social trends via AT Protocol public API
-- **Electricity Maps**: Power grid carbon intensity and renewable mix
-- **Portcast**: Port congestion indices and vessel wait times
-- **Global Fishing Watch**: SAR satellite dark ship detections
-- **Liveuamap**: Real-time geocoded conflict incidents
-- **SEC EDGAR**: Real-time regulatory filings (8-K, 10-Q)
-- **CISA KEV**: Known exploited vulnerabilities catalog
-- **Open-Meteo**: Weather and flood risk forecasts
-- **Global Forest Watch**: Deforestation alerts
-- **WAQI**: Air quality index readings
 
 ## Data Attribution
 
@@ -4042,23 +3605,6 @@ Data provided by [The OpenSky Network](https://opensky-network.org). If you use 
 ### Other Sources
 
 - **Prediction Markets**: [Polymarket](https://polymarket.com/)
-
-### Signal Expansion Sources
-
-- **Safecast**: [Safecast](https://safecast.org/) — Open environmental data. CC0 license
-- **CelesTrak**: [CelesTrak](https://celestrak.org/) — Dr. T.S. Kelso's satellite tracking data
-- **NOAA SWPC**: [Space Weather Prediction Center](https://www.swpc.noaa.gov/) — US Government open data
-- **Wikimedia**: [Wikimedia Foundation](https://www.wikimedia.org/) — Content under CC BY-SA 3.0
-- **Bluesky/AT Protocol**: [Bluesky](https://bsky.social/) — Public API, posts under individual user terms
-- **Electricity Maps**: [Electricity Maps](https://www.electricitymaps.com/) — Attribution required per terms
-- **Portcast**: [Portcast](https://www.portcast.io/) — Commercial maritime intelligence
-- **Global Fishing Watch**: [Global Fishing Watch](https://globalfishingwatch.org/) — CC BY-SA 4.0
-- **Liveuamap**: [Liveuamap](https://liveuamap.com/) — Commercial API, analyst-verified events
-- **SEC EDGAR**: [SEC](https://www.sec.gov/) — US Government public data
-- **CISA KEV**: [CISA](https://www.cisa.gov/) — US Government public data
-- **Open-Meteo**: [Open-Meteo](https://open-meteo.com/) — Open data from Copernicus ERA5
-- **Global Forest Watch**: [Global Forest Watch](https://www.globalforestwatch.org/) — CC BY 4.0
-- **WAQI**: [World Air Quality Index](https://aqicn.org/) — Attribution required per terms
 
 ## Acknowledgments
 
@@ -4111,18 +3657,6 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 
 ### Completed
 
-- ✅ **Signal Expansion** - 30 new intelligence APIs integrated across 19 service domains
-- ✅ **Space Domain** - Satellite tracking (CelesTrak TLE) and space weather (NOAA SWPC)
-- ✅ **Maritime Intelligence** - SAR dark ship detection, port congestion monitoring
-- ✅ **Power Grid Monitoring** - Electricity Maps carbon intensity and renewable mix
-- ✅ **Radiation Monitoring** - Safecast real-time CPM global sensor network
-- ✅ **Tsunami Warnings** - NOAA/NWS real-time tsunami alerts
-- ✅ **Bluesky Social Trends** - AT Protocol real-time social signal integration
-- ✅ **Information Operations** - Wikimedia edit anomaly detection on 18 sensitive pages
-- ✅ **Conflict Mapping** - Liveuamap real-time geocoded incident integration
-- ✅ **Environmental Monitoring** - Air quality, pollution, deforestation, weather forecasts
-- ✅ **Financial Signal Expansion** - Whale transfers, SEC filings, Baltic Dry Index
-- ✅ **BGP Routing Anomalies** - Internet hijack and outage detection via IODA/BGPStream
 - ✅ **Focal Point Detection** - Intelligence synthesis correlating news entities with map signals
 - ✅ **AI-Powered Briefings** - Groq/OpenRouter/Browser ML fallback chain for summarization
 - ✅ **Military Surge Detection** - Alerts when multiple operators converge on regions
@@ -4154,12 +3688,6 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 - ✅ **Naval Vessel Classification** - Known vessel database with hull number matching and AIS type inference
 - ✅ **Strike Capability Detection** - Assessment of offensive force packages (tankers + AWACS + fighters)
 - ✅ **Theater Posture Thresholds** - Custom elevated/critical thresholds for each strategic theater
-- ✅ **Intelligence Forensics Engine** - Shadow-run orchestration with causal discovery and weak supervision fusion
-- ✅ **Deterministic Visualizations** - Interactive D3 causal DAGs, POLE entity maps, and convergence radars
-- ✅ **Evidence Ingestion Service** - Structured POLE extraction from raw source material linked to signals
-- ✅ **Anomaly Counterfactual Sandbox** - Interactive "what-if" simulation for anomaly explainability
-- ✅ **Hexagonal Column Map Layer** - 3D anomaly magnitude/confidence markers
-- ✅ **Timeline DVR Mode** - Automatic playback for historical scrubber
 
 ### Planned
 
@@ -4170,6 +3698,7 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 
 **Medium Priority:**
 
+- **Historical Playback** - Review past dashboard states with timeline scrubbing
 - **Election Calendar Integration** - Auto-boost sensitivity 30 days before major elections
 - **Choropleth CII Map Layer** - Country-colored overlay showing instability scores
 
@@ -4177,7 +3706,7 @@ See [ROADMAP.md](../.planning/ROADMAP.md) for detailed planning. Recent intellig
 
 - **Alert Webhooks** - Push critical alerts to Slack, Discord, email
 - **Custom Country Watchlists** - User-defined Tier-2 country monitoring
-- **Additional Data Sources** - OFAC sanctions watchlist, FAO food security indicators
+- **Additional Data Sources** - World Bank, IMF, OFAC sanctions, UNHCR refugee data, FAO food security
 - **Think Tank Feeds** - RUSI, Chatham House, ECFR, CFR, Wilson Center, CNAS, Arms Control Association
 
 The full [ROADMAP.md](../.planning/ROADMAP.md) documents implementation details, API endpoints, and 30+ free data sources for future integration.
@@ -4266,14 +3795,6 @@ Different data types refresh at different intervals based on volatility and API 
 | **Earthquakes** | 5 minutes | USGS update cadence |
 | **Internet Outages** | 5 minutes | Cloudflare Radar update frequency |
 | **AIS Vessels** | Real-time | WebSocket streaming |
-| **Radiation (Safecast)** | 30 minutes | Sensor network aggregation cadence |
-| **Space Weather (SWPC)** | 15 minutes | NOAA Kp-index update frequency |
-| **Tsunami Warnings (NWS)** | 2 minutes | Redis-cached with short TTL for safety |
-| **Social Trends (Bluesky)** | 5 minutes | Rate-limited AT Protocol queries |
-| **Port Congestion** | 15 minutes | Commercial API rate limits |
-| **Power Grid (Electricity Maps)** | 60 minutes | Grid carbon intensity update cadence |
-| **Info-Ops (Wikimedia)** | 10 minutes | Wikipedia recent-changes API polling |
-| **Satellite TLE (CelesTrak)** | 24 hours | Orbital elements change slowly |
 
 ### Error Handling Strategy
 

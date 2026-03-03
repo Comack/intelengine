@@ -6,7 +6,7 @@ import { getAircraftDetails } from './get-aircraft-details';
 import { getAircraftDetailsBatch } from './get-aircraft-details-batch';
 import { getWingbitsStatus } from './get-wingbits-status';
 import { getUSNIFleetReport } from './get-usni-fleet-report';
-import { listAcarsMessages } from './list-acars-messages';
+import { listMilitaryBases } from './list-military-bases';
 
 export const militaryHandler: MilitaryServiceHandler = {
   listMilitaryFlights,
@@ -15,5 +15,5 @@ export const militaryHandler: MilitaryServiceHandler = {
   getAircraftDetailsBatch,
   getWingbitsStatus,
   getUSNIFleetReport,
-  listAcarsMessages,
+  listMilitaryBases,
 };

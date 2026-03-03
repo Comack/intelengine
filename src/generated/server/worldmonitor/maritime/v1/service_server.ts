@@ -2,17 +2,10 @@
 // source: worldmonitor/maritime/v1/service.proto
 
 export interface GetVesselSnapshotRequest {
-  boundingBox?: BoundingBox;
-}
-
-export interface BoundingBox {
-  northEast?: GeoCoordinates;
-  southWest?: GeoCoordinates;
-}
-
-export interface GeoCoordinates {
-  latitude: number;
-  longitude: number;
+  neLat: number;
+  neLon: number;
+  swLat: number;
+  swLon: number;
 }
 
 export interface GetVesselSnapshotResponse {
@@ -35,6 +28,11 @@ export interface AisDensityZone {
   note: string;
 }
 
+export interface GeoCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface AisDisruption {
   id: string;
   name: string;
@@ -50,13 +48,9 @@ export interface AisDisruption {
 }
 
 export interface ListNavigationalWarningsRequest {
-  pagination?: PaginationRequest;
-  area: string;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  area: string;
 }
 
 export interface ListNavigationalWarningsResponse {
@@ -78,51 +72,6 @@ export interface NavigationalWarning {
 export interface PaginationResponse {
   nextCursor: string;
   totalCount: number;
-}
-
-export interface ListSarDetectionsRequest {
-  limit: number;
-}
-
-export interface ListSarDetectionsResponse {
-  detections: SarDarkShip[];
-  fetchedAt: string;
-}
-
-export interface SarDarkShip {
-  id: string;
-  lat: number;
-  lon: number;
-  lengthM: number;
-  course: number;
-  speedKnots: number;
-  aisMatched: boolean;
-  nearestAisVessel: string;
-  region: string;
-  vesselClassHint: string;
-  detectedAt: string;
-  confidence: number;
-}
-
-export interface GetPortCongestionRequest {
-}
-
-export interface GetPortCongestionResponse {
-  ports: PortCongestionStatus[];
-  computedAt: string;
-}
-
-export interface PortCongestionStatus {
-  portCode: string;
-  portName: string;
-  lat: number;
-  lon: number;
-  congestionIndex: number;
-  avgWaitHours: number;
-  vesselsAtAnchor: number;
-  trend: string;
-  country: string;
-  updatedAt: string;
 }
 
 export type AisDisruptionSeverity = "AIS_DISRUPTION_SEVERITY_UNSPECIFIED" | "AIS_DISRUPTION_SEVERITY_LOW" | "AIS_DISRUPTION_SEVERITY_ELEVATED" | "AIS_DISRUPTION_SEVERITY_HIGH";
@@ -176,8 +125,6 @@ export interface RouteDescriptor {
 export interface MaritimeServiceHandler {
   getVesselSnapshot(ctx: ServerContext, req: GetVesselSnapshotRequest): Promise<GetVesselSnapshotResponse>;
   listNavigationalWarnings(ctx: ServerContext, req: ListNavigationalWarningsRequest): Promise<ListNavigationalWarningsResponse>;
-  listSarDetections(ctx: ServerContext, req: ListSarDetectionsRequest): Promise<ListSarDetectionsResponse>;
-  getPortCongestion(ctx: ServerContext, req: GetPortCongestionRequest): Promise<GetPortCongestionResponse>;
 }
 
 export function createMaritimeServiceRoutes(
@@ -186,12 +133,19 @@ export function createMaritimeServiceRoutes(
 ): RouteDescriptor[] {
   return [
     {
-      method: "POST",
+      method: "GET",
       path: "/api/maritime/v1/get-vessel-snapshot",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetVesselSnapshotRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetVesselSnapshotRequest = {
+            neLat: Number(params.get("ne_lat") ?? "0"),
+            neLon: Number(params.get("ne_lon") ?? "0"),
+            swLat: Number(params.get("sw_lat") ?? "0"),
+            swLon: Number(params.get("sw_lon") ?? "0"),
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getVesselSnapshot", body);
             if (bodyViolations) {
@@ -229,12 +183,18 @@ export function createMaritimeServiceRoutes(
       },
     },
     {
-      method: "POST",
+      method: "GET",
       path: "/api/maritime/v1/list-navigational-warnings",
       handler: async (req: Request): Promise<Response> => {
         try {
           const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListNavigationalWarningsRequest;
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListNavigationalWarningsRequest = {
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            area: params.get("area") ?? "",
+          };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listNavigationalWarnings", body);
             if (bodyViolations) {
@@ -250,92 +210,6 @@ export function createMaritimeServiceRoutes(
 
           const result = await handler.listNavigationalWarnings(ctx, body);
           return new Response(JSON.stringify(result as ListNavigationalWarningsResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "POST",
-      path: "/api/maritime/v1/list-sar-detections",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
-          const body = await req.json() as ListSarDetectionsRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("listSarDetections", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
-          const result = await handler.listSarDetections(ctx, body);
-          return new Response(JSON.stringify(result as ListSarDetectionsResponse), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        } catch (err: unknown) {
-          if (err instanceof ValidationError) {
-            return new Response(JSON.stringify({ violations: err.violations }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
-          if (options?.onError) {
-            return options.onError(err, req);
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          return new Response(JSON.stringify({ message }), {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      },
-    },
-    {
-      method: "POST",
-      path: "/api/maritime/v1/get-port-congestion",
-      handler: async (req: Request): Promise<Response> => {
-        try {
-          const pathParams: Record<string, string> = {};
-          const body = await req.json() as GetPortCongestionRequest;
-          if (options?.validateRequest) {
-            const bodyViolations = options.validateRequest("getPortCongestion", body);
-            if (bodyViolations) {
-              throw new ValidationError(bodyViolations);
-            }
-          }
-
-          const ctx: ServerContext = {
-            request: req,
-            pathParams,
-            headers: Object.fromEntries(req.headers.entries()),
-          };
-
-          const result = await handler.getPortCongestion(ctx, body);
-          return new Response(JSON.stringify(result as GetPortCongestionResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

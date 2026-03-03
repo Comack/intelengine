@@ -2,14 +2,10 @@
 // source: worldmonitor/research/v1/service.proto
 
 export interface ListArxivPapersRequest {
-  pagination?: PaginationRequest;
-  category: string;
-  query: string;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  category: string;
+  query: string;
 }
 
 export interface ListArxivPapersResponse {
@@ -33,7 +29,8 @@ export interface PaginationResponse {
 }
 
 export interface ListTrendingReposRequest {
-  pagination?: PaginationRequest;
+  pageSize: number;
+  cursor: string;
   language: string;
   period: string;
 }
@@ -54,7 +51,8 @@ export interface GithubRepo {
 }
 
 export interface ListHackernewsItemsRequest {
-  pagination?: PaginationRequest;
+  pageSize: number;
+  cursor: string;
   feedType: string;
 }
 
@@ -111,44 +109,6 @@ export interface TechEventCoords {
   virtual: boolean;
 }
 
-export interface ListSocialTrendsRequest {
-  platform: string;
-  limit: number;
-}
-
-export interface ListSocialTrendsResponse {
-  trends: SocialTrend[];
-  sampledAt: string;
-}
-
-export interface SocialTrend {
-  topic: string;
-  platform: string;
-  mentionCount1h: number;
-  velocity: number;
-  topPosts: string[];
-  matchedEntities: string[];
-  observedAt: string;
-}
-
-export interface GetRepoMomentumRequest {
-}
-
-export interface GetRepoMomentumResponse {
-  repos: RepoMomentum[];
-  computedAt: string;
-}
-
-export interface RepoMomentum {
-  repo: string;
-  ownerEntity: string;
-  stars1d: number;
-  forks1d: number;
-  prOpens1d: number;
-  momentumScore: number;
-  computedAt: string;
-}
-
 export interface FieldViolation {
   field: string;
   description: string;
@@ -199,7 +159,12 @@ export class ResearchServiceClient {
 
   async listArxivPapers(req: ListArxivPapersRequest, options?: ResearchServiceCallOptions): Promise<ListArxivPapersResponse> {
     let path = "/api/research/v1/list-arxiv-papers";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.category != null && req.category !== "") params.set("category", String(req.category));
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -208,9 +173,8 @@ export class ResearchServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -223,7 +187,12 @@ export class ResearchServiceClient {
 
   async listTrendingRepos(req: ListTrendingReposRequest, options?: ResearchServiceCallOptions): Promise<ListTrendingReposResponse> {
     let path = "/api/research/v1/list-trending-repos";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.language != null && req.language !== "") params.set("language", String(req.language));
+    if (req.period != null && req.period !== "") params.set("period", String(req.period));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -232,9 +201,8 @@ export class ResearchServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -247,7 +215,11 @@ export class ResearchServiceClient {
 
   async listHackernewsItems(req: ListHackernewsItemsRequest, options?: ResearchServiceCallOptions): Promise<ListHackernewsItemsResponse> {
     let path = "/api/research/v1/list-hackernews-items";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.feedType != null && req.feedType !== "") params.set("feed_type", String(req.feedType));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -256,9 +228,8 @@ export class ResearchServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -271,7 +242,12 @@ export class ResearchServiceClient {
 
   async listTechEvents(req: ListTechEventsRequest, options?: ResearchServiceCallOptions): Promise<ListTechEventsResponse> {
     let path = "/api/research/v1/list-tech-events";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.type != null && req.type !== "") params.set("type", String(req.type));
+    if (req.mappable) params.set("mappable", String(req.mappable));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    if (req.days != null && req.days !== 0) params.set("days", String(req.days));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -280,9 +256,8 @@ export class ResearchServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -291,54 +266,6 @@ export class ResearchServiceClient {
     }
 
     return await resp.json() as ListTechEventsResponse;
-  }
-
-  async listSocialTrends(req: ListSocialTrendsRequest, options?: ResearchServiceCallOptions): Promise<ListSocialTrendsResponse> {
-    let path = "/api/research/v1/list-social-trends";
-    const url = this.baseURL + path;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...this.defaultHeaders,
-      ...options?.headers,
-    };
-
-    const resp = await this.fetchFn(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(req),
-      signal: options?.signal,
-    });
-
-    if (!resp.ok) {
-      return this.handleError(resp);
-    }
-
-    return await resp.json() as ListSocialTrendsResponse;
-  }
-
-  async getRepoMomentum(req: GetRepoMomentumRequest, options?: ResearchServiceCallOptions): Promise<GetRepoMomentumResponse> {
-    let path = "/api/research/v1/get-repo-momentum";
-    const url = this.baseURL + path;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...this.defaultHeaders,
-      ...options?.headers,
-    };
-
-    const resp = await this.fetchFn(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(req),
-      signal: options?.signal,
-    });
-
-    if (!resp.ok) {
-      return this.handleError(resp);
-    }
-
-    return await resp.json() as GetRepoMomentumResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

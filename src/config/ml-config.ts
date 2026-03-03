@@ -1,6 +1,6 @@
 /**
  * ML Configuration for ONNX Runtime Web integration
- * Models are loaded from HuggingFace CDN via @huggingface/transformers
+ * Models are loaded from HuggingFace CDN via @xenova/transformers
  */
 
 export interface ModelConfig {

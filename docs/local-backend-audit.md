@@ -28,19 +28,8 @@ Remaining non-sebuf `api/*.js` files serve non-JSON content (RSS XML, HTML, redi
 | P1 | Map layers (conflicts, outages, AIS, military flights) | `src/services/conflict/`, `src/services/infrastructure/`, `src/services/maritime/`, `src/services/military/` | conflict, infrastructure, maritime, military | `server/worldmonitor/{domain}/v1/` | Requires user-provided API key | ✅ Explicit fallback: unavailable feeds are disabled while map rendering remains active for local/static layers. |
 | P2 | Summaries | `src/services/news/` | news | `server/worldmonitor/news/v1/` | Requires user-provided API key | ✅ Explicit fallback chain: Groq → OpenRouter → browser model. |
 | P2 | MarketPanel | `src/services/market/`, `src/services/prediction/` | market, prediction | `server/worldmonitor/market/v1/`, `server/worldmonitor/prediction/v1/` | Fully local | ✅ Multi-provider and cache-aware fetch behavior maintained in sidecar mode. |
-| P2 | Forensics Engine | `src/services/forensics.ts` | intelligence | `server/worldmonitor/intelligence/v1/` | Fully local | ✅ Heavy compute orchestration executed locally; Redis-aware storage fallback. |
-| P3 | Evidence Service | `src/services/evidence.ts` | evidence | `server/worldmonitor/evidence/v1/` | Fully local | ✅ Local ingestion and POLE graph extraction active in sidecar. |
 | P3 | Flight enrichment | `src/services/military/` | military | `server/worldmonitor/military/v1/` | Requires user-provided API key | ✅ Explicit fallback: heuristic-only classification mode. |
 | P3 | OpenSky relay fallback path | `src/services/military/` | military | `server/worldmonitor/military/v1/` | Requires cloud fallback | ✅ Relay fallback documented; no hard failure when relay is unavailable. |
-| P3 | Aviation delays | `src/services/aviation/` | aviation | `server/worldmonitor/aviation/v1/` | Fully local | ✅ FAA ATIS data; no API key required. Falls back to empty state on FAA API failure. |
-| P3 | Climate & environment | `src/services/climate/` | climate | `server/worldmonitor/climate/v1/` | Fully local | ✅ Open-Meteo, WAQI, Sentinel-5P (free tier), GFW — all operate without stored credentials in sidecar. |
-| P3 | Cyber threat feeds | `src/services/cyber/` | cyber | `server/worldmonitor/cyber/v1/` | Requires user-provided API key | ✅ URLhaus, OTX, AbuseIPDB keys optional; CISA KEV and Wikimedia info-ops run key-free. Layer hidden when keys absent. |
-| P3 | Displacement / population exposure | `src/services/displacement/` | displacement | `server/worldmonitor/displacement/v1/` | Fully local | ✅ UNHCR open API; no credentials required. Returns empty state gracefully. |
-| P3 | Economic indicators | `src/services/economic/` | economic | `server/worldmonitor/economic/v1/` | Requires user-provided API key | ✅ FRED_API_KEY and EIA_API_KEY optional; World Bank and macro signals operate key-free. |
-| P3 | Research & social trends | `src/services/research/` | research | `server/worldmonitor/research/v1/` | Fully local | ✅ arXiv, HackerNews, GitHub Events, Bluesky AT Protocol — all free/open APIs. |
-| P3 | Seismology & tsunami | `src/services/earthquakes.ts` | seismology | `server/worldmonitor/seismology/v1/` | Fully local | ✅ USGS (earthquakes) and NWS Tsunami Alerts — no credentials required. |
-| P3 | Space weather & satellites | `src/services/space.ts` | space | `server/worldmonitor/space/v1/` | Fully local | ✅ CelesTrak TLE (satellites) and NOAA SWPC (Kp-index) — fully open APIs. |
-| P3 | Wildfire detection | `src/services/wildfires/` | wildfire | `server/worldmonitor/wildfire/v1/` | Requires user-provided API key | ✅ NASA_FIRMS_API_KEY optional; layer hidden when absent. EONET/GDACS wildfire data continues without it. |
 
 ## Non-parity closure actions completed
 

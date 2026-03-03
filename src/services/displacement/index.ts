@@ -106,7 +106,7 @@ function toDisplayFlow(proto: ProtoFlow): DisplacementFlow {
 
 // ─── Client + circuit breaker ───
 
-const client = new DisplacementServiceClient('', { fetch: fetch.bind(globalThis) });
+const client = new DisplacementServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
 const emptyResult: UnhcrSummary = {
   year: new Date().getFullYear(),
@@ -117,6 +117,8 @@ const emptyResult: UnhcrSummary = {
 
 const breaker = createCircuitBreaker<UnhcrSummary>({
   name: 'UNHCR Displacement',
+  cacheTtlMs: 10 * 60 * 1000,
+  persistCache: true,
 });
 
 // ─── Main fetch (public API) ───

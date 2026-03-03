@@ -26,6 +26,7 @@ const keyBackedFeatures: RuntimeFeatureId[] = [
   'economicFred',
   'internetOutages',
   'acledConflicts',
+  'ucdpConflicts',
   'abuseChThreatIntel',
   'alienvaultOtxThreatIntel',
   'abuseIpdbThreatIntel',
@@ -122,7 +123,7 @@ export function getNonParityFeatures(): DesktopParityFeature[] {
   return DESKTOP_PARITY_FEATURES.filter(feature => feature.locality !== 'fully-local');
 }
 
-export function getDesktopReadinessChecks(localBackendEnabled: boolean, localFirstMode = false): DesktopReadinessCheck[] {
+export function getDesktopReadinessChecks(localBackendEnabled: boolean): DesktopReadinessCheck[] {
   const liveTrackingReady = isFeatureAvailable('aisRelay') || isFeatureAvailable('openskyRelay');
 
   return [
@@ -132,7 +133,6 @@ export function getDesktopReadinessChecks(localBackendEnabled: boolean, localFir
     { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiOllama') || isFeatureAvailable('aiGroq') || isFeatureAvailable('aiOpenRouter') },
     { id: 'market', label: 'Market panel live data paths', ready: true },
     { id: 'live-tracking', label: 'At least one live-tracking mode (AIS or OpenSky)', ready: liveTrackingReady },
-    { id: 'local-first', label: 'Local-first mode (no cloud dependency)', ready: localFirstMode },
   ];
 }
 

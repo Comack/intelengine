@@ -2,7 +2,7 @@ import type { CableAdvisory, RepairShip, UnderseaCable } from '@/types';
 import { UNDERSEA_CABLES } from '@/config';
 import { MaritimeServiceClient, type NavigationalWarning } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 
-const maritimeClient = new MaritimeServiceClient('', { fetch: fetch.bind(globalThis) });
+const maritimeClient = new MaritimeServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 
 interface CableActivity {
   advisories: CableAdvisory[];
@@ -282,12 +282,10 @@ function formatNgaDate(epochMs: number): string {
 
 export async function fetchCableActivity(): Promise<CableActivity> {
   try {
-    const response = await maritimeClient.listNavigationalWarnings({ area: '' });
+    const response = await maritimeClient.listNavigationalWarnings({ area: '', pageSize: 0, cursor: '' });
     const warnings: NgaWarning[] = response.warnings.map(protoToNgaWarning);
-    console.log(`[CableActivity] Fetched ${warnings.length} NGA warnings`);
 
     const activity = processWarnings(warnings);
-    console.log(`[CableActivity] Found ${activity.advisories.length} advisories, ${activity.repairShips.length} repair ships`);
 
     return activity;
   } catch (error) {

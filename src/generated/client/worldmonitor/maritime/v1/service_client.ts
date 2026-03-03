@@ -2,17 +2,10 @@
 // source: worldmonitor/maritime/v1/service.proto
 
 export interface GetVesselSnapshotRequest {
-  boundingBox?: BoundingBox;
-}
-
-export interface BoundingBox {
-  northEast?: GeoCoordinates;
-  southWest?: GeoCoordinates;
-}
-
-export interface GeoCoordinates {
-  latitude: number;
-  longitude: number;
+  neLat: number;
+  neLon: number;
+  swLat: number;
+  swLon: number;
 }
 
 export interface GetVesselSnapshotResponse {
@@ -35,6 +28,11 @@ export interface AisDensityZone {
   note: string;
 }
 
+export interface GeoCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface AisDisruption {
   id: string;
   name: string;
@@ -50,13 +48,9 @@ export interface AisDisruption {
 }
 
 export interface ListNavigationalWarningsRequest {
-  pagination?: PaginationRequest;
-  area: string;
-}
-
-export interface PaginationRequest {
   pageSize: number;
   cursor: string;
+  area: string;
 }
 
 export interface ListNavigationalWarningsResponse {
@@ -78,51 +72,6 @@ export interface NavigationalWarning {
 export interface PaginationResponse {
   nextCursor: string;
   totalCount: number;
-}
-
-export interface ListSarDetectionsRequest {
-  limit: number;
-}
-
-export interface ListSarDetectionsResponse {
-  detections: SarDarkShip[];
-  fetchedAt: string;
-}
-
-export interface SarDarkShip {
-  id: string;
-  lat: number;
-  lon: number;
-  lengthM: number;
-  course: number;
-  speedKnots: number;
-  aisMatched: boolean;
-  nearestAisVessel: string;
-  region: string;
-  vesselClassHint: string;
-  detectedAt: string;
-  confidence: number;
-}
-
-export interface GetPortCongestionRequest {
-}
-
-export interface GetPortCongestionResponse {
-  ports: PortCongestionStatus[];
-  computedAt: string;
-}
-
-export interface PortCongestionStatus {
-  portCode: string;
-  portName: string;
-  lat: number;
-  lon: number;
-  congestionIndex: number;
-  avgWaitHours: number;
-  vesselsAtAnchor: number;
-  trend: string;
-  country: string;
-  updatedAt: string;
 }
 
 export type AisDisruptionSeverity = "AIS_DISRUPTION_SEVERITY_UNSPECIFIED" | "AIS_DISRUPTION_SEVERITY_LOW" | "AIS_DISRUPTION_SEVERITY_ELEVATED" | "AIS_DISRUPTION_SEVERITY_HIGH";
@@ -179,7 +128,12 @@ export class MaritimeServiceClient {
 
   async getVesselSnapshot(req: GetVesselSnapshotRequest, options?: MaritimeServiceCallOptions): Promise<GetVesselSnapshotResponse> {
     let path = "/api/maritime/v1/get-vessel-snapshot";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.neLat != null && req.neLat !== 0) params.set("ne_lat", String(req.neLat));
+    if (req.neLon != null && req.neLon !== 0) params.set("ne_lon", String(req.neLon));
+    if (req.swLat != null && req.swLat !== 0) params.set("sw_lat", String(req.swLat));
+    if (req.swLon != null && req.swLon !== 0) params.set("sw_lon", String(req.swLon));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -188,9 +142,8 @@ export class MaritimeServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -203,7 +156,11 @@ export class MaritimeServiceClient {
 
   async listNavigationalWarnings(req: ListNavigationalWarningsRequest, options?: MaritimeServiceCallOptions): Promise<ListNavigationalWarningsResponse> {
     let path = "/api/maritime/v1/list-navigational-warnings";
-    const url = this.baseURL + path;
+    const params = new URLSearchParams();
+    if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
+    if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
+    if (req.area != null && req.area !== "") params.set("area", String(req.area));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -212,9 +169,8 @@ export class MaritimeServiceClient {
     };
 
     const resp = await this.fetchFn(url, {
-      method: "POST",
+      method: "GET",
       headers,
-      body: JSON.stringify(req),
       signal: options?.signal,
     });
 
@@ -223,54 +179,6 @@ export class MaritimeServiceClient {
     }
 
     return await resp.json() as ListNavigationalWarningsResponse;
-  }
-
-  async listSarDetections(req: ListSarDetectionsRequest, options?: MaritimeServiceCallOptions): Promise<ListSarDetectionsResponse> {
-    let path = "/api/maritime/v1/list-sar-detections";
-    const url = this.baseURL + path;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...this.defaultHeaders,
-      ...options?.headers,
-    };
-
-    const resp = await this.fetchFn(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(req),
-      signal: options?.signal,
-    });
-
-    if (!resp.ok) {
-      return this.handleError(resp);
-    }
-
-    return await resp.json() as ListSarDetectionsResponse;
-  }
-
-  async getPortCongestion(req: GetPortCongestionRequest, options?: MaritimeServiceCallOptions): Promise<GetPortCongestionResponse> {
-    let path = "/api/maritime/v1/get-port-congestion";
-    const url = this.baseURL + path;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...this.defaultHeaders,
-      ...options?.headers,
-    };
-
-    const resp = await this.fetchFn(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(req),
-      signal: options?.signal,
-    });
-
-    if (!resp.ok) {
-      return this.handleError(resp);
-    }
-
-    return await resp.json() as GetPortCongestionResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {
