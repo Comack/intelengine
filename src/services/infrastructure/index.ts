@@ -12,11 +12,16 @@ import {
   type ListServiceStatusesResponse,
   type InternetOutage as ProtoOutage,
   type ServiceStatus as ProtoServiceStatus,
+  type GridZone,
+  type RoutingAnomaly,
+  type RadiationReading,
 } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { InternetOutage } from '@/types';
 import { createCircuitBreaker } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
+
+export type { GridZone, RoutingAnomaly, RadiationReading };
 
 // ---- Client + Circuit Breakers ----
 
@@ -183,4 +188,43 @@ export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
     summary: computeSummary(services),
     services,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Electricity grid status (Electricity Maps)
+// ---------------------------------------------------------------------------
+
+const gridBreaker = createCircuitBreaker<GridZone[]>({ name: 'Grid Status', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+
+export async function fetchGridStatus(): Promise<GridZone[]> {
+  return gridBreaker.execute(
+    () => client.getGridStatus({}).then((r) => r.zones),
+    [],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BGP routing anomalies (CAIDA BGPStream)
+// ---------------------------------------------------------------------------
+
+const routingBreaker = createCircuitBreaker<RoutingAnomaly[]>({ name: 'Routing Anomalies', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
+
+export async function fetchRoutingAnomalies(limit = 50): Promise<RoutingAnomaly[]> {
+  return routingBreaker.execute(
+    () => client.listRoutingAnomalies({ limit }).then((r) => r.anomalies),
+    [],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Radiation readings (Safecast)
+// ---------------------------------------------------------------------------
+
+const radiationBreaker = createCircuitBreaker<RadiationReading[]>({ name: 'Radiation Readings', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
+
+export async function fetchRadiationReadings(limit = 200): Promise<RadiationReading[]> {
+  return radiationBreaker.execute(
+    () => client.listRadiationReadings({ limit }).then((r) => r.readings),
+    [],
+  );
 }

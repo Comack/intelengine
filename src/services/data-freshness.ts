@@ -37,7 +37,16 @@ export type DataSourceId =
   | 'wto_trade'      // WTO trade policy data
   | 'supply_chain'   // Supply chain disruption intelligence
   | 'security_advisories'  // Government travel/security advisories
-  | 'gpsjam';              // GPS/GNSS interference
+  | 'gpsjam'              // GPS/GNSS interference
+  | 'sar_detections'      // SAR dark vessel detections
+  | 'port_congestion'     // Port congestion index
+  | 'grid_zones'          // Electricity grid stress
+  | 'routing_anomalies'   // BGP routing anomalies
+  | 'radiation_readings'  // Radiation sensor readings
+  | 'air_quality'         // Air quality (AQI)
+  | 'deforestation_alerts' // Deforestation alerts
+  | 'acars_messages'      // ACARS military messages
+  | 'whale_transfers';    // Crypto whale transfers
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -105,6 +114,15 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   supply_chain: { name: 'Supply Chain Intelligence', requiredForRisk: false, panelId: 'supply-chain' },
   security_advisories: { name: 'Security Advisories', requiredForRisk: false, panelId: 'security-advisories' },
   gpsjam: { name: 'GPS/GNSS Interference', requiredForRisk: false, panelId: 'map' },
+  sar_detections: { name: 'SAR Dark Vessels', requiredForRisk: false, panelId: 'map' },
+  port_congestion: { name: 'Port Congestion', requiredForRisk: false, panelId: 'map' },
+  grid_zones: { name: 'Grid Stress (ElectricityMaps)', requiredForRisk: false, panelId: 'map' },
+  routing_anomalies: { name: 'BGP Routing Anomalies', requiredForRisk: false, panelId: 'map' },
+  radiation_readings: { name: 'Radiation Readings', requiredForRisk: false, panelId: 'map' },
+  air_quality: { name: 'Air Quality (AQI)', requiredForRisk: false, panelId: 'map' },
+  deforestation_alerts: { name: 'Deforestation Alerts', requiredForRisk: false, panelId: 'map' },
+  acars_messages: { name: 'ACARS Military Messages', requiredForRisk: false, panelId: 'map' },
+  whale_transfers: { name: 'Crypto Whale Transfers', requiredForRisk: false, panelId: 'map' },
 };
 
 class DataFreshnessTracker {
@@ -365,6 +383,15 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   supply_chain: 'Supply chain disruption status unavailable—chokepoint monitoring offline',
   security_advisories: 'Government travel advisory data unavailable—security alerts may be missed',
   gpsjam: 'GPS/GNSS interference data unavailable—jamming zones undetected',
+  sar_detections: 'SAR dark vessel detections unavailable—dark shipping activity undetected',
+  port_congestion: 'Port congestion data unavailable—maritime supply chain visibility reduced',
+  grid_zones: 'Electricity grid stress data unavailable—infrastructure disruption undetected',
+  routing_anomalies: 'BGP routing anomaly data unavailable—internet hijack events undetected',
+  radiation_readings: 'Radiation sensor data unavailable—nuclear/radiological events undetected',
+  air_quality: 'Air quality data unavailable—pollution/hazard events undetected',
+  deforestation_alerts: 'Deforestation alert data unavailable—forest loss events undetected',
+  acars_messages: 'ACARS military message data unavailable—aviation intelligence reduced',
+  whale_transfers: 'Crypto whale transfer data unavailable—large capital movement undetected',
 };
 
 /**

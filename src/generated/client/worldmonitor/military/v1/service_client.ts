@@ -232,6 +232,33 @@ export interface MilitaryBaseCluster {
   expansionZoom: number;
 }
 
+export interface ListAcarsMessagesRequest {
+  limit: number;
+  milCategory: AcarsMilCategory;
+}
+
+export interface ListAcarsMessagesResponse {
+  messages: AcarsMessage[];
+  sampledAt: string;
+}
+
+export interface AcarsMessage {
+  id: string;
+  tailNumber: string;
+  flightNumber: string;
+  messageText: string;
+  messageType: string;
+  milCategory: AcarsMilCategory;
+  lat: number;
+  lon: number;
+  altitudeFt: number;
+  freqMhz: string;
+  receivedAt: string;
+  station: string;
+}
+
+export type AcarsMilCategory = "ACARS_MIL_CATEGORY_UNSPECIFIED" | "ACARS_MIL_CATEGORY_MEDICAL_EVAC" | "ACARS_MIL_CATEGORY_TACTICAL" | "ACARS_MIL_CATEGORY_LOGISTICS" | "ACARS_MIL_CATEGORY_UNKNOWN";
+
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
 
 export type MilitaryAircraftType = "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED" | "MILITARY_AIRCRAFT_TYPE_FIGHTER" | "MILITARY_AIRCRAFT_TYPE_BOMBER" | "MILITARY_AIRCRAFT_TYPE_TRANSPORT" | "MILITARY_AIRCRAFT_TYPE_TANKER" | "MILITARY_AIRCRAFT_TYPE_AWACS" | "MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE" | "MILITARY_AIRCRAFT_TYPE_HELICOPTER" | "MILITARY_AIRCRAFT_TYPE_DRONE" | "MILITARY_AIRCRAFT_TYPE_PATROL" | "MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS" | "MILITARY_AIRCRAFT_TYPE_VIP" | "MILITARY_AIRCRAFT_TYPE_UNKNOWN";
@@ -472,6 +499,32 @@ export class MilitaryServiceClient {
     }
 
     return await resp.json() as ListMilitaryBasesResponse;
+  }
+
+  async listAcarsMessages(req: ListAcarsMessagesRequest, options?: MilitaryServiceCallOptions): Promise<ListAcarsMessagesResponse> {
+    let path = "/api/military/v1/list-acars-messages";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    if (req.milCategory != null && req.milCategory !== "") params.set("mil_category", String(req.milCategory));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListAcarsMessagesResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

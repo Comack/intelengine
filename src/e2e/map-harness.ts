@@ -179,6 +179,15 @@ const allLayersEnabled: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: true,
   iranAttacks: false,
+  sarDetections: true,
+  portCongestion: true,
+  gridZones: true,
+  routingAnomalies: true,
+  radiationReadings: true,
+  airQuality: true,
+  deforestationAlerts: true,
+  acarsMessages: true,
+  whaleTransfers: true,
   dayNight: true,
 };
 
@@ -226,6 +235,15 @@ const allLayersDisabled: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 

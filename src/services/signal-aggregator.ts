@@ -11,6 +11,11 @@ import type {
   SocialUnrestEvent,
   AisDisruptionEvent,
 } from '@/types';
+import type { SarDarkShip, PortCongestionStatus } from './maritime';
+import type { GridZone, RoutingAnomaly, RadiationReading } from './infrastructure';
+import type { AirQualityReading, DeforestationAlert } from './climate';
+import type { WhaleTransfer } from './market';
+import type { AcarsMessage } from './military';
 import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
 
 export type SignalType =
@@ -22,6 +27,15 @@ export type SignalType =
   | 'satellite_fire'        // NASA FIRMS thermal anomalies
   | 'temporal_anomaly'      // Baseline deviation alerts
   | 'active_strike'         // Iran attack / military conflict events
+  | 'sar_dark_vessel'       // SAR-detected dark ships (Global Fishing Watch)
+  | 'grid_stress'           // Electricity grid stress (Electricity Maps)
+  | 'routing_anomaly'       // BGP routing anomaly (CAIDA BGPStream)
+  | 'radiation_spike'       // Elevated radiation (Safecast)
+  | 'air_quality_spike'     // Poor air quality (WAQI)
+  | 'deforestation_alert'   // Deforestation alert (Global Forest Watch)
+  | 'acars_alert'           // Military ACARS message (ADSB.lol)
+  | 'port_congestion'       // Port congestion (Kpler/marine APIs)
+  | 'whale_transfer'        // Large on-chain crypto transfer (Whale Alert)
 
 export interface GeoSignal {
   type: SignalType;
@@ -414,6 +428,177 @@ class SignalAggregator {
     return resolveCountryFromBounds(lat, lon, ME_STRIKE_BOUNDS) ?? 'XX';
   }
 
+  ingestSarDetections(detections: SarDarkShip[]): void {
+    this.clearSignalType('sar_dark_vessel');
+    for (const d of detections) {
+      const code = this.coordsToCountry(d.lat, d.lon);
+      this.signals.push({
+        type: 'sar_dark_vessel',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: d.lat,
+        lon: d.lon,
+        severity: d.confidence > 0.8 ? 'high' : d.confidence > 0.5 ? 'medium' : 'low',
+        title: `Dark vessel detected${d.vesselClassHint ? ` (${d.vesselClassHint})` : ''}`,
+        timestamp: new Date(d.detectedAt),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestGridZones(zones: GridZone[]): void {
+    this.clearSignalType('grid_stress');
+    for (const z of zones) {
+      const stressed = z.stressLevel === 'GRID_STRESS_ELEVATED' || z.stressLevel === 'GRID_STRESS_HIGH' || z.stressLevel === 'GRID_STRESS_CRITICAL';
+      if (!stressed) continue;
+      const code = this.coordsToCountry(z.lat, z.lon);
+      this.signals.push({
+        type: 'grid_stress',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: z.lat,
+        lon: z.lon,
+        severity: z.stressLevel === 'GRID_STRESS_CRITICAL' ? 'high' : z.stressLevel === 'GRID_STRESS_HIGH' ? 'medium' : 'low',
+        title: `Grid stress: ${z.zoneName} (${z.stressLevel.replace('GRID_STRESS_', '')})`,
+        timestamp: new Date(z.observedAt),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestRoutingAnomalies(anomalies: RoutingAnomaly[]): void {
+    this.clearSignalType('routing_anomaly');
+    for (const a of anomalies) {
+      const code = this.coordsToCountry(a.lat, a.lon);
+      this.signals.push({
+        type: 'routing_anomaly',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: a.lat,
+        lon: a.lon,
+        severity: a.severity === 'HIGH' ? 'high' : a.severity === 'MEDIUM' ? 'medium' : 'low',
+        title: `BGP anomaly: AS${a.victimAsn} (${a.type})`,
+        timestamp: new Date(a.detectedAt),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestRadiationReadings(readings: RadiationReading[]): void {
+    this.clearSignalType('radiation_spike');
+    const BASELINE_CPM = 30;
+    for (const r of readings) {
+      if (r.cpm < BASELINE_CPM * 3) continue;
+      const code = this.coordsToCountry(r.latitude, r.longitude);
+      this.signals.push({
+        type: 'radiation_spike',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: r.latitude,
+        lon: r.longitude,
+        severity: r.cpm > BASELINE_CPM * 10 ? 'high' : r.cpm > BASELINE_CPM * 5 ? 'medium' : 'low',
+        title: `Radiation spike: ${r.cpm} CPM at ${r.locationName}`,
+        timestamp: new Date(r.capturedAt),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestAirQualityReadings(readings: AirQualityReading[]): void {
+    this.clearSignalType('air_quality_spike');
+    for (const r of readings) {
+      if (r.aqi < 150) continue;
+      const code = this.coordsToCountry(r.lat, r.lon);
+      this.signals.push({
+        type: 'air_quality_spike',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: r.lat,
+        lon: r.lon,
+        severity: r.aqi > 300 ? 'high' : r.aqi > 200 ? 'medium' : 'low',
+        title: `Air quality: AQI ${r.aqi} at ${r.stationName}`,
+        timestamp: new Date(r.observedAt),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestDeforestationAlerts(alerts: DeforestationAlert[]): void {
+    this.clearSignalType('deforestation_alert');
+    for (const a of alerts) {
+      const code = this.coordsToCountry(a.lat, a.lon);
+      this.signals.push({
+        type: 'deforestation_alert',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: a.lat,
+        lon: a.lon,
+        severity: a.nearStrategicSite ? 'high' : 'medium',
+        title: `Deforestation: ${a.areaHa.toFixed(1)} ha${a.region ? ` (${a.region})` : ''}`,
+        timestamp: new Date(a.detectedAt),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestAcarsMessages(messages: AcarsMessage[]): void {
+    this.clearSignalType('acars_alert');
+    for (const m of messages) {
+      if (!m.lat || !m.lon) continue;
+      const code = this.coordsToCountry(m.lat, m.lon);
+      const isMedEvac = m.milCategory === 'ACARS_MIL_CATEGORY_MEDICAL_EVAC';
+      this.signals.push({
+        type: 'acars_alert',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: m.lat,
+        lon: m.lon,
+        severity: isMedEvac ? 'high' : m.milCategory === 'ACARS_MIL_CATEGORY_TACTICAL' ? 'medium' : 'low',
+        title: `ACARS: ${m.tailNumber || m.flightNumber} — ${m.messageType}`,
+        timestamp: new Date(m.receivedAt),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestPortCongestion(ports: PortCongestionStatus[]): void {
+    this.clearSignalType('port_congestion');
+    for (const p of ports) {
+      if (p.congestionIndex < 0.5) continue;
+      const code = this.coordsToCountry(p.lat, p.lon);
+      this.signals.push({
+        type: 'port_congestion',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: p.lat,
+        lon: p.lon,
+        severity: p.congestionIndex > 0.8 ? 'high' : p.congestionIndex > 0.65 ? 'medium' : 'low',
+        title: `Port congestion: ${p.portName} (${Math.round(p.congestionIndex * 100)}%)`,
+        timestamp: new Date(),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestWhaleTransfers(transfers: WhaleTransfer[]): void {
+    this.clearSignalType('whale_transfer');
+    for (const t of transfers) {
+      if (!t.lat || !t.lon) continue;
+      const code = this.coordsToCountry(t.lat, t.lon);
+      this.signals.push({
+        type: 'whale_transfer',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: t.lat,
+        lon: t.lon,
+        severity: t.amountUsd > 50_000_000 ? 'high' : t.amountUsd > 10_000_000 ? 'medium' : 'low',
+        title: `Whale: ${t.blockchain} $${(t.amountUsd / 1e6).toFixed(1)}M ${t.fromLabel} → ${t.toLabel}`,
+        timestamp: new Date(t.occurredAt),
+      });
+    }
+    this.pruneOld();
+  }
+
   private pruneOld(): void {
     const cutoff = Date.now() - this.WINDOW_MS;
     this.signals = this.signals.filter(s => s.timestamp.getTime() > cutoff);
@@ -479,6 +664,15 @@ class SignalAggregator {
           satellite_fire: 'thermal anomalies',
           temporal_anomaly: 'baseline anomalies',
           active_strike: 'active strikes',
+          sar_dark_vessel: 'dark vessel detections',
+          grid_stress: 'grid stress events',
+          routing_anomaly: 'BGP routing anomalies',
+          radiation_spike: 'radiation spikes',
+          air_quality_spike: 'air quality alerts',
+          deforestation_alert: 'deforestation alerts',
+          acars_alert: 'ACARS alerts',
+          port_congestion: 'port congestion',
+          whale_transfer: 'whale transfers',
         };
 
         const typeDescriptions = [...allTypes].map(t => typeLabels[t]).join(', ');
@@ -535,6 +729,15 @@ class SignalAggregator {
       satellite_fire: 0,
       temporal_anomaly: 0,
       active_strike: 0,
+      sar_dark_vessel: 0,
+      grid_stress: 0,
+      routing_anomaly: 0,
+      radiation_spike: 0,
+      air_quality_spike: 0,
+      deforestation_alert: 0,
+      acars_alert: 0,
+      port_congestion: 0,
+      whale_transfer: 0,
     };
 
     for (const s of this.signals) {

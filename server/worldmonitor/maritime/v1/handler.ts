@@ -2,8 +2,12 @@ import type { MaritimeServiceHandler } from '../../../../src/generated/server/wo
 
 import { getVesselSnapshot } from './get-vessel-snapshot';
 import { listNavigationalWarnings } from './list-navigational-warnings';
+import { listSarDetections } from './list-sar-detections';
+import { getPortCongestion } from './get-port-congestion';
 
 export const maritimeHandler: MaritimeServiceHandler = {
   getVesselSnapshot,
   listNavigationalWarnings,
+  listSarDetections,
+  getPortCongestion,
 };

@@ -2,10 +2,12 @@ syntax = "proto3";
 
 package worldmonitor.maritime.v1;
 
+import "sebuf/http/annotations.proto";
+
 // ListSarDetectionsRequest filters SAR dark ship queries.
 message ListSarDetectionsRequest {
   // Maximum detections to return (default 100, max 500).
-  int32 limit = 1;
+  int32 limit = 1 [(sebuf.http.query) = { name: "limit" }];
 }
 
 // ListSarDetectionsResponse contains SAR-detected vessels with no AIS correlation.

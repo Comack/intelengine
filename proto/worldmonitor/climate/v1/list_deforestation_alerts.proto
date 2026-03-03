@@ -2,12 +2,14 @@ syntax = "proto3";
 
 package worldmonitor.climate.v1;
 
+import "sebuf/http/annotations.proto";
+
 // ListDeforestationAlertsRequest filters Global Forest Watch alert queries.
 message ListDeforestationAlertsRequest {
   // Maximum alerts to return (default 100, max 500).
-  int32 limit = 1;
+  int32 limit = 1 [(sebuf.http.query) = { name: "limit" }];
   // Only return alerts near strategic infrastructure (military bases, pipelines, cables).
-  bool strategic_only = 2;
+  bool strategic_only = 2 [(sebuf.http.query) = { name: "strategic_only" }];
 }
 
 // ListDeforestationAlertsResponse contains GFW integrated deforestation alerts.

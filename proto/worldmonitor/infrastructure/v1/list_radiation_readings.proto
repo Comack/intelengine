@@ -2,12 +2,13 @@ syntax = "proto3";
 
 package worldmonitor.infrastructure.v1;
 
+import "sebuf/http/annotations.proto";
 import "worldmonitor/infrastructure/v1/radiation_reading.proto";
 
 // Request to list recent radiation readings.
 message ListRadiationReadingsRequest {
   // Maximum number of readings to return.
-  int32 limit = 1;
+  int32 limit = 1 [(sebuf.http.query) = { name: "limit" }];
 }
 
 // Response containing radiation readings.

@@ -10,9 +10,10 @@ import "worldmonitor/military/v1/get_aircraft_details_batch.proto";
 import "worldmonitor/military/v1/get_wingbits_status.proto";
 import "worldmonitor/military/v1/get_usni_fleet_report.proto";
 import "worldmonitor/military/v1/list_military_bases.proto";
+import "worldmonitor/military/v1/list_acars_messages.proto";
 
 // MilitaryService provides APIs for military flight and vessel tracking
-// sourced from OpenSky, Wingbits, and AIS data.
+// sourced from OpenSky, Wingbits, AIS data, and ACARS military message feeds.
 service MilitaryService {
   option (sebuf.http.service_config) = {base_path: "/api/military/v1"};
 
@@ -49,5 +50,10 @@ service MilitaryService {
   // ListMilitaryBases retrieves military bases within a bounding box, with server-side clustering.
   rpc ListMilitaryBases(ListMilitaryBasesRequest) returns (ListMilitaryBasesResponse) {
     option (sebuf.http.config) = {path: "/list-military-bases", method: HTTP_METHOD_GET};
+  }
+
+  // ListAcarsMessages retrieves decoded military ACARS messages from Airframes.io.
+  rpc ListAcarsMessages(ListAcarsMessagesRequest) returns (ListAcarsMessagesResponse) {
+    option (sebuf.http.config) = {path: "/list-acars-messages", method: HTTP_METHOD_GET};
   }
 }

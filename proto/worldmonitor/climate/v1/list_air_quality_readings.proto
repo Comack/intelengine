@@ -2,10 +2,12 @@ syntax = "proto3";
 
 package worldmonitor.climate.v1;
 
+import "sebuf/http/annotations.proto";
+
 // ListAirQualityReadingsRequest filters WAQI station queries.
 message ListAirQualityReadingsRequest {
   // Maximum stations to return (default 200).
-  int32 limit = 1;
+  int32 limit = 1 [(sebuf.http.query) = { name: "limit" }];
 }
 
 // ListAirQualityReadingsResponse contains air quality readings from WAQI monitoring stations.

@@ -49,6 +49,80 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/climate/v1/list-air-quality-readings:
+        get:
+            tags:
+                - ClimateService
+            summary: ListAirQualityReadings
+            description: ListAirQualityReadings retrieves air quality index readings from WAQI monitoring stations.
+            operationId: ListAirQualityReadings
+            parameters:
+                - name: limit
+                  in: query
+                  description: Maximum stations to return (default 200).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAirQualityReadingsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/climate/v1/list-deforestation-alerts:
+        get:
+            tags:
+                - ClimateService
+            summary: ListDeforestationAlerts
+            description: ListDeforestationAlerts retrieves active deforestation alerts from Global Forest Watch.
+            operationId: ListDeforestationAlerts
+            parameters:
+                - name: limit
+                  in: query
+                  description: Maximum alerts to return (default 100, max 500).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: strategic_only
+                  in: query
+                  description: Only return alerts near strategic infrastructure (military bases, pipelines, cables).
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDeforestationAlertsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -189,3 +263,147 @@ components:
                     format: int32
                     description: Total count of items matching the query, if known. Zero if the total is unknown.
             description: PaginationResponse contains pagination metadata returned alongside list results.
+        ListAirQualityReadingsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum stations to return (default 200).
+            description: ListAirQualityReadingsRequest filters WAQI station queries.
+        ListAirQualityReadingsResponse:
+            type: object
+            properties:
+                readings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AirQualityReading'
+                fetchedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was fetched.
+            description: ListAirQualityReadingsResponse contains air quality readings from WAQI monitoring stations.
+        AirQualityReading:
+            type: object
+            properties:
+                stationId:
+                    type: string
+                    description: WAQI station identifier.
+                stationName:
+                    type: string
+                    description: Station name.
+                city:
+                    type: string
+                    description: City of the station.
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                lat:
+                    type: number
+                    format: double
+                    description: Station latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Station longitude.
+                aqi:
+                    type: integer
+                    format: int32
+                    description: US AQI value (0–500+).
+                level:
+                    type: string
+                    enum:
+                        - AQI_LEVEL_UNSPECIFIED
+                        - AQI_LEVEL_GOOD
+                        - AQI_LEVEL_MODERATE
+                        - AQI_LEVEL_UNHEALTHY_SENSITIVE
+                        - AQI_LEVEL_UNHEALTHY
+                        - AQI_LEVEL_VERY_UNHEALTHY
+                        - AQI_LEVEL_HAZARDOUS
+                    description: AqiLevel classifies the health impact of the US AQI value.
+                dominantPollutant:
+                    type: string
+                    description: 'Dominant pollutant: pm25 | o3 | no2 | so2 | co | pm10.'
+                pm25:
+                    type: number
+                    format: double
+                    description: PM2.5 concentration in μg/m³.
+                pm10:
+                    type: number
+                    format: double
+                    description: PM10 concentration in μg/m³.
+                so2:
+                    type: number
+                    format: double
+                    description: SO2 concentration in μg/m³ (spike indicates industrial/volcanic event).
+                no2:
+                    type: number
+                    format: double
+                    description: NO2 concentration in μg/m³.
+                observedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the observation.
+            description: AirQualityReading represents an air quality observation from a WAQI monitoring station.
+        ListDeforestationAlertsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                    description: Maximum alerts to return (default 100, max 500).
+                strategicOnly:
+                    type: boolean
+                    description: Only return alerts near strategic infrastructure (military bases, pipelines, cables).
+            description: ListDeforestationAlertsRequest filters Global Forest Watch alert queries.
+        ListDeforestationAlertsResponse:
+            type: object
+            properties:
+                alerts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DeforestationAlert'
+                fetchedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds when data was fetched.
+            description: ListDeforestationAlertsResponse contains GFW integrated deforestation alerts.
+        DeforestationAlert:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Unique alert identifier.
+                lat:
+                    type: number
+                    format: double
+                    description: Alert centroid latitude.
+                lon:
+                    type: number
+                    format: double
+                    description: Alert centroid longitude.
+                areaHa:
+                    type: number
+                    format: double
+                    description: Estimated area of forest loss in hectares.
+                alertType:
+                    type: string
+                    description: 'Alert system that detected the loss: GLAD-L | GLAD-S2 | RADD.'
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                region:
+                    type: string
+                    description: Administrative region or province.
+                confidence:
+                    type: number
+                    format: double
+                    description: Detection confidence score (0–1).
+                nearStrategicSite:
+                    type: boolean
+                    description: Whether the alert falls within 50 km of a military base, mine, or pipeline.
+                detectedAt:
+                    type: string
+                    format: int64
+                    description: Unix milliseconds of the first detection.
+            description: DeforestationAlert represents a forest cover loss event from the GFW integrated alert system.

@@ -2,12 +2,14 @@ syntax = "proto3";
 
 package worldmonitor.market.v1;
 
+import "sebuf/http/annotations.proto";
+
 // ListWhaleTransfersRequest filters large cryptocurrency transfer queries.
 message ListWhaleTransfersRequest {
   // Minimum transfer value in USD (default 50,000,000).
-  double min_value_usd = 1;
+  double min_value_usd = 1 [(sebuf.http.query) = { name: "min_value_usd" }];
   // Maximum transfers to return (default 20, max 50).
-  int32 limit = 2;
+  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
 }
 
 // ListWhaleTransfersResponse contains large on-chain cryptocurrency transfers.

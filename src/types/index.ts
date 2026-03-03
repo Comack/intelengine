@@ -551,6 +551,24 @@ export interface MapLayers {
   iranAttacks: boolean;
   // GPS/GNSS interference layer
   gpsJamming: boolean;
+  // SAR dark ship detections (Global Fishing Watch)
+  sarDetections: boolean;
+  // Port congestion indices
+  portCongestion: boolean;
+  // Electricity grid stress zones (Electricity Maps)
+  gridZones: boolean;
+  // BGP routing anomalies (CAIDA BGPStream)
+  routingAnomalies: boolean;
+  // Radiation readings (Safecast)
+  radiationReadings: boolean;
+  // Air quality index (WAQI)
+  airQuality: boolean;
+  // Deforestation alerts (Global Forest Watch)
+  deforestationAlerts: boolean;
+  // Military ACARS messages (ADSB.lol)
+  acarsMessages: boolean;
+  // Large on-chain transfers (Whale Alert)
+  whaleTransfers: boolean;
   // Overlay layers
   dayNight: boolean;
 }

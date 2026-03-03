@@ -2,12 +2,14 @@ syntax = "proto3";
 
 package worldmonitor.military.v1;
 
+import "sebuf/http/annotations.proto";
+
 // ListAcarsMessagesRequest filters ACARS message queries.
 message ListAcarsMessagesRequest {
   // Maximum messages to return (default 100, max 500).
-  int32 limit = 1;
+  int32 limit = 1 [(sebuf.http.query) = { name: "limit" }];
   // Optional military category filter.
-  AcarsMilCategory mil_category = 2;
+  AcarsMilCategory mil_category = 2 [(sebuf.http.query) = { name: "mil_category" }];
 }
 
 // ListAcarsMessagesResponse contains recent ACARS messages with military classification.

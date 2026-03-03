@@ -4,9 +4,13 @@ import {
   type AnomalySeverity as ProtoAnomalySeverity,
   type AnomalyType as ProtoAnomalyType,
   type ListClimateAnomaliesResponse,
+  type AirQualityReading,
+  type DeforestationAlert,
 } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+
+export type { AirQualityReading, DeforestationAlert };
 
 // Re-export consumer-friendly type matching legacy shape exactly.
 // Consumers import this type from '@/services/climate' and see the same
@@ -97,4 +101,30 @@ function mapType(t: ProtoAnomalyType): ClimateAnomaly['type'] {
     case 'ANOMALY_TYPE_MIXED': return 'mixed';
     default: return 'warm';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Air quality readings (WAQI)
+// ---------------------------------------------------------------------------
+
+const aqiBreaker = createCircuitBreaker<AirQualityReading[]>({ name: 'Air Quality', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+
+export async function fetchAirQualityReadings(limit = 200): Promise<AirQualityReading[]> {
+  return aqiBreaker.execute(
+    () => client.listAirQualityReadings({ limit }).then((r) => r.readings),
+    [],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Deforestation alerts (RADD / Global Forest Watch)
+// ---------------------------------------------------------------------------
+
+const deforestationBreaker = createCircuitBreaker<DeforestationAlert[]>({ name: 'Deforestation Alerts', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
+
+export async function fetchDeforestationAlerts(strategicOnly = false, limit = 200): Promise<DeforestationAlert[]> {
+  return deforestationBreaker.execute(
+    () => client.listDeforestationAlerts({ limit, strategicOnly }).then((r) => r.alerts),
+    [],
+  );
 }

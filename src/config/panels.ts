@@ -59,7 +59,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
 
 const FULL_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
-  gpsJamming: false,
+  gpsJamming: true,
   conflicts: true,
   bases: true,
   cables: false,
@@ -105,6 +105,16 @@ const FULL_MAP_LAYERS: MapLayers = {
   speciesRecovery: false,
   renewableInstallations: false,
   tradeRoutes: false,
+  // New signal layers
+  sarDetections: true,
+  portCongestion: true,
+  gridZones: true,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: true,
+  acarsMessages: true,
+  whaleTransfers: false,
   dayNight: false,
 };
 
@@ -156,6 +166,16 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   speciesRecovery: false,
   renewableInstallations: false,
   tradeRoutes: false,
+  // New signal layers (minimal on mobile full variant)
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 
@@ -248,6 +268,16 @@ const TECH_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  // New signal layers (tech: BGP routing anomalies primary)
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: true,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 
@@ -299,6 +329,16 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  // New signal layers (all off on mobile tech)
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 
@@ -389,6 +429,16 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: true,
   iranAttacks: false,
+  // New signal layers (finance: whale transfers + port congestion primary)
+  sarDetections: false,
+  portCongestion: true,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: true,
   dayNight: false,
 };
 
@@ -440,6 +490,16 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  // New signal layers (all off on mobile finance)
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 
@@ -507,6 +567,16 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   renewableInstallations: true,
   tradeRoutes: false,
   iranAttacks: false,
+  // New signal layers (all off in happy variant)
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 
@@ -558,6 +628,16 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   renewableInstallations: true,
   tradeRoutes: false,
   iranAttacks: false,
+  // New signal layers (all off in happy variant)
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 

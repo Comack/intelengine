@@ -74,6 +74,51 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListSarDetectionsRequest {
+  limit: number;
+}
+
+export interface ListSarDetectionsResponse {
+  detections: SarDarkShip[];
+  fetchedAt: string;
+}
+
+export interface SarDarkShip {
+  id: string;
+  lat: number;
+  lon: number;
+  lengthM: number;
+  course: number;
+  speedKnots: number;
+  aisMatched: boolean;
+  nearestAisVessel: string;
+  region: string;
+  vesselClassHint: string;
+  detectedAt: string;
+  confidence: number;
+}
+
+export interface GetPortCongestionRequest {
+}
+
+export interface GetPortCongestionResponse {
+  ports: PortCongestionStatus[];
+  computedAt: string;
+}
+
+export interface PortCongestionStatus {
+  portCode: string;
+  portName: string;
+  lat: number;
+  lon: number;
+  congestionIndex: number;
+  avgWaitHours: number;
+  vesselsAtAnchor: number;
+  trend: string;
+  country: string;
+  updatedAt: string;
+}
+
 export type AisDisruptionSeverity = "AIS_DISRUPTION_SEVERITY_UNSPECIFIED" | "AIS_DISRUPTION_SEVERITY_LOW" | "AIS_DISRUPTION_SEVERITY_ELEVATED" | "AIS_DISRUPTION_SEVERITY_HIGH";
 
 export type AisDisruptionType = "AIS_DISRUPTION_TYPE_UNSPECIFIED" | "AIS_DISRUPTION_TYPE_GAP_SPIKE" | "AIS_DISRUPTION_TYPE_CHOKEPOINT_CONGESTION";
@@ -179,6 +224,54 @@ export class MaritimeServiceClient {
     }
 
     return await resp.json() as ListNavigationalWarningsResponse;
+  }
+
+  async listSarDetections(req: ListSarDetectionsRequest, options?: MaritimeServiceCallOptions): Promise<ListSarDetectionsResponse> {
+    let path = "/api/maritime/v1/list-sar-detections";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSarDetectionsResponse;
+  }
+
+  async getPortCongestion(req: GetPortCongestionRequest, options?: MaritimeServiceCallOptions): Promise<GetPortCongestionResponse> {
+    let path = "/api/maritime/v1/get-port-congestion";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetPortCongestionResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

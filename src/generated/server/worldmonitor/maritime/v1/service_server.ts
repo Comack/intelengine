@@ -74,6 +74,51 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListSarDetectionsRequest {
+  limit: number;
+}
+
+export interface ListSarDetectionsResponse {
+  detections: SarDarkShip[];
+  fetchedAt: string;
+}
+
+export interface SarDarkShip {
+  id: string;
+  lat: number;
+  lon: number;
+  lengthM: number;
+  course: number;
+  speedKnots: number;
+  aisMatched: boolean;
+  nearestAisVessel: string;
+  region: string;
+  vesselClassHint: string;
+  detectedAt: string;
+  confidence: number;
+}
+
+export interface GetPortCongestionRequest {
+}
+
+export interface GetPortCongestionResponse {
+  ports: PortCongestionStatus[];
+  computedAt: string;
+}
+
+export interface PortCongestionStatus {
+  portCode: string;
+  portName: string;
+  lat: number;
+  lon: number;
+  congestionIndex: number;
+  avgWaitHours: number;
+  vesselsAtAnchor: number;
+  trend: string;
+  country: string;
+  updatedAt: string;
+}
+
 export type AisDisruptionSeverity = "AIS_DISRUPTION_SEVERITY_UNSPECIFIED" | "AIS_DISRUPTION_SEVERITY_LOW" | "AIS_DISRUPTION_SEVERITY_ELEVATED" | "AIS_DISRUPTION_SEVERITY_HIGH";
 
 export type AisDisruptionType = "AIS_DISRUPTION_TYPE_UNSPECIFIED" | "AIS_DISRUPTION_TYPE_GAP_SPIKE" | "AIS_DISRUPTION_TYPE_CHOKEPOINT_CONGESTION";
@@ -125,6 +170,8 @@ export interface RouteDescriptor {
 export interface MaritimeServiceHandler {
   getVesselSnapshot(ctx: ServerContext, req: GetVesselSnapshotRequest): Promise<GetVesselSnapshotResponse>;
   listNavigationalWarnings(ctx: ServerContext, req: ListNavigationalWarningsRequest): Promise<ListNavigationalWarningsResponse>;
+  listSarDetections(ctx: ServerContext, req: ListSarDetectionsRequest): Promise<ListSarDetectionsResponse>;
+  getPortCongestion(ctx: ServerContext, req: GetPortCongestionRequest): Promise<GetPortCongestionResponse>;
 }
 
 export function createMaritimeServiceRoutes(
@@ -210,6 +257,90 @@ export function createMaritimeServiceRoutes(
 
           const result = await handler.listNavigationalWarnings(ctx, body);
           return new Response(JSON.stringify(result as ListNavigationalWarningsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/maritime/v1/list-sar-detections",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListSarDetectionsRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSarDetections", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSarDetections(ctx, body);
+          return new Response(JSON.stringify(result as ListSarDetectionsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/maritime/v1/get-port-congestion",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetPortCongestionRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getPortCongestion(ctx, body);
+          return new Response(JSON.stringify(result as GetPortCongestionResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -122,9 +122,76 @@ export interface CableHealthEvidence {
   ts: number;
 }
 
+export interface GetGridStatusRequest {
+}
+
+export interface GetGridStatusResponse {
+  zones: GridZone[];
+  fetchedAt: string;
+}
+
+export interface GridZone {
+  zoneId: string;
+  zoneName: string;
+  lat: number;
+  lon: number;
+  carbonIntensity: number;
+  renewablePct: number;
+  stressLevel: GridStressLevel;
+  powerImportExportMw: number;
+  observedAt: string;
+}
+
+export interface ListRoutingAnomaliesRequest {
+  limit: number;
+}
+
+export interface ListRoutingAnomaliesResponse {
+  anomalies: RoutingAnomaly[];
+}
+
+export interface RoutingAnomaly {
+  id: string;
+  type: RoutingAnomalyType;
+  prefix: string;
+  victimAsn: string;
+  attackerAsn: string;
+  victimName: string;
+  attackerName: string;
+  country: string;
+  lat: number;
+  lon: number;
+  severity: string;
+  detectedAt: string;
+  description: string;
+}
+
+export interface ListRadiationReadingsRequest {
+  limit: number;
+}
+
+export interface ListRadiationReadingsResponse {
+  readings: RadiationReading[];
+}
+
+export interface RadiationReading {
+  id: string;
+  latitude: number;
+  longitude: number;
+  cpm: number;
+  capturedAt: number;
+  deviceId: string;
+  locationName: string;
+  elevated: boolean;
+}
+
 export type CableHealthStatus = "CABLE_HEALTH_STATUS_UNSPECIFIED" | "CABLE_HEALTH_STATUS_OK" | "CABLE_HEALTH_STATUS_DEGRADED" | "CABLE_HEALTH_STATUS_FAULT";
 
+export type GridStressLevel = "GRID_STRESS_UNSPECIFIED" | "GRID_STRESS_NORMAL" | "GRID_STRESS_ELEVATED" | "GRID_STRESS_HIGH" | "GRID_STRESS_CRITICAL";
+
 export type OutageSeverity = "OUTAGE_SEVERITY_UNSPECIFIED" | "OUTAGE_SEVERITY_PARTIAL" | "OUTAGE_SEVERITY_MAJOR" | "OUTAGE_SEVERITY_TOTAL";
+
+export type RoutingAnomalyType = "ROUTING_ANOMALY_TYPE_UNSPECIFIED" | "ROUTING_ANOMALY_TYPE_BGP_HIJACK" | "ROUTING_ANOMALY_TYPE_BGP_LEAK" | "ROUTING_ANOMALY_TYPE_ROUTE_FLAP";
 
 export type ServiceOperationalStatus = "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED" | "SERVICE_OPERATIONAL_STATUS_OPERATIONAL" | "SERVICE_OPERATIONAL_STATUS_DEGRADED" | "SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAINTENANCE";
 
@@ -178,6 +245,9 @@ export interface InfrastructureServiceHandler {
   getTemporalBaseline(ctx: ServerContext, req: GetTemporalBaselineRequest): Promise<GetTemporalBaselineResponse>;
   recordBaselineSnapshot(ctx: ServerContext, req: RecordBaselineSnapshotRequest): Promise<RecordBaselineSnapshotResponse>;
   getCableHealth(ctx: ServerContext, req: GetCableHealthRequest): Promise<GetCableHealthResponse>;
+  getGridStatus(ctx: ServerContext, req: GetGridStatusRequest): Promise<GetGridStatusResponse>;
+  listRoutingAnomalies(ctx: ServerContext, req: ListRoutingAnomaliesRequest): Promise<ListRoutingAnomaliesResponse>;
+  listRadiationReadings(ctx: ServerContext, req: ListRadiationReadingsRequest): Promise<ListRadiationReadingsResponse>;
 }
 
 export function createInfrastructureServiceRoutes(
@@ -391,6 +461,137 @@ export function createInfrastructureServiceRoutes(
 
           const result = await handler.getCableHealth(ctx, body);
           return new Response(JSON.stringify(result as GetCableHealthResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/infrastructure/v1/get-grid-status",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetGridStatusRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getGridStatus(ctx, body);
+          return new Response(JSON.stringify(result as GetGridStatusResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/infrastructure/v1/list-routing-anomalies",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListRoutingAnomaliesRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listRoutingAnomalies", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listRoutingAnomalies(ctx, body);
+          return new Response(JSON.stringify(result as ListRoutingAnomaliesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/infrastructure/v1/list-radiation-readings",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListRadiationReadingsRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listRadiationReadings", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listRadiationReadings(ctx, body);
+          return new Response(JSON.stringify(result as ListRadiationReadingsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

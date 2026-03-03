@@ -42,6 +42,11 @@ import type { GpsJamHex } from '@/services/gps-interference';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
+import type { SarDarkShip, PortCongestionStatus } from '@/services/maritime';
+import type { GridZone, RoutingAnomaly, RadiationReading } from '@/services/infrastructure';
+import type { AirQualityReading, DeforestationAlert } from '@/services/climate';
+import type { WhaleTransfer } from '@/services/market';
+import type { AcarsMessage } from '@/services/military';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
 import type { WeatherAlert } from '@/services/weather';
@@ -304,6 +309,15 @@ export class DeckGLMap {
   private displacementFlows: DisplacementFlow[] = [];
   private gpsJammingHexes: GpsJamHex[] = [];
   private climateAnomalies: ClimateAnomaly[] = [];
+  private sarDetections: SarDarkShip[] = [];
+  private portCongestionPorts: PortCongestionStatus[] = [];
+  private gridZones: GridZone[] = [];
+  private routingAnomalies: RoutingAnomaly[] = [];
+  private radiationReadings: RadiationReading[] = [];
+  private airQualityReadings: AirQualityReading[] = [];
+  private deforestationAlerts: DeforestationAlert[] = [];
+  private acarsMessages: AcarsMessage[] = [];
+  private whaleTransfers: WhaleTransfer[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
@@ -1311,6 +1325,35 @@ export class DeckGLMap {
     // Phase 8: Renewable energy installations
     if (mapLayers.renewableInstallations && this.renewableInstallations.length > 0) {
       layers.push(this.createRenewableInstallationsLayer());
+    }
+
+    // New signal layers
+    if (mapLayers.sarDetections && this.sarDetections.length > 0) {
+      layers.push(this.createSarDetectionsLayer());
+    }
+    if (mapLayers.portCongestion && this.portCongestionPorts.length > 0) {
+      layers.push(this.createPortCongestionLayer());
+    }
+    if (mapLayers.gridZones && this.gridZones.length > 0) {
+      layers.push(this.createGridZonesLayer());
+    }
+    if (mapLayers.routingAnomalies && this.routingAnomalies.length > 0) {
+      layers.push(this.createRoutingAnomaliesLayer());
+    }
+    if (mapLayers.radiationReadings && this.radiationReadings.length > 0) {
+      layers.push(this.createRadiationReadingsLayer());
+    }
+    if (mapLayers.airQuality && this.airQualityReadings.length > 0) {
+      layers.push(this.createAirQualityLayer());
+    }
+    if (mapLayers.deforestationAlerts && this.deforestationAlerts.length > 0) {
+      layers.push(this.createDeforestationAlertsLayer());
+    }
+    if (mapLayers.acarsMessages && this.acarsMessages.length > 0) {
+      layers.push(this.createAcarsMessagesLayer());
+    }
+    if (mapLayers.whaleTransfers && this.whaleTransfers.length > 0) {
+      layers.push(this.createWhaleTransfersLayer());
     }
 
     // News geo-locations (always shown if data exists)
@@ -2719,6 +2762,189 @@ export class DeckGLMap {
     });
   }
 
+  private createSarDetectionsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'sar-detections-layer',
+      data: this.sarDetections,
+      getPosition: (d: SarDarkShip) => [d.lon, d.lat],
+      getRadius: 15000,
+      getFillColor: (d: SarDarkShip) => d.confidence > 0.8
+        ? [180, 0, 255, 220] as [number, number, number, number]
+        : d.confidence > 0.5
+          ? [120, 0, 200, 180] as [number, number, number, number]
+          : [80, 0, 160, 150] as [number, number, number, number],
+      radiusMinPixels: 4,
+      radiusMaxPixels: 14,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 120] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createPortCongestionLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'port-congestion-layer',
+      data: this.portCongestionPorts,
+      getPosition: (d: PortCongestionStatus) => [d.lon, d.lat],
+      getRadius: (d: PortCongestionStatus) => 20000 + d.congestionIndex * 30000,
+      getFillColor: (d: PortCongestionStatus) => d.congestionIndex > 0.8
+        ? [255, 50, 50, 200] as [number, number, number, number]
+        : d.congestionIndex > 0.5
+          ? [255, 165, 0, 190] as [number, number, number, number]
+          : [50, 200, 50, 180] as [number, number, number, number],
+      radiusMinPixels: 6,
+      radiusMaxPixels: 24,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 140] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createGridZonesLayer(): ScatterplotLayer {
+    const stressColor = (level: string): [number, number, number, number] => {
+      if (level === 'GRID_STRESS_CRITICAL') return [255, 0, 0, 220];
+      if (level === 'GRID_STRESS_HIGH') return [255, 100, 0, 200];
+      if (level === 'GRID_STRESS_ELEVATED') return [255, 200, 0, 180];
+      return [100, 200, 100, 150];
+    };
+    return new ScatterplotLayer({
+      id: 'grid-zones-layer',
+      data: this.gridZones,
+      getPosition: (d: GridZone) => [d.lon, d.lat],
+      getRadius: 80000,
+      getFillColor: (d: GridZone) => stressColor(d.stressLevel),
+      radiusMinPixels: 8,
+      radiusMaxPixels: 30,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createRoutingAnomaliesLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'routing-anomalies-layer',
+      data: this.routingAnomalies,
+      getPosition: (d: RoutingAnomaly) => [d.lon, d.lat],
+      getRadius: 25000,
+      getFillColor: (d: RoutingAnomaly) => d.severity === 'HIGH'
+        ? [255, 50, 100, 220] as [number, number, number, number]
+        : d.severity === 'MEDIUM'
+          ? [255, 140, 0, 190] as [number, number, number, number]
+          : [100, 100, 255, 160] as [number, number, number, number],
+      radiusMinPixels: 5,
+      radiusMaxPixels: 18,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 120] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createRadiationReadingsLayer(): ScatterplotLayer {
+    const BASELINE_CPM = 30;
+    return new ScatterplotLayer({
+      id: 'radiation-readings-layer',
+      data: this.radiationReadings.filter(r => r.cpm > BASELINE_CPM * 2),
+      getPosition: (d: RadiationReading) => [d.longitude, d.latitude],
+      getRadius: (d: RadiationReading) => Math.min(50000, 8000 + (d.cpm / BASELINE_CPM) * 5000),
+      getFillColor: (d: RadiationReading) => d.cpm > BASELINE_CPM * 10
+        ? [255, 0, 0, 220] as [number, number, number, number]
+        : d.cpm > BASELINE_CPM * 5
+          ? [255, 140, 0, 200] as [number, number, number, number]
+          : [255, 255, 0, 170] as [number, number, number, number],
+      radiusMinPixels: 4,
+      radiusMaxPixels: 20,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createAirQualityLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'air-quality-layer',
+      data: this.airQualityReadings.filter(r => r.aqi > 50),
+      getPosition: (d: AirQualityReading) => [d.lon, d.lat],
+      getRadius: 15000,
+      getFillColor: (d: AirQualityReading) => d.aqi > 300
+        ? [180, 0, 0, 230] as [number, number, number, number]
+        : d.aqi > 200
+          ? [255, 50, 50, 210] as [number, number, number, number]
+          : d.aqi > 150
+            ? [255, 120, 0, 190] as [number, number, number, number]
+            : d.aqi > 100
+              ? [255, 200, 0, 170] as [number, number, number, number]
+              : [150, 220, 50, 140] as [number, number, number, number],
+      radiusMinPixels: 4,
+      radiusMaxPixels: 16,
+      pickable: true,
+      stroked: false,
+    });
+  }
+
+  private createDeforestationAlertsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'deforestation-alerts-layer',
+      data: this.deforestationAlerts,
+      getPosition: (d: DeforestationAlert) => [d.lon, d.lat],
+      getRadius: (d: DeforestationAlert) => Math.min(80000, 10000 + d.areaHa * 200),
+      getFillColor: (d: DeforestationAlert) => d.nearStrategicSite
+        ? [200, 80, 0, 220] as [number, number, number, number]
+        : [180, 120, 0, 180] as [number, number, number, number],
+      radiusMinPixels: 5,
+      radiusMaxPixels: 24,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 200, 100, 120] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createAcarsMessagesLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'acars-messages-layer',
+      data: this.acarsMessages.filter(m => m.lat && m.lon),
+      getPosition: (d: AcarsMessage) => [d.lon, d.lat],
+      getRadius: 12000,
+      getFillColor: (d: AcarsMessage) => d.milCategory === 'ACARS_MIL_CATEGORY_MEDICAL_EVAC'
+        ? [255, 50, 50, 220] as [number, number, number, number]
+        : d.milCategory === 'ACARS_MIL_CATEGORY_TACTICAL'
+          ? [255, 165, 0, 200] as [number, number, number, number]
+          : [100, 180, 255, 180] as [number, number, number, number],
+      radiusMinPixels: 4,
+      radiusMaxPixels: 14,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 120] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
+  private createWhaleTransfersLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'whale-transfers-layer',
+      data: this.whaleTransfers.filter(t => t.lat && t.lon),
+      getPosition: (d: WhaleTransfer) => [d.lon, d.lat],
+      getRadius: (d: WhaleTransfer) => Math.min(80000, 10000 + Math.sqrt(d.amountUsd) * 2),
+      getFillColor: (d: WhaleTransfer) => d.amountUsd > 50_000_000
+        ? [255, 215, 0, 230] as [number, number, number, number]
+        : d.amountUsd > 10_000_000
+          ? [200, 160, 0, 200] as [number, number, number, number]
+          : [150, 120, 0, 170] as [number, number, number, number],
+      radiusMinPixels: 5,
+      radiusMaxPixels: 22,
+      pickable: true,
+      stroked: true,
+      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
+      lineWidthMinPixels: 1,
+    });
+  }
+
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
@@ -2893,6 +3119,32 @@ export class DeckGLMap {
           </div>`,
         };
       }
+      default:
+        return this.getNewSignalTooltip(layerId, obj, text);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getNewSignalTooltip(layerId: string, obj: any, text: (v: unknown) => string): { html: string } | null {
+    switch (layerId) {
+      case 'sar-detections-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>🛸 Dark Vessel</strong><br/>Class: ${text(obj.vesselClassHint || 'Unknown')}<br/>Confidence: ${Math.round((obj.confidence || 0) * 100)}%<br/>Matched AIS: ${obj.aisMatched ? 'Yes' : 'No'}</div>` };
+      case 'port-congestion-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>🚢 ${text(obj.portName)}</strong><br/>Congestion: ${Math.round((obj.congestionIndex || 0) * 100)}%<br/>Avg wait: ${text(obj.avgWaitHours)}h<br/>Vessels at anchor: ${text(obj.vesselsAtAnchor)}</div>` };
+      case 'grid-zones-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>⚡ ${text(obj.zoneName)}</strong><br/>Stress: ${text(obj.stressLevel?.replace('GRID_STRESS_', '') || 'NORMAL')}<br/>Renewables: ${text(obj.renewablePct)}%<br/>Carbon: ${text(obj.carbonIntensity)} gCO₂/kWh</div>` };
+      case 'routing-anomalies-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>🔀 BGP ${text(obj.type?.replace('ROUTING_ANOMALY_TYPE_', '') || 'Anomaly')}</strong><br/>Victim: AS${text(obj.victimAsn)} (${text(obj.victimName)})<br/>Severity: ${text(obj.severity)}<br/>${text(obj.description)}</div>` };
+      case 'radiation-readings-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>☢️ ${text(obj.locationName)}</strong><br/>${text(obj.cpm)} CPM${obj.elevated ? ' ⚠️ Elevated' : ''}</div>` };
+      case 'air-quality-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>😷 ${text(obj.stationName)}</strong><br/>AQI: ${text(obj.aqi)} (${text(obj.level?.replace('AQI_LEVEL_', '') || '')})<br/>PM2.5: ${text(obj.pm25)} μg/m³<br/>Dominant: ${text(obj.dominantPollutant)}</div>` };
+      case 'deforestation-alerts-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>🌲 Deforestation Alert</strong><br/>${text(obj.country)} — ${text(obj.region)}<br/>Area: ${(obj.areaHa || 0).toFixed(1)} ha<br/>Type: ${text(obj.alertType)}${obj.nearStrategicSite ? '<br/>⚠️ Near strategic site' : ''}</div>` };
+      case 'acars-messages-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>📡 ACARS</strong><br/>${text(obj.tailNumber || obj.flightNumber)}<br/>Type: ${text(obj.messageType)}<br/>Category: ${text(obj.milCategory?.replace('ACARS_MIL_CATEGORY_', '') || 'Unknown')}</div>` };
+      case 'whale-transfers-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>🐋 Whale Transfer</strong><br/>${text(obj.blockchain)} · $${((obj.amountUsd || 0) / 1e6).toFixed(1)}M<br/>${text(obj.fromLabel)} → ${text(obj.toLabel)}<br/>Type: ${text(obj.transferType?.replace('WHALE_TRANSFER_TYPE_', '') || '')}</div>` };
       default:
         return null;
     }
@@ -3303,6 +3555,15 @@ export class DeckGLMap {
         { key: 'economic', label: t('components.deckgl.layers.economicCenters'), icon: '&#128176;' },
         { key: 'minerals', label: t('components.deckgl.layers.criticalMinerals'), icon: '&#128142;' },
         { key: 'gpsJamming', label: t('components.deckgl.layers.gpsJamming'), icon: '&#128225;' },
+        { key: 'sarDetections', label: 'SAR Dark Vessels', icon: '&#128760;' },
+        { key: 'portCongestion', label: 'Port Congestion', icon: '&#128674;' },
+        { key: 'gridZones', label: 'Grid Stress', icon: '&#9889;' },
+        { key: 'routingAnomalies', label: 'BGP Anomalies', icon: '&#128257;' },
+        { key: 'radiationReadings', label: 'Radiation', icon: '&#9762;' },
+        { key: 'airQuality', label: 'Air Quality', icon: '&#128679;' },
+        { key: 'deforestationAlerts', label: 'Deforestation', icon: '&#127795;' },
+        { key: 'acarsMessages', label: 'ACARS Messages', icon: '&#128225;' },
+        { key: 'whaleTransfers', label: 'Whale Transfers', icon: '&#128011;' },
         { key: 'dayNight', label: t('components.deckgl.layers.dayNight'), icon: '&#127763;' },
       ];
 
@@ -4028,6 +4289,51 @@ export class DeckGLMap {
 
   public setGpsJamming(hexes: GpsJamHex[]): void {
     this.gpsJammingHexes = hexes;
+    this.render();
+  }
+
+  public setSarDetections(data: SarDarkShip[]): void {
+    this.sarDetections = data;
+    this.render();
+  }
+
+  public setPortCongestion(data: PortCongestionStatus[]): void {
+    this.portCongestionPorts = data;
+    this.render();
+  }
+
+  public setGridZones(data: GridZone[]): void {
+    this.gridZones = data;
+    this.render();
+  }
+
+  public setRoutingAnomalies(data: RoutingAnomaly[]): void {
+    this.routingAnomalies = data;
+    this.render();
+  }
+
+  public setRadiationReadings(data: RadiationReading[]): void {
+    this.radiationReadings = data;
+    this.render();
+  }
+
+  public setAirQualityReadings(data: AirQualityReading[]): void {
+    this.airQualityReadings = data;
+    this.render();
+  }
+
+  public setDeforestationAlerts(data: DeforestationAlert[]): void {
+    this.deforestationAlerts = data;
+    this.render();
+  }
+
+  public setAcarsMessages(data: AcarsMessage[]): void {
+    this.acarsMessages = data;
+    this.render();
+  }
+
+  public setWhaleTransfers(data: WhaleTransfer[]): void {
+    this.whaleTransfers = data;
     this.render();
   }
 

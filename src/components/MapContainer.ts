@@ -30,6 +30,11 @@ import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
+import type { SarDarkShip, PortCongestionStatus } from '@/services/maritime';
+import type { GridZone, RoutingAnomaly, RadiationReading } from '@/services/infrastructure';
+import type { AirQualityReading, DeforestationAlert } from '@/services/climate';
+import type { WhaleTransfer } from '@/services/market';
+import type { AcarsMessage } from '@/services/military';
 import type { WeatherAlert } from '@/services/weather';
 import type { PositiveGeoEvent } from '@/services/positive-events-geo';
 import type { KindnessPoint } from '@/services/kindness-data';
@@ -343,6 +348,42 @@ export class MapContainer {
     if (this.useDeckGL) {
       this.deckGLMap?.setGpsJamming(hexes);
     }
+  }
+
+  public setSarDetections(data: SarDarkShip[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setSarDetections(data);
+  }
+
+  public setPortCongestion(data: PortCongestionStatus[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setPortCongestion(data);
+  }
+
+  public setGridZones(data: GridZone[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setGridZones(data);
+  }
+
+  public setRoutingAnomalies(data: RoutingAnomaly[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setRoutingAnomalies(data);
+  }
+
+  public setRadiationReadings(data: RadiationReading[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setRadiationReadings(data);
+  }
+
+  public setAirQualityReadings(data: AirQualityReading[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setAirQualityReadings(data);
+  }
+
+  public setDeforestationAlerts(data: DeforestationAlert[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setDeforestationAlerts(data);
+  }
+
+  public setAcarsMessages(data: AcarsMessage[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setAcarsMessages(data);
+  }
+
+  public setWhaleTransfers(data: WhaleTransfer[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setWhaleTransfers(data);
   }
 
   public setCyberThreats(threats: CyberThreat[]): void {

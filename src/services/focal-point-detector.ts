@@ -22,6 +22,15 @@ const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
   satellite_fire: 'satellite fires',
   temporal_anomaly: 'anomaly detection',
   active_strike: 'active strikes',
+  sar_dark_vessel: 'dark vessels',
+  grid_stress: 'grid stress',
+  routing_anomaly: 'BGP anomaly',
+  radiation_spike: 'radiation spike',
+  air_quality_spike: 'air quality alert',
+  deforestation_alert: 'deforestation',
+  acars_alert: 'ACARS alert',
+  port_congestion: 'port congestion',
+  whale_transfer: 'whale transfer',
 };
 
 const SIGNAL_TYPE_ICONS: Record<SignalType, string> = {
@@ -33,6 +42,15 @@ const SIGNAL_TYPE_ICONS: Record<SignalType, string> = {
   satellite_fire: '🔥',
   temporal_anomaly: '📊',
   active_strike: '💥',
+  sar_dark_vessel: '🛸',
+  grid_stress: '⚡',
+  routing_anomaly: '🔀',
+  radiation_spike: '☢️',
+  air_quality_spike: '😷',
+  deforestation_alert: '🌲',
+  acars_alert: '📡',
+  port_congestion: '🚢',
+  whale_transfer: '🐋',
 };
 
 class FocalPointDetector {

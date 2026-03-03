@@ -32,9 +32,60 @@ export interface PaginationResponse {
   totalCount: number;
 }
 
+export interface ListAirQualityReadingsRequest {
+  limit: number;
+}
+
+export interface ListAirQualityReadingsResponse {
+  readings: AirQualityReading[];
+  fetchedAt: string;
+}
+
+export interface AirQualityReading {
+  stationId: string;
+  stationName: string;
+  city: string;
+  country: string;
+  lat: number;
+  lon: number;
+  aqi: number;
+  level: AqiLevel;
+  dominantPollutant: string;
+  pm25: number;
+  pm10: number;
+  so2: number;
+  no2: number;
+  observedAt: string;
+}
+
+export interface ListDeforestationAlertsRequest {
+  limit: number;
+  strategicOnly: boolean;
+}
+
+export interface ListDeforestationAlertsResponse {
+  alerts: DeforestationAlert[];
+  fetchedAt: string;
+}
+
+export interface DeforestationAlert {
+  id: string;
+  lat: number;
+  lon: number;
+  areaHa: number;
+  alertType: string;
+  country: string;
+  region: string;
+  confidence: number;
+  nearStrategicSite: boolean;
+  detectedAt: string;
+}
+
 export type AnomalySeverity = "ANOMALY_SEVERITY_UNSPECIFIED" | "ANOMALY_SEVERITY_NORMAL" | "ANOMALY_SEVERITY_MODERATE" | "ANOMALY_SEVERITY_EXTREME";
 
 export type AnomalyType = "ANOMALY_TYPE_UNSPECIFIED" | "ANOMALY_TYPE_WARM" | "ANOMALY_TYPE_COLD" | "ANOMALY_TYPE_WET" | "ANOMALY_TYPE_DRY" | "ANOMALY_TYPE_MIXED";
+
+export type AqiLevel = "AQI_LEVEL_UNSPECIFIED" | "AQI_LEVEL_GOOD" | "AQI_LEVEL_MODERATE" | "AQI_LEVEL_UNHEALTHY_SENSITIVE" | "AQI_LEVEL_UNHEALTHY" | "AQI_LEVEL_VERY_UNHEALTHY" | "AQI_LEVEL_HAZARDOUS";
 
 export interface FieldViolation {
   field: string;
@@ -82,6 +133,8 @@ export interface RouteDescriptor {
 
 export interface ClimateServiceHandler {
   listClimateAnomalies(ctx: ServerContext, req: ListClimateAnomaliesRequest): Promise<ListClimateAnomaliesResponse>;
+  listAirQualityReadings(ctx: ServerContext, req: ListAirQualityReadingsRequest): Promise<ListAirQualityReadingsResponse>;
+  listDeforestationAlerts(ctx: ServerContext, req: ListDeforestationAlertsRequest): Promise<ListDeforestationAlertsResponse>;
 }
 
 export function createClimateServiceRoutes(
@@ -117,6 +170,101 @@ export function createClimateServiceRoutes(
 
           const result = await handler.listClimateAnomalies(ctx, body);
           return new Response(JSON.stringify(result as ListClimateAnomaliesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/climate/v1/list-air-quality-readings",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListAirQualityReadingsRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listAirQualityReadings", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listAirQualityReadings(ctx, body);
+          return new Response(JSON.stringify(result as ListAirQualityReadingsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/climate/v1/list-deforestation-alerts",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListDeforestationAlertsRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+            strategicOnly: params.get("strategic_only") === "true",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listDeforestationAlerts", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listDeforestationAlerts(ctx, body);
+          return new Response(JSON.stringify(result as ListDeforestationAlertsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

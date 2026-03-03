@@ -67,6 +67,16 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   renewableInstallations: true,
   tradeRoutes: false,
   iranAttacks: false,
+  // New signal layers
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 
@@ -119,6 +129,16 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   renewableInstallations: true,
   tradeRoutes: false,
   iranAttacks: false,
+  // New signal layers
+  sarDetections: false,
+  portCongestion: false,
+  gridZones: false,
+  routingAnomalies: false,
+  radiationReadings: false,
+  airQuality: false,
+  deforestationAlerts: false,
+  acarsMessages: false,
+  whaleTransfers: false,
   dayNight: false,
 };
 

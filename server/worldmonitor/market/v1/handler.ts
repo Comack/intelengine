@@ -10,6 +10,7 @@
  *   - ListEtfFlows          (Yahoo Finance BTC spot ETF flow estimates)
  *   - GetCountryStockIndex  (Yahoo Finance national stock indices)
  *   - ListGulfQuotes        (Yahoo Finance GCC indices, currencies, oil)
+ *   - ListWhaleTransfers    (Whale Alert large on-chain transfers)
  */
 
 import type { MarketServiceHandler } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
@@ -21,6 +22,7 @@ import { listStablecoinMarkets } from './list-stablecoin-markets';
 import { listEtfFlows } from './list-etf-flows';
 import { getCountryStockIndex } from './get-country-stock-index';
 import { listGulfQuotes } from './list-gulf-quotes';
+import { listWhaleTransfers } from './list-whale-transfers';
 
 export const marketHandler: MarketServiceHandler = {
   listMarketQuotes,
@@ -31,4 +33,5 @@ export const marketHandler: MarketServiceHandler = {
   listEtfFlows,
   getCountryStockIndex,
   listGulfQuotes,
+  listWhaleTransfers,
 };

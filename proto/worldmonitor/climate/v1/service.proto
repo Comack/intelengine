@@ -4,13 +4,27 @@ package worldmonitor.climate.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/climate/v1/list_climate_anomalies.proto";
+import "worldmonitor/climate/v1/list_air_quality_readings.proto";
+import "worldmonitor/climate/v1/list_deforestation_alerts.proto";
 
-// ClimateService provides APIs for climate anomaly data sourced from Open-Meteo.
+// ClimateService provides APIs for climate anomaly data from Open-Meteo, air quality
+// readings from the World Air Quality Index project (WAQI), and deforestation alerts
+// from Global Forest Watch.
 service ClimateService {
   option (sebuf.http.service_config) = {base_path: "/api/climate/v1"};
 
   // ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
   rpc ListClimateAnomalies(ListClimateAnomaliesRequest) returns (ListClimateAnomaliesResponse) {
     option (sebuf.http.config) = {path: "/list-climate-anomalies", method: HTTP_METHOD_GET};
+  }
+
+  // ListAirQualityReadings retrieves air quality index readings from WAQI monitoring stations.
+  rpc ListAirQualityReadings(ListAirQualityReadingsRequest) returns (ListAirQualityReadingsResponse) {
+    option (sebuf.http.config) = {path: "/list-air-quality-readings", method: HTTP_METHOD_GET};
+  }
+
+  // ListDeforestationAlerts retrieves active deforestation alerts from Global Forest Watch.
+  rpc ListDeforestationAlerts(ListDeforestationAlertsRequest) returns (ListDeforestationAlertsResponse) {
+    option (sebuf.http.config) = {path: "/list-deforestation-alerts", method: HTTP_METHOD_GET};
   }
 }

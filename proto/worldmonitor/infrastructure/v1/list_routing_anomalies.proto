@@ -2,10 +2,12 @@ syntax = "proto3";
 
 package worldmonitor.infrastructure.v1;
 
+import "sebuf/http/annotations.proto";
+
 // ListRoutingAnomaliesRequest filters BGP routing anomaly queries.
 message ListRoutingAnomaliesRequest {
   // Maximum events to return (default 50, max 200).
-  int32 limit = 1;
+  int32 limit = 1 [(sebuf.http.query) = { name: "limit" }];
 }
 
 // ListRoutingAnomaliesResponse contains detected BGP routing events.

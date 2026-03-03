@@ -122,9 +122,76 @@ export interface CableHealthEvidence {
   ts: number;
 }
 
+export interface GetGridStatusRequest {
+}
+
+export interface GetGridStatusResponse {
+  zones: GridZone[];
+  fetchedAt: string;
+}
+
+export interface GridZone {
+  zoneId: string;
+  zoneName: string;
+  lat: number;
+  lon: number;
+  carbonIntensity: number;
+  renewablePct: number;
+  stressLevel: GridStressLevel;
+  powerImportExportMw: number;
+  observedAt: string;
+}
+
+export interface ListRoutingAnomaliesRequest {
+  limit: number;
+}
+
+export interface ListRoutingAnomaliesResponse {
+  anomalies: RoutingAnomaly[];
+}
+
+export interface RoutingAnomaly {
+  id: string;
+  type: RoutingAnomalyType;
+  prefix: string;
+  victimAsn: string;
+  attackerAsn: string;
+  victimName: string;
+  attackerName: string;
+  country: string;
+  lat: number;
+  lon: number;
+  severity: string;
+  detectedAt: string;
+  description: string;
+}
+
+export interface ListRadiationReadingsRequest {
+  limit: number;
+}
+
+export interface ListRadiationReadingsResponse {
+  readings: RadiationReading[];
+}
+
+export interface RadiationReading {
+  id: string;
+  latitude: number;
+  longitude: number;
+  cpm: number;
+  capturedAt: number;
+  deviceId: string;
+  locationName: string;
+  elevated: boolean;
+}
+
 export type CableHealthStatus = "CABLE_HEALTH_STATUS_UNSPECIFIED" | "CABLE_HEALTH_STATUS_OK" | "CABLE_HEALTH_STATUS_DEGRADED" | "CABLE_HEALTH_STATUS_FAULT";
 
+export type GridStressLevel = "GRID_STRESS_UNSPECIFIED" | "GRID_STRESS_NORMAL" | "GRID_STRESS_ELEVATED" | "GRID_STRESS_HIGH" | "GRID_STRESS_CRITICAL";
+
 export type OutageSeverity = "OUTAGE_SEVERITY_UNSPECIFIED" | "OUTAGE_SEVERITY_PARTIAL" | "OUTAGE_SEVERITY_MAJOR" | "OUTAGE_SEVERITY_TOTAL";
+
+export type RoutingAnomalyType = "ROUTING_ANOMALY_TYPE_UNSPECIFIED" | "ROUTING_ANOMALY_TYPE_BGP_HIJACK" | "ROUTING_ANOMALY_TYPE_BGP_LEAK" | "ROUTING_ANOMALY_TYPE_ROUTE_FLAP";
 
 export type ServiceOperationalStatus = "SERVICE_OPERATIONAL_STATUS_UNSPECIFIED" | "SERVICE_OPERATIONAL_STATUS_OPERATIONAL" | "SERVICE_OPERATIONAL_STATUS_DEGRADED" | "SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE" | "SERVICE_OPERATIONAL_STATUS_MAINTENANCE";
 
@@ -302,6 +369,79 @@ export class InfrastructureServiceClient {
     }
 
     return await resp.json() as GetCableHealthResponse;
+  }
+
+  async getGridStatus(req: GetGridStatusRequest, options?: InfrastructureServiceCallOptions): Promise<GetGridStatusResponse> {
+    let path = "/api/infrastructure/v1/get-grid-status";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetGridStatusResponse;
+  }
+
+  async listRoutingAnomalies(req: ListRoutingAnomaliesRequest, options?: InfrastructureServiceCallOptions): Promise<ListRoutingAnomaliesResponse> {
+    let path = "/api/infrastructure/v1/list-routing-anomalies";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListRoutingAnomaliesResponse;
+  }
+
+  async listRadiationReadings(req: ListRadiationReadingsRequest, options?: InfrastructureServiceCallOptions): Promise<ListRadiationReadingsResponse> {
+    let path = "/api/infrastructure/v1/list-radiation-readings";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListRadiationReadingsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

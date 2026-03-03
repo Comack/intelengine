@@ -8,9 +8,14 @@ import "worldmonitor/infrastructure/v1/list_service_statuses.proto";
 import "worldmonitor/infrastructure/v1/get_temporal_baseline.proto";
 import "worldmonitor/infrastructure/v1/get_cable_health.proto";
 import "worldmonitor/infrastructure/v1/record_baseline_snapshot.proto";
+import "worldmonitor/infrastructure/v1/get_grid_status.proto";
+import "worldmonitor/infrastructure/v1/list_routing_anomalies.proto";
+import "worldmonitor/infrastructure/v1/list_radiation_readings.proto";
 
 // InfrastructureService provides APIs for internet outage monitoring from Cloudflare Radar,
-// external service status tracking, and temporal baseline anomaly detection.
+// external service status tracking, temporal baseline anomaly detection, electricity grid
+// health from Electricity Maps, BGP routing anomalies from CAIDA BGPStream, and radiation
+// readings from the Safecast network.
 service InfrastructureService {
   option (sebuf.http.service_config) = {base_path: "/api/infrastructure/v1"};
 
@@ -37,5 +42,20 @@ service InfrastructureService {
   // GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
   rpc GetCableHealth(GetCableHealthRequest) returns (GetCableHealthResponse) {
     option (sebuf.http.config) = {path: "/get-cable-health", method: HTTP_METHOD_GET};
+  }
+
+  // GetGridStatus retrieves electricity grid health data from Electricity Maps for strategic zones.
+  rpc GetGridStatus(GetGridStatusRequest) returns (GetGridStatusResponse) {
+    option (sebuf.http.config) = {path: "/get-grid-status", method: HTTP_METHOD_GET};
+  }
+
+  // ListRoutingAnomalies retrieves BGP routing anomalies (hijacks, leaks, route flaps) from CAIDA BGPStream.
+  rpc ListRoutingAnomalies(ListRoutingAnomaliesRequest) returns (ListRoutingAnomaliesResponse) {
+    option (sebuf.http.config) = {path: "/list-routing-anomalies", method: HTTP_METHOD_GET};
+  }
+
+  // ListRadiationReadings retrieves environmental radiation readings from the Safecast network.
+  rpc ListRadiationReadings(ListRadiationReadingsRequest) returns (ListRadiationReadingsResponse) {
+    option (sebuf.http.config) = {path: "/list-radiation-readings", method: HTTP_METHOD_GET};
   }
 }

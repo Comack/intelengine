@@ -11,9 +11,12 @@ import {
   type ListCryptoQuotesResponse,
   type MarketQuote as ProtoMarketQuote,
   type CryptoQuote as ProtoCryptoQuote,
+  type WhaleTransfer,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData } from '@/types';
 import { createCircuitBreaker } from '@/utils';
+
+export type { WhaleTransfer };
 
 // ---- Client + Circuit Breakers ----
 
@@ -134,4 +137,17 @@ export async function fetchCrypto(): Promise<CryptoData[]> {
   }
 
   return lastSuccessfulCrypto;
+}
+
+// ---------------------------------------------------------------------------
+// Whale transfers (Whale Alert on-chain large transfers)
+// ---------------------------------------------------------------------------
+
+const whaleBreaker = createCircuitBreaker<WhaleTransfer[]>({ name: 'Whale Transfers', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
+
+export async function fetchWhaleTransfers(minValueUsd = 1_000_000, limit = 50): Promise<WhaleTransfer[]> {
+  return whaleBreaker.execute(
+    () => client.listWhaleTransfers({ minValueUsd, limit }).then((r) => r.transfers),
+    [],
+  );
 }

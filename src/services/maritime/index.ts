@@ -3,11 +3,15 @@ import {
   type AisDensityZone as ProtoDensityZone,
   type AisDisruption as ProtoDisruption,
   type GetVesselSnapshotResponse,
+  type SarDarkShip,
+  type PortCongestionStatus,
 } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import type { AisDisruptionEvent, AisDensityZone, AisDisruptionType } from '@/types';
 import { dataFreshness } from '../data-freshness';
 import { isFeatureAvailable } from '../runtime-config';
+
+export type { SarDarkShip, PortCongestionStatus };
 
 // ---- Proto fallback (desktop safety when relay URL is unavailable) ----
 
@@ -446,4 +450,30 @@ export async function fetchAisSignals(): Promise<{ disruptions: AisDisruptionEve
     disruptions: latestDisruptions,
     density: latestDensity,
   };
+}
+
+// ---------------------------------------------------------------------------
+// SAR dark ship detections (Global Fishing Watch)
+// ---------------------------------------------------------------------------
+
+const sarBreaker = createCircuitBreaker<SarDarkShip[]>({ name: 'SAR Detections', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+
+export async function fetchSarDetections(limit = 100): Promise<SarDarkShip[]> {
+  return sarBreaker.execute(
+    () => client.listSarDetections({ limit }).then((r) => r.detections),
+    [],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Port congestion indices
+// ---------------------------------------------------------------------------
+
+const portBreaker = createCircuitBreaker<PortCongestionStatus[]>({ name: 'Port Congestion', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
+
+export async function fetchPortCongestion(): Promise<PortCongestionStatus[]> {
+  return portBreaker.execute(
+    () => client.getPortCongestion({}).then((r) => r.ports),
+    [],
+  );
 }

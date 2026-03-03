@@ -71,7 +71,11 @@ import { fetchGpsInterference } from '@/services/gps-interference';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
-import { fetchClimateAnomalies } from '@/services/climate';
+import { fetchClimateAnomalies, fetchAirQualityReadings, fetchDeforestationAlerts } from '@/services/climate';
+import { fetchSarDetections, fetchPortCongestion } from '@/services/maritime';
+import { fetchGridStatus, fetchRoutingAnomalies, fetchRadiationReadings } from '@/services/infrastructure';
+import { fetchWhaleTransfers } from '@/services/market';
+import { fetchAcarsMessages } from '@/services/military';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
@@ -355,6 +359,17 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy') tasks.push({ name: 'iranAttacks', task: runGuarded('iranAttacks', () => this.loadIranEvents()) });
     if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
 
+    // New signal layers
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.sarDetections) tasks.push({ name: 'sarDetections', task: runGuarded('sarDetections', () => this.loadSarDetections()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.portCongestion) tasks.push({ name: 'portCongestion', task: runGuarded('portCongestion', () => this.loadPortCongestion()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.gridZones) tasks.push({ name: 'gridZones', task: runGuarded('gridZones', () => this.loadGridZones()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.routingAnomalies) tasks.push({ name: 'routingAnomalies', task: runGuarded('routingAnomalies', () => this.loadRoutingAnomalies()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.radiationReadings) tasks.push({ name: 'radiationReadings', task: runGuarded('radiationReadings', () => this.loadRadiationReadings()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.airQuality) tasks.push({ name: 'airQuality', task: runGuarded('airQuality', () => this.loadAirQualityReadings()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.deforestationAlerts) tasks.push({ name: 'deforestationAlerts', task: runGuarded('deforestationAlerts', () => this.loadDeforestationAlerts()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.acarsMessages) tasks.push({ name: 'acarsMessages', task: runGuarded('acarsMessages', () => this.loadAcarsMessages()) });
+    if ((SITE_VARIANT === 'finance' || SITE_VARIANT === 'full') && this.ctx.mapLayers.whaleTransfers) tasks.push({ name: 'whaleTransfers', task: runGuarded('whaleTransfers', () => this.loadWhaleTransfers()) });
+
     if (SITE_VARIANT === 'tech') {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
     }
@@ -425,6 +440,33 @@ export class DataLoaderManager implements AppModule {
         case 'climate':
         case 'gpsJamming':
           await this.loadIntelligenceSignals();
+          break;
+        case 'sarDetections':
+          await this.loadSarDetections();
+          break;
+        case 'portCongestion':
+          await this.loadPortCongestion();
+          break;
+        case 'gridZones':
+          await this.loadGridZones();
+          break;
+        case 'routingAnomalies':
+          await this.loadRoutingAnomalies();
+          break;
+        case 'radiationReadings':
+          await this.loadRadiationReadings();
+          break;
+        case 'airQuality':
+          await this.loadAirQualityReadings();
+          break;
+        case 'deforestationAlerts':
+          await this.loadDeforestationAlerts();
+          break;
+        case 'acarsMessages':
+          await this.loadAcarsMessages();
+          break;
+        case 'whaleTransfers':
+          await this.loadWhaleTransfers();
           break;
       }
     } finally {
@@ -2282,6 +2324,118 @@ export class DataLoaderManager implements AppModule {
       (this.ctx.panels['telegram-intel'] as TelegramIntelPanel)?.setData(result);
     } catch (error) {
       console.error('[App] Telegram intel fetch failed:', error);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // New signal layer loaders
+  // ---------------------------------------------------------------------------
+
+  async loadSarDetections(): Promise<void> {
+    try {
+      const data = await fetchSarDetections();
+      this.ctx.map?.setSarDetections(data);
+      this.ctx.map?.setLayerReady('sarDetections', data.length > 0);
+      signalAggregator.ingestSarDetections(data);
+      dataFreshness.recordUpdate('sar_detections', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('sarDetections', false);
+    }
+  }
+
+  async loadPortCongestion(): Promise<void> {
+    try {
+      const data = await fetchPortCongestion();
+      this.ctx.map?.setPortCongestion(data);
+      this.ctx.map?.setLayerReady('portCongestion', data.length > 0);
+      signalAggregator.ingestPortCongestion(data);
+      dataFreshness.recordUpdate('port_congestion', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('portCongestion', false);
+    }
+  }
+
+  async loadGridZones(): Promise<void> {
+    try {
+      const data = await fetchGridStatus();
+      this.ctx.map?.setGridZones(data);
+      this.ctx.map?.setLayerReady('gridZones', data.length > 0);
+      signalAggregator.ingestGridZones(data);
+      dataFreshness.recordUpdate('grid_zones', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('gridZones', false);
+    }
+  }
+
+  async loadRoutingAnomalies(): Promise<void> {
+    try {
+      const data = await fetchRoutingAnomalies();
+      this.ctx.map?.setRoutingAnomalies(data);
+      this.ctx.map?.setLayerReady('routingAnomalies', data.length > 0);
+      signalAggregator.ingestRoutingAnomalies(data);
+      dataFreshness.recordUpdate('routing_anomalies', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('routingAnomalies', false);
+    }
+  }
+
+  async loadRadiationReadings(): Promise<void> {
+    try {
+      const data = await fetchRadiationReadings();
+      this.ctx.map?.setRadiationReadings(data);
+      this.ctx.map?.setLayerReady('radiationReadings', data.length > 0);
+      signalAggregator.ingestRadiationReadings(data);
+      dataFreshness.recordUpdate('radiation_readings', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('radiationReadings', false);
+    }
+  }
+
+  async loadAirQualityReadings(): Promise<void> {
+    try {
+      const data = await fetchAirQualityReadings();
+      this.ctx.map?.setAirQualityReadings(data);
+      this.ctx.map?.setLayerReady('airQuality', data.length > 0);
+      signalAggregator.ingestAirQualityReadings(data);
+      dataFreshness.recordUpdate('air_quality', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('airQuality', false);
+    }
+  }
+
+  async loadDeforestationAlerts(): Promise<void> {
+    try {
+      const data = await fetchDeforestationAlerts();
+      this.ctx.map?.setDeforestationAlerts(data);
+      this.ctx.map?.setLayerReady('deforestationAlerts', data.length > 0);
+      signalAggregator.ingestDeforestationAlerts(data);
+      dataFreshness.recordUpdate('deforestation_alerts', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('deforestationAlerts', false);
+    }
+  }
+
+  async loadAcarsMessages(): Promise<void> {
+    try {
+      const data = await fetchAcarsMessages();
+      this.ctx.map?.setAcarsMessages(data);
+      this.ctx.map?.setLayerReady('acarsMessages', data.length > 0);
+      signalAggregator.ingestAcarsMessages(data);
+      dataFreshness.recordUpdate('acars_messages', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('acarsMessages', false);
+    }
+  }
+
+  async loadWhaleTransfers(): Promise<void> {
+    try {
+      const data = await fetchWhaleTransfers();
+      this.ctx.map?.setWhaleTransfers(data);
+      this.ctx.map?.setLayerReady('whaleTransfers', data.length > 0);
+      signalAggregator.ingestWhaleTransfers(data);
+      dataFreshness.recordUpdate('whale_transfers', data.length);
+    } catch {
+      this.ctx.map?.setLayerReady('whaleTransfers', false);
     }
   }
 }
