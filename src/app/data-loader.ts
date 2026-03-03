@@ -2573,7 +2573,9 @@ export class DataLoaderManager implements AppModule {
 
       const runs = runsResult.status === 'fulfilled' ? runsResult.value.runs : [];
       const policy = policyResult.status === 'fulfilled' ? policyResult.value.entries : [];
-      const topologyAlerts = topologyResult.status === 'fulfilled' ? topologyResult.value.alerts : [];
+      const topologyResult_ = topologyResult.status === 'fulfilled' ? topologyResult.value : null;
+      const topologyAlerts = topologyResult_?.alerts ?? [];
+      const topologyBaselines = topologyResult_?.baselines ?? [];
 
       const latestRun = runs[0];
 
@@ -2588,7 +2590,7 @@ export class DataLoaderManager implements AppModule {
         topologyTrends: [],
         topologyWindowDrilldowns: [],
         topologyDrifts: [],
-        topologyBaselines: [],
+        topologyBaselines,
         trace: shadowResult.trace,
         policy,
         runHistory: runs.map(r => ({
