@@ -1558,6 +1558,8 @@ This runs the frontend without the API layer. Panels that require server-side pr
 | **Raspberry Pi / ARM** | Partial                 | `vercel dev` edge runtime emulation may not work on ARM. Use Option 1 (deploy to Vercel) or Option 3 (static frontend) instead |
 | **Docker**             | Planned                 | See [Roadmap](#roadmap)                                                                                                        |
 
+**Arch Linux users**: See [docs/ARCH_LINUX.md](docs/ARCH_LINUX.md) for setup, building, and packaging instructions.
+
 ### Railway Relay (Optional)
 
 The Railway relay is a multi-protocol gateway that handles data sources requiring persistent connections, residential proxying, or upstream APIs that block Vercel's edge runtime:
