@@ -943,7 +943,25 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         "Node.js executable not found. Install Node 18+ or set LOCAL_API_NODE_BIN".to_string()
     })?;
 
-    let port_file = logs_dir_path(app)?.join("sidecar.port");
+    let port_file = {
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(runtime_dir) = env::var_os("XDG_RUNTIME_DIR") {
+                let dir = PathBuf::from(runtime_dir).join("world-monitor");
+                if fs::create_dir_all(&dir).is_ok() {
+                    dir.join("sidecar.port")
+                } else {
+                    logs_dir_path(app)?.join("sidecar.port")
+                }
+            } else {
+                logs_dir_path(app)?.join("sidecar.port")
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            logs_dir_path(app)?.join("sidecar.port")
+        }
+    };
     let _ = fs::remove_file(&port_file);
 
     let log_path = sidecar_log_path(app)?;
@@ -1096,15 +1114,45 @@ fn stop_local_api(app: &AppHandle) {
     if let Ok(state) = app.try_state::<LocalApiState>().ok_or(()) {
         if let Ok(mut slot) = state.child.lock() {
             if let Some(mut child) = slot.take() {
-                let _ = child.kill();
+                #[cfg(unix)]
+                {
+                    // Send SIGTERM for graceful shutdown, fall back to SIGKILL
+                    let pid = child.id() as i32;
+                    unsafe { libc::kill(pid, libc::SIGTERM); }
+                    // Wait up to 3 seconds for graceful exit
+                    for _ in 0..30 {
+                        match child.try_wait() {
+                            Ok(Some(_)) => break,
+                            _ => std::thread::sleep(std::time::Duration::from_millis(100)),
+                        }
+                    }
+                    // If still running, force kill
+                    if child.try_wait().ok().flatten().is_none() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
                 append_desktop_log(app, "INFO", "local API sidecar stopped");
             }
         }
         if let Ok(mut port_slot) = state.port.lock() {
             *port_slot = None;
         }
+        // Clean up port file from both possible locations
         if let Ok(log_dir) = logs_dir_path(app) {
             let _ = fs::remove_file(log_dir.join("sidecar.port"));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(runtime_dir) = env::var_os("XDG_RUNTIME_DIR") {
+                let xdg_port = PathBuf::from(runtime_dir).join("world-monitor/sidecar.port");
+                let _ = fs::remove_file(xdg_port);
+            }
         }
     }
 }

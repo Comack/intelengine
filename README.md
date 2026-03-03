@@ -225,6 +225,8 @@ All four variants run from a single codebase — switch between them with one cl
 - **DevTools toggle** — Cmd+Alt+I opens the embedded web inspector for debugging
 - **Auto-update checker** — polls the cloud API for new versions every 6 hours. Displays a non-intrusive update badge with direct download link and per-version dismiss. Variant-aware — a Tech Monitor desktop app links to the correct Tech Monitor release asset
 
+> **Arch Linux users**: See [docs/ARCH_LINUX.md](docs/ARCH_LINUX.md) for build dependencies, packaging (`.pkg.tar.zst`), and troubleshooting.
+
 ### Progressive Web App
 
 - **Installable** — the dashboard can be installed to the home screen on mobile or as a standalone desktop app via Chrome's install prompt. Full-screen `standalone` display mode with custom theme color

@@ -2,7 +2,7 @@
 import http, { createServer } from 'node:http';
 import https from 'node:https';
 import dns from 'node:dns/promises';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
@@ -1476,6 +1476,22 @@ if (isMainModule()) {
   try {
     const app = await createLocalApiServer();
     await app.start();
+
+    const shutdown = async (signal) => {
+      console.log(`[local-api] received ${signal}, shutting down gracefully`);
+      try {
+        await app.close();
+      } catch { /* ignore close errors during shutdown */ }
+      // Clean up port file
+      const portFile = process.env.LOCAL_API_PORT_FILE;
+      if (portFile) {
+        try { unlinkSync(portFile); } catch { /* ignore */ }
+      }
+      process.exit(0);
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (error) {
     console.error('[local-api] startup failed', error);
     process.exit(1);

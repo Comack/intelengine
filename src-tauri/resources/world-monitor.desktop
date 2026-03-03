@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=World Monitor
+Comment=Real-time global intelligence dashboard
+Exec=world-monitor %u
+Icon=world-monitor
+Terminal=false
+Type=Application
+Categories=Network;News;Monitor;
+MimeType=x-scheme-handler/worldmonitor;
+Keywords=intelligence;geopolitical;monitor;news;military;cyber;
+StartupWMClass=world-monitor
+StartupNotify=true

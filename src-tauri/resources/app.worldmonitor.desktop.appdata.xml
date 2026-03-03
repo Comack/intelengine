@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>app.worldmonitor.desktop</id>
+  <name>World Monitor</name>
+  <summary>Real-time global intelligence dashboard</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <description>
+    <p>
+      World Monitor is a tri-variant intelligence platform providing real-time
+      global situational awareness. It monitors geopolitical events, military
+      movements, cyber threats, infrastructure, markets, and more.
+    </p>
+    <p>
+      Available in three variants: Full (geopolitical focus), Tech (technology
+      ecosystem), and Finance (markets and macro intelligence).
+    </p>
+  </description>
+  <url type="homepage">https://worldmonitor.app</url>
+  <url type="bugtracker">https://github.com/Comack/intelengine/issues</url>
+  <launchable type="desktop-id">world-monitor.desktop</launchable>
+  <provides>
+    <binary>world-monitor</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>Network</category>
+    <category>News</category>
+    <category>Monitor</category>
+  </categories>
+</component>
