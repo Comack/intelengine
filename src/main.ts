@@ -261,7 +261,13 @@ if (urlParams.get('settings') === '1') {
     .then(() => {
       clearChunkReloadGuard(chunkReloadStorageKey);
     })
-    .catch(console.error);
+    .catch((err) => {
+      console.error('[App] Initialization failed:', err);
+      const el = document.getElementById('app');
+      if (el) {
+        el.innerHTML = '<div style="color:#ef4444;padding:2rem;text-align:center;font-family:system-ui"><h2>Failed to initialize</h2><p>Please refresh the page. If the problem persists, clear your browser cache.</p></div>';
+      }
+    });
 }
 
 // Debug helpers for geo-convergence testing (remove in production)

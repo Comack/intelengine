@@ -23,6 +23,12 @@ export default async function handler(req) {
   const url = new URL(req.url);
   const path = url.pathname.replace('/api/eia', '');
 
+  // Whitelist allowed paths before any upstream requests
+  const ALLOWED_PATHS = ['', '/health', '/petroleum'];
+  if (!ALLOWED_PATHS.includes(path)) {
+    return Response.json({ error: 'Not found' }, { status: 404, headers: cors });
+  }
+
   const apiKey = process.env.EIA_API_KEY;
 
   if (!apiKey) {

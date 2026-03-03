@@ -16,6 +16,17 @@ const REDIS_CACHE_TTL = 480; // 8 min — shared across all Vercel instances
 
 const quotesCache = new Map<string, { data: ListMarketQuotesResponse; timestamp: number }>();
 const QUOTES_CACHE_TTL = 480_000; // 8 minutes (in-memory fallback)
+const QUOTES_CACHE_MAX_SIZE = 100;
+
+function evictOldestQuote(): void {
+  if (quotesCache.size <= QUOTES_CACHE_MAX_SIZE) return;
+  let oldestKey: string | undefined;
+  let oldestTs = Infinity;
+  for (const [k, v] of quotesCache) {
+    if (v.timestamp < oldestTs) { oldestTs = v.timestamp; oldestKey = k; }
+  }
+  if (oldestKey !== undefined) quotesCache.delete(oldestKey);
+}
 
 function cacheKey(symbols: string[]): string {
   return [...symbols].sort().join(',');
@@ -112,6 +123,7 @@ export async function listMarketQuotes(
   });
 
   if (result?.quotes?.length) {
+    evictOldestQuote();
     quotesCache.set(key, { data: result, timestamp: now });
   }
 

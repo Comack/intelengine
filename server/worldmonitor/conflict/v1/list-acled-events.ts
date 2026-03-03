@@ -20,6 +20,18 @@ const REDIS_CACHE_KEY = 'conflict:acled:v1';
 const REDIS_CACHE_TTL = 900; // 15 min — ACLED rate-limited
 
 const fallbackAcledCache = new Map<string, { data: ListAcledEventsResponse; ts: number }>();
+const FALLBACK_MAX_SIZE = 50;
+const FALLBACK_TTL_MS = 10 * 60 * 1000; // 10 min
+
+function evictOldestFallback(): void {
+  if (fallbackAcledCache.size <= FALLBACK_MAX_SIZE) return;
+  let oldestKey: string | undefined;
+  let oldestTs = Infinity;
+  for (const [k, v] of fallbackAcledCache) {
+    if (v.ts < oldestTs) { oldestTs = v.ts; oldestKey = k; }
+  }
+  if (oldestKey !== undefined) fallbackAcledCache.delete(oldestKey);
+}
 
 async function fetchAcledConflicts(req: ListAcledEventsRequest): Promise<AcledConflictEvent[]> {
   try {
@@ -76,11 +88,21 @@ export async function listAcledEvents(
       },
     );
     if (result) {
-      if (fallbackAcledCache.size > 50) fallbackAcledCache.clear();
+      evictOldestFallback();
       fallbackAcledCache.set(cacheKey, { data: result, ts: Date.now() });
     }
-    return result || fallbackAcledCache.get(cacheKey)?.data || { events: [], pagination: undefined };
+    const fallback = fallbackAcledCache.get(cacheKey);
+    if (!result && fallback && Date.now() - fallback.ts > FALLBACK_TTL_MS) {
+      fallbackAcledCache.delete(cacheKey);
+      return { events: [], pagination: undefined };
+    }
+    return result || fallback?.data || { events: [], pagination: undefined };
   } catch {
-    return fallbackAcledCache.get(cacheKey)?.data || { events: [], pagination: undefined };
+    const fallback = fallbackAcledCache.get(cacheKey);
+    if (fallback && Date.now() - fallback.ts > FALLBACK_TTL_MS) {
+      fallbackAcledCache.delete(cacheKey);
+      return { events: [], pagination: undefined };
+    }
+    return fallback?.data || { events: [], pagination: undefined };
   }
 }

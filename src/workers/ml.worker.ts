@@ -130,6 +130,7 @@ function acquirePipelineRef(modelId: string): void {
 
 function releasePipelineRef(modelId: string): void {
   const count = pipelineRefCount.get(modelId) ?? 0;
+  if (count <= 0) return;
   if (count > 1) {
     pipelineRefCount.set(modelId, count - 1);
   } else {

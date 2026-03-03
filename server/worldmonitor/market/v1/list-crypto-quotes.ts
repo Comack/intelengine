@@ -16,6 +16,18 @@ const REDIS_CACHE_KEY = 'market:crypto:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — CoinGecko rate-limited
 
 const fallbackCryptoCache = new Map<string, { data: ListCryptoQuotesResponse; ts: number }>();
+const FALLBACK_MAX_SIZE = 50;
+const FALLBACK_TTL_MS = 10 * 60 * 1000; // 10 min
+
+function evictOldestFallback(): void {
+  if (fallbackCryptoCache.size <= FALLBACK_MAX_SIZE) return;
+  let oldestKey: string | undefined;
+  let oldestTs = Infinity;
+  for (const [k, v] of fallbackCryptoCache) {
+    if (v.ts < oldestTs) { oldestTs = v.ts; oldestKey = k; }
+  }
+  if (oldestKey !== undefined) fallbackCryptoCache.delete(oldestKey);
+}
 
 export async function listCryptoQuotes(
   _ctx: ServerContext,
@@ -61,11 +73,21 @@ export async function listCryptoQuotes(
   });
 
   if (result) {
-    if (fallbackCryptoCache.size > 50) fallbackCryptoCache.clear();
+    evictOldestFallback();
     fallbackCryptoCache.set(cacheKey, { data: result, ts: Date.now() });
   }
-  return result || fallbackCryptoCache.get(cacheKey)?.data || { quotes: [] };
+  const fallbackEntry = fallbackCryptoCache.get(cacheKey);
+  if (!result && fallbackEntry && Date.now() - fallbackEntry.ts > FALLBACK_TTL_MS) {
+    fallbackCryptoCache.delete(cacheKey);
+    return { quotes: [] };
+  }
+  return result || fallbackEntry?.data || { quotes: [] };
   } catch {
-    return fallbackCryptoCache.get(cacheKey)?.data || { quotes: [] };
+    const fallback = fallbackCryptoCache.get(cacheKey);
+    if (fallback && Date.now() - fallback.ts > FALLBACK_TTL_MS) {
+      fallbackCryptoCache.delete(cacheKey);
+      return { quotes: [] };
+    }
+    return fallback?.data || { quotes: [] };
   }
 }

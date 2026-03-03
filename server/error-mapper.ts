@@ -47,8 +47,10 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
 
     if (statusCode >= 500) {
       // Log upstream response body (truncated) for debugging (M-4 fix)
-      const apiBody = 'body' in error ? String((error as any).body).slice(0, 500) : '';
-      console.error(`[error-mapper] ${statusCode}:`, error.message, apiBody ? `| body: ${apiBody}` : '');
+      // Scrub URLs and limit body length to avoid leaking keys/tokens
+      const scrubbed = error.message.replace(/https?:\/\/[^\s'")]+/g, '[URL]');
+      const apiBody = 'body' in error ? String((error as any).body).slice(0, 200) : '';
+      console.error(`[error-mapper] ${statusCode}:`, scrubbed, apiBody ? `| body: ${apiBody}` : '');
     }
 
     return new Response(JSON.stringify(body), {

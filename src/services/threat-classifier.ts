@@ -296,11 +296,13 @@ const TRAILING_BOUNDARY_KEYWORDS = new Set([
   'iran retaliates', 'iran strikes', 'iran launches', 'iran attacks',
 ]);
 
+const KEYWORD_REGEX_CACHE_MAX = 1000;
 const keywordRegexCache = new Map<string, RegExp>();
 
 function getKeywordRegex(kw: string): RegExp {
   let re = keywordRegexCache.get(kw);
   if (!re) {
+    if (keywordRegexCache.size >= KEYWORD_REGEX_CACHE_MAX) keywordRegexCache.clear();
     const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (SHORT_KEYWORDS.has(kw)) {
       re = new RegExp(`\\b${escaped}\\b`);
@@ -443,7 +445,7 @@ async function waitForGap(): Promise<void> {
 function flushBatch(): void {
   batchTimer = null;
   if (batchPaused || batchInFlight || batchQueue.length === 0) return;
-  batchInFlight = true;
+  batchInFlight = true;  // Set synchronously before any await
 
   const batch = batchQueue.splice(0, BATCH_SIZE);
   if (batch.length === 0) { batchInFlight = false; return; }

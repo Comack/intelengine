@@ -225,8 +225,8 @@ export function processNgaSignals(warnings: NgaWarning[]): Signal[] {
     let distanceKm = 0;
 
     if (!cableId && coords.length > 0) {
-      const centLat = coords.reduce((s, c) => s + c[0], 0) / coords.length;
-      const centLon = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+      const centLat = coords.reduce((s, c) => s + c[0], 0) / (coords.length || 1);
+      const centLon = coords.reduce((s, c) => s + c[1], 0) / (coords.length || 1);
       const nearest = findNearestCable(centLat, centLon);
       if (nearest) {
         cableId = nearest.cableId;

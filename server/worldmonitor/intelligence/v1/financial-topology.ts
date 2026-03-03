@@ -602,8 +602,8 @@ export function deriveFinancialTopologySignals(
   const hyperedges = detectCoordinationHyperedges(nodes, distanceMatrix);
   if (hyperedges.length > 0) {
     const participatingNodeIndices = new Set(hyperedges.flatMap((h) => h.nodeIndices));
-    const hyperedgeDensity = participatingNodeIndices.size / numNodes;
-    const avgSim = hyperedges.reduce((sum, h) => sum + h.avgPairwiseSimilarity, 0) / hyperedges.length;
+    const hyperedgeDensity = participatingNodeIndices.size / Math.max(1, numNodes);
+    const avgSim = hyperedges.reduce((sum, h) => sum + h.avgPairwiseSimilarity, 0) / Math.max(1, hyperedges.length);
 
     derivedSignals.push({
       sourceId: `topology:hyperedge:${domain}`,

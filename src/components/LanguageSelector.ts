@@ -5,6 +5,7 @@ export class LanguageSelector {
     private element: HTMLElement;
     private isOpen = false;
     private currentLang: string;
+    private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
 
     constructor() {
         this.currentLang = getCurrentLanguage();
@@ -81,11 +82,19 @@ export class LanguageSelector {
             });
         });
 
-        document.addEventListener('click', (e) => {
+        this.outsideClickHandler = (e: MouseEvent) => {
             if (!this.element.contains(e.target as Node)) {
                 this.close();
             }
-        });
+        };
+        document.addEventListener('click', this.outsideClickHandler);
+    }
+
+    public destroy(): void {
+        if (this.outsideClickHandler) {
+            document.removeEventListener('click', this.outsideClickHandler);
+            this.outsideClickHandler = null;
+        }
     }
 
     private toggle(): void {

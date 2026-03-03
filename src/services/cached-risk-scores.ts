@@ -189,7 +189,7 @@ export async function fetchCachedRiskScores(signal?: AbortSignal): Promise<Cache
       cachedScores = data;
       lastFetchTime = now;
       setHasCachedScores(true);
-      void setPersistentCache(RISK_CACHE_KEY, data);
+      void setPersistentCache(RISK_CACHE_KEY, data).catch(err => console.warn('[risk-scores] cache write failed:', err));
       return cachedScores;
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;

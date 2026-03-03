@@ -264,12 +264,18 @@ function getGeoCached(ip: string): { lat: number; lon: number; country: string }
   return entry;
 }
 
-function setGeoCached(ip: string, geo: { lat: number; lon: number; country: string }): void {
-  // Evict oldest entries when cache exceeds max size (C-1 fix)
-  if (geoCache.size >= GEO_CACHE_MAX_SIZE) {
-    const keysToDelete = Array.from(geoCache.keys()).slice(0, Math.floor(GEO_CACHE_MAX_SIZE / 4));
-    for (const key of keysToDelete) geoCache.delete(key);
+function evictOldestGeo(): void {
+  if (geoCache.size <= GEO_CACHE_MAX_SIZE) return;
+  let oldestKey: string | undefined;
+  let oldestTs = Infinity;
+  for (const [k, v] of geoCache) {
+    if (v.ts < oldestTs) { oldestTs = v.ts; oldestKey = k; }
   }
+  if (oldestKey !== undefined) geoCache.delete(oldestKey);
+}
+
+function setGeoCached(ip: string, geo: { lat: number; lon: number; country: string }): void {
+  evictOldestGeo();
   geoCache.set(ip, { ...geo, ts: Date.now() });
 }
 

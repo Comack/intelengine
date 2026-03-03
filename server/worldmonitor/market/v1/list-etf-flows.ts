@@ -72,13 +72,14 @@ function parseEtfChartData(chart: YahooChartResponse, ticker: string, issuer: st
 
     if (validCloses.length < 2) return null;
 
-    const latestPrice = validCloses[validCloses.length - 1]!;
-    const prevPrice = validCloses[validCloses.length - 2]!;
+    const latestPrice = validCloses[validCloses.length - 1];
+    const prevPrice = validCloses[validCloses.length - 2];
+    if (latestPrice == null || prevPrice == null) return null;
     const priceChange = prevPrice ? ((latestPrice - prevPrice) / prevPrice * 100) : 0;
 
     const latestVolume = validVolumes.length > 0 ? validVolumes[validVolumes.length - 1]! : 0;
     const avgVolume = validVolumes.length > 1
-      ? validVolumes.slice(0, -1).reduce((a, b) => a + b, 0) / (validVolumes.length - 1)
+      ? validVolumes.slice(0, -1).reduce((a, b) => a + b, 0) / Math.max(1, validVolumes.length - 1)
       : latestVolume;
 
     const volumeRatio = avgVolume > 0 ? latestVolume / avgVolume : 1;

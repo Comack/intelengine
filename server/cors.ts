@@ -25,7 +25,8 @@ const ALLOWED_ORIGIN_PATTERNS: RegExp[] =
     : [...PRODUCTION_PATTERNS, ...DEV_PATTERNS];
 
 function isAllowedOrigin(origin: string): boolean {
-  return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+  const normalized = origin.toLowerCase();
+  return Boolean(normalized) && ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export function getCorsHeaders(req: Request): Record<string, string> {

@@ -67,16 +67,16 @@ async function fetchVesselSnapshot(): Promise<VesselSnapshot | undefined> {
     return inFlightRequest;
   }
 
-  inFlightRequest = fetchVesselSnapshotFromRelay();
+  const thisRequest = inFlightRequest = fetchVesselSnapshotFromRelay();
   try {
-    const result = await inFlightRequest;
+    const result = await thisRequest;
     if (result) {
       cachedSnapshot = result;
       cacheTimestamp = Date.now();
     }
     return result ?? cachedSnapshot; // serve stale on relay failure
   } finally {
-    inFlightRequest = null;
+    if (inFlightRequest === thisRequest) inFlightRequest = null;
   }
 }
 
@@ -100,35 +100,47 @@ async function fetchVesselSnapshotFromRelay(): Promise<VesselSnapshot | undefine
       return undefined;
     }
 
-    const densityZones: AisDensityZone[] = data.density.map((z: any): AisDensityZone => ({
-      id: String(z.id || ''),
-      name: String(z.name || ''),
-      location: {
-        latitude: Number(z.lat) || 0,
-        longitude: Number(z.lon) || 0,
-      },
-      intensity: Number(z.intensity) || 0,
-      deltaPct: Number(z.deltaPct) || 0,
-      shipsPerDay: Number(z.shipsPerDay) || 0,
-      note: String(z.note || ''),
-    }));
+    const densityZones: AisDensityZone[] = data.density
+      .filter((z: any) => {
+        const lat = Number(z.lat);
+        const lon = Number(z.lon);
+        return Number.isFinite(lat) && lat >= -90 && lat <= 90 && Number.isFinite(lon) && lon >= -180 && lon <= 180;
+      })
+      .map((z: any): AisDensityZone => ({
+        id: String(z.id || ''),
+        name: String(z.name || ''),
+        location: {
+          latitude: Number(z.lat),
+          longitude: Number(z.lon),
+        },
+        intensity: Number(z.intensity) || 0,
+        deltaPct: Number(z.deltaPct) || 0,
+        shipsPerDay: Number(z.shipsPerDay) || 0,
+        note: String(z.note || ''),
+      }));
 
-    const disruptions: AisDisruption[] = data.disruptions.map((d: any): AisDisruption => ({
-      id: String(d.id || ''),
-      name: String(d.name || ''),
-      type: DISRUPTION_TYPE_MAP[d.type] || 'AIS_DISRUPTION_TYPE_UNSPECIFIED',
-      location: {
-        latitude: Number(d.lat) || 0,
-        longitude: Number(d.lon) || 0,
-      },
-      severity: SEVERITY_MAP[d.severity] || 'AIS_DISRUPTION_SEVERITY_UNSPECIFIED',
-      changePct: Number(d.changePct) || 0,
-      windowHours: Number(d.windowHours) || 0,
-      darkShips: Number(d.darkShips) || 0,
-      vesselCount: Number(d.vesselCount) || 0,
-      region: String(d.region || ''),
-      description: String(d.description || ''),
-    }));
+    const disruptions: AisDisruption[] = data.disruptions
+      .filter((d: any) => {
+        const lat = Number(d.lat);
+        const lon = Number(d.lon);
+        return Number.isFinite(lat) && lat >= -90 && lat <= 90 && Number.isFinite(lon) && lon >= -180 && lon <= 180;
+      })
+      .map((d: any): AisDisruption => ({
+        id: String(d.id || ''),
+        name: String(d.name || ''),
+        type: DISRUPTION_TYPE_MAP[d.type] || 'AIS_DISRUPTION_TYPE_UNSPECIFIED',
+        location: {
+          latitude: Number(d.lat),
+          longitude: Number(d.lon),
+        },
+        severity: SEVERITY_MAP[d.severity] || 'AIS_DISRUPTION_SEVERITY_UNSPECIFIED',
+        changePct: Number(d.changePct) || 0,
+        windowHours: Number(d.windowHours) || 0,
+        darkShips: Number(d.darkShips) || 0,
+        vesselCount: Number(d.vesselCount) || 0,
+        region: String(d.region || ''),
+        description: String(d.description || ''),
+      }));
 
     return {
       snapshotAt: Date.now(),

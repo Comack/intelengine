@@ -252,10 +252,26 @@ export class CircuitBreaker<T> {
 }
 
 // Registry of circuit breakers for global status
+const BREAKER_REGISTRY_MAX = 200;
 const breakers = new Map<string, CircuitBreaker<unknown>>();
+
+function evictClosedBreaker(): void {
+  for (const [name, b] of breakers) {
+    if (!b.isOnCooldown()) {
+      breakers.delete(name);
+      return;
+    }
+  }
+  // All on cooldown — delete first entry
+  const first = breakers.keys().next().value;
+  if (first !== undefined) breakers.delete(first);
+}
 
 export function createCircuitBreaker<T>(options: CircuitBreakerOptions): CircuitBreaker<T> {
   const breaker = new CircuitBreaker<T>(options);
+  if (breakers.size >= BREAKER_REGISTRY_MAX && !breakers.has(options.name)) {
+    evictClosedBreaker();
+  }
   breakers.set(options.name, breaker as CircuitBreaker<unknown>);
   return breaker;
 }

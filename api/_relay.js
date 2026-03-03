@@ -79,6 +79,15 @@ export function createRelayHandler(cfg) {
       const path = typeof cfg.buildRelayPath === 'function'
         ? cfg.buildRelayPath(req, requestUrl)
         : cfg.relayPath;
+
+      // Validate relay path to prevent traversal and open-redirect attacks
+      if (typeof path !== 'string' || !path.startsWith('/') || path.includes('..') || path.includes('//')) {
+        return new Response(JSON.stringify({ error: 'Invalid relay path' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+
       const search = cfg.forwardSearch !== false ? (requestUrl.search || '') : '';
       const relayUrl = `${relayBaseUrl}${path}${search}`;
 

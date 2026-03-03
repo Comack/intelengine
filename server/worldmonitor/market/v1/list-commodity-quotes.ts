@@ -16,6 +16,18 @@ const REDIS_CACHE_KEY = 'market:commodities:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — commodities move slower than indices
 
 const fallbackCommodityCache = new Map<string, { data: ListCommodityQuotesResponse; ts: number }>();
+const FALLBACK_MAX_SIZE = 50;
+const FALLBACK_TTL_MS = 10 * 60 * 1000; // 10 min
+
+function evictOldestFallback(): void {
+  if (fallbackCommodityCache.size <= FALLBACK_MAX_SIZE) return;
+  let oldestKey: string | undefined;
+  let oldestTs = Infinity;
+  for (const [k, v] of fallbackCommodityCache) {
+    if (v.ts < oldestTs) { oldestTs = v.ts; oldestKey = k; }
+  }
+  if (oldestKey !== undefined) fallbackCommodityCache.delete(oldestKey);
+}
 
 function redisCacheKey(symbols: string[]): string {
   return `${REDIS_CACHE_KEY}:${[...symbols].sort().join(',')}`;
@@ -44,11 +56,21 @@ export async function listCommodityQuotes(
   });
 
   if (result) {
-    if (fallbackCommodityCache.size > 50) fallbackCommodityCache.clear();
+    evictOldestFallback();
     fallbackCommodityCache.set(redisKey, { data: result, ts: Date.now() });
   }
-  return result || fallbackCommodityCache.get(redisKey)?.data || { quotes: [] };
+  const fallbackEntry = fallbackCommodityCache.get(redisKey);
+  if (!result && fallbackEntry && Date.now() - fallbackEntry.ts > FALLBACK_TTL_MS) {
+    fallbackCommodityCache.delete(redisKey);
+    return { quotes: [] };
+  }
+  return result || fallbackEntry?.data || { quotes: [] };
   } catch {
-    return fallbackCommodityCache.get(redisKey)?.data || { quotes: [] };
+    const fallback = fallbackCommodityCache.get(redisKey);
+    if (fallback && Date.now() - fallback.ts > FALLBACK_TTL_MS) {
+      fallbackCommodityCache.delete(redisKey);
+      return { quotes: [] };
+    }
+    return fallback?.data || { quotes: [] };
   }
 }

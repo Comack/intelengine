@@ -54,6 +54,7 @@ interface CorrelationResult {
 }
 
 // Worker-local state (persists between messages)
+const SIGNAL_KEYS_MAX = 5000;
 let previousSnapshot: StreamSnapshot | null = null;
 const recentSignalKeys = new Set<string>();
 
@@ -62,6 +63,7 @@ function isRecentDuplicate(key: string): boolean {
 }
 
 function markSignalSeen(key: string): void {
+  if (recentSignalKeys.size >= SIGNAL_KEYS_MAX) recentSignalKeys.clear();
   recentSignalKeys.add(key);
   setTimeout(() => recentSignalKeys.delete(key), 30 * 60 * 1000);
 }

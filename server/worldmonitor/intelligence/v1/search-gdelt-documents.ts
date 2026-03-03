@@ -33,8 +33,8 @@ export async function searchGdeltDocuments(
     return { articles: [], query: query || '', error: 'Query parameter required (min 2 characters)' };
   }
 
-  // Append tone filter to query if provided (e.g., "tone>5" for positive articles)
-  if (req.toneFilter) {
+  // Validate and append tone filter (e.g., "tone>5" for positive articles)
+  if (req.toneFilter && /^tone[<>=]{1,2}-?\d+(\.\d+)?$/.test(req.toneFilter)) {
     query = `${query} ${req.toneFilter}`;
   }
 
@@ -42,7 +42,9 @@ export async function searchGdeltDocuments(
     req.maxRecords > 0 ? req.maxRecords : GDELT_DEFAULT_RECORDS,
     GDELT_MAX_RECORDS,
   );
-  const timespan = req.timespan || '72h';
+  const ALLOWED_SORTS = ['date', 'relevance', 'tone'];
+  const sort = ALLOWED_SORTS.includes(req.sort) ? req.sort : 'date';
+  const timespan = /^\d{1,4}[hdwmy]$/.test(req.timespan) ? req.timespan : '72h';
 
   try {
     const cacheKey = `${REDIS_CACHE_KEY}:${query}:${timespan}:${maxRecords}`;
@@ -55,7 +57,7 @@ export async function searchGdeltDocuments(
         gdeltUrl.searchParams.set('mode', 'artlist');
         gdeltUrl.searchParams.set('maxrecords', maxRecords.toString());
         gdeltUrl.searchParams.set('format', 'json');
-        gdeltUrl.searchParams.set('sort', req.sort || 'date');
+        gdeltUrl.searchParams.set('sort', sort);
         gdeltUrl.searchParams.set('timespan', timespan);
 
         const response = await fetch(gdeltUrl.toString(), {

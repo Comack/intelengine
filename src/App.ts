@@ -49,6 +49,7 @@ export class App {
   private pendingDeepLinkCountry: string | null = null;
   private pendingDeepLinkExpanded = false;
   private pendingDeepLinkStoryCode: string | null = null;
+  private deepLinkTimers: ReturnType<typeof setTimeout>[] = [];
 
   private panelLayout: PanelLayoutManager;
   private dataLoader: DataLoaderManager;
@@ -487,6 +488,10 @@ export class App {
       this.modules[i]!.destroy();
     }
 
+    // Clear deep link retry timers
+    for (const t of this.deepLinkTimers) clearTimeout(t);
+    this.deepLinkTimers.length = 0;
+
     // Clean up subscriptions, map, AIS, and breaking news
     this.unsubAiFlow?.();
     this.state.breakingBanner?.destroy();
@@ -524,10 +529,10 @@ export class App {
             this.eventHandlers.showToast('Data not available');
             return;
           } else {
-            setTimeout(checkAndOpen, DEEP_LINK_RETRY_INTERVAL_MS);
+            this.deepLinkTimers.push(setTimeout(checkAndOpen, DEEP_LINK_RETRY_INTERVAL_MS));
           }
         };
-        setTimeout(checkAndOpen, DEEP_LINK_INITIAL_DELAY_MS);
+        this.deepLinkTimers.push(setTimeout(checkAndOpen, DEEP_LINK_INITIAL_DELAY_MS));
 
         return;
       }
@@ -555,10 +560,10 @@ export class App {
           this.eventHandlers.showToast('Data not available');
           return;
         } else {
-          setTimeout(checkAndOpenBrief, DEEP_LINK_RETRY_INTERVAL_MS);
+          this.deepLinkTimers.push(setTimeout(checkAndOpenBrief, DEEP_LINK_RETRY_INTERVAL_MS));
         }
       };
-      setTimeout(checkAndOpenBrief, DEEP_LINK_INITIAL_DELAY_MS);
+      this.deepLinkTimers.push(setTimeout(checkAndOpenBrief, DEEP_LINK_INITIAL_DELAY_MS));
     }
   }
 
