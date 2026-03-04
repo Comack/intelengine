@@ -111,6 +111,10 @@ const ALLOWED_ENV_KEYS = new Set([
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
   'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN',
+  'PORTCAST_API_KEY', 'GLOBAL_FISHING_WATCH_API_KEY', 'ELECTRICITY_MAPS_API_KEY',
+  'SENTINEL_HUB_CLIENT_ID', 'SENTINEL_HUB_CLIENT_SECRET', 'WAQI_API_TOKEN',
+  'GLOBAL_FOREST_WATCH_API_KEY', 'LIVEUAMAP_API_KEY', 'WHALE_ALERT_API_KEY',
+  'AIRFRAMES_API_KEY', 'GITHUB_TOKEN',
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -1049,6 +1053,128 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
 
     case 'ICAO_API_KEY':
       return ok('ICAO API key stored (verification requires NOTAM endpoint access)');
+
+    case 'PORTCAST_API_KEY': {
+      const response = await fetchWithTimeout('https://api.portcast.io/api/v1/eta/port', {
+        headers: { Accept: 'application/json', 'x-api-token': value, 'User-Agent': CHROME_UA },
+      });
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Portcast key stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('Portcast rejected this key');
+      if (response.status >= 500) return fail(`Portcast probe failed (${response.status})`);
+      return ok('Portcast key accepted');
+    }
+
+    case 'GLOBAL_FISHING_WATCH_API_KEY': {
+      const response = await fetchWithTimeout('https://gateway.api.globalfishingwatch.org/v3/datasets', {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
+      });
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Global Fishing Watch key stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('Global Fishing Watch rejected this key');
+      if (!response.ok) return fail(`Global Fishing Watch probe failed (${response.status})`);
+      return ok('Global Fishing Watch key verified');
+    }
+
+    case 'ELECTRICITY_MAPS_API_KEY': {
+      const response = await fetchWithTimeout('https://api.electricitymap.org/v3/zones', {
+        headers: { Accept: 'application/json', 'auth-token': value, 'User-Agent': CHROME_UA },
+      });
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Electricity Maps key stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('Electricity Maps rejected this key');
+      if (!response.ok) return fail(`Electricity Maps probe failed (${response.status})`);
+      return ok('Electricity Maps key verified');
+    }
+
+    case 'SENTINEL_HUB_CLIENT_ID':
+    case 'SENTINEL_HUB_CLIENT_SECRET': {
+      const contextId = typeof context.SENTINEL_HUB_CLIENT_ID === 'string' ? context.SENTINEL_HUB_CLIENT_ID.trim() : '';
+      const contextSecret = typeof context.SENTINEL_HUB_CLIENT_SECRET === 'string' ? context.SENTINEL_HUB_CLIENT_SECRET.trim() : '';
+      const clientId = key === 'SENTINEL_HUB_CLIENT_ID'
+        ? value
+        : (contextId || String(process.env.SENTINEL_HUB_CLIENT_ID || '').trim());
+      const clientSecret = key === 'SENTINEL_HUB_CLIENT_SECRET'
+        ? value
+        : (contextSecret || String(process.env.SENTINEL_HUB_CLIENT_SECRET || '').trim());
+      if (!clientId || !clientSecret) {
+        return fail('Set both SENTINEL_HUB_CLIENT_ID and SENTINEL_HUB_CLIENT_SECRET before verification');
+      }
+      const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret });
+      const response = await fetchWithTimeout(
+        'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token',
+        { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': CHROME_UA }, body }
+      );
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Sentinel Hub credentials stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('Sentinel Hub rejected these credentials');
+      if (!response.ok) return fail(`Sentinel Hub auth probe failed (${response.status})`);
+      let payload = null;
+      try { payload = JSON.parse(text); } catch { /* ignore */ }
+      if (!payload?.access_token) return fail('Sentinel Hub auth response did not include an access token');
+      return ok('Sentinel Hub credentials verified');
+    }
+
+    case 'WAQI_API_TOKEN': {
+      const response = await fetchWithTimeout(
+        `https://api.waqi.info/feed/beijing/?token=${encodeURIComponent(value)}`,
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }
+      );
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('WAQI token stored (Cloudflare blocked verification)');
+      let payload = null;
+      try { payload = JSON.parse(text); } catch { /* ignore */ }
+      if (payload?.status === 'error' || (typeof payload?.data === 'string' && payload.data.includes('Invalid'))) {
+        return fail('WAQI rejected this token');
+      }
+      if (!response.ok) return fail(`WAQI probe failed (${response.status})`);
+      return ok('WAQI token verified');
+    }
+
+    case 'GLOBAL_FOREST_WATCH_API_KEY': {
+      const response = await fetchWithTimeout('https://api.resourcewatch.org/v1/dataset?page[size]=1', {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
+      });
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Global Forest Watch key stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('Global Forest Watch rejected this key');
+      if (!response.ok) return fail(`Global Forest Watch probe failed (${response.status})`);
+      return ok('Global Forest Watch key verified');
+    }
+
+    case 'LIVEUAMAP_API_KEY':
+      return ok('Liveuamap API key stored (live verification not available in sidecar)');
+
+    case 'WHALE_ALERT_API_KEY': {
+      const since = Math.floor(Date.now() / 1000) - 3600;
+      const response = await fetchWithTimeout(
+        `https://api.whale-alert.io/v1/transactions?api_key=${encodeURIComponent(value)}&min_value=500000&start=${since}&limit=1`,
+        { headers: { Accept: 'application/json', 'User-Agent': CHROME_UA } }
+      );
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('Whale Alert key stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('Whale Alert rejected this key');
+      if (response.status === 429) return ok('Whale Alert key accepted (rate limited)');
+      if (!response.ok) return fail(`Whale Alert probe failed (${response.status})`);
+      return ok('Whale Alert key verified');
+    }
+
+    case 'AIRFRAMES_API_KEY':
+      return ok('Airframes API key stored (verification requires ACARS endpoint access)');
+
+    case 'GITHUB_TOKEN': {
+      const response = await fetchWithTimeout('https://api.github.com/rate_limit', {
+        headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${value}`, 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': CHROME_UA },
+      });
+      const text = await response.text();
+      if (isCloudflareChallenge403(response, text)) return ok('GitHub token stored (Cloudflare blocked verification)');
+      if (isAuthFailure(response.status, text)) return fail('GitHub rejected this token');
+      if (!response.ok) return fail(`GitHub probe failed (${response.status})`);
+      let payload = null;
+      try { payload = JSON.parse(text); } catch { /* ignore */ }
+      const limit = payload?.rate?.limit ?? 0;
+      return ok(`GitHub token verified (rate limit: ${limit}/hr)`);
+    }
 
       default:
         return ok('Key stored');

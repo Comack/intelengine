@@ -22,6 +22,17 @@ export const SIGNUP_URLS: Partial<Record<RuntimeSecretKey, string>> = {
   WTO_API_KEY: 'https://apiportal.wto.org/',
   AVIATIONSTACK_API: 'https://aviationstack.com/signup/free',
   ICAO_API_KEY: 'https://dataservices.icao.int/',
+  PORTCAST_API_KEY: 'https://portcast.io/',
+  GLOBAL_FISHING_WATCH_API_KEY: 'https://globalfishingwatch.org/our-apis/',
+  ELECTRICITY_MAPS_API_KEY: 'https://api-portal.electricitymaps.com/',
+  SENTINEL_HUB_CLIENT_ID: 'https://apps.sentinel-hub.com/dashboard/#/account/settings',
+  SENTINEL_HUB_CLIENT_SECRET: 'https://apps.sentinel-hub.com/dashboard/#/account/settings',
+  WAQI_API_TOKEN: 'https://aqicn.org/data-platform/token/',
+  GLOBAL_FOREST_WATCH_API_KEY: 'https://www.globalforestwatch.org/',
+  LIVEUAMAP_API_KEY: 'https://liveuamap.com/en/developers',
+  WHALE_ALERT_API_KEY: 'https://whale-alert.io/pricing',
+  AIRFRAMES_API_KEY: 'https://airframes.io/about',
+  GITHUB_TOKEN: 'https://github.com/settings/tokens',
 };
 
 export const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
@@ -29,6 +40,8 @@ export const PLAINTEXT_KEYS = new Set<RuntimeSecretKey>([
   'OLLAMA_MODEL',
   'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL',
+  'SENTINEL_HUB_CLIENT_ID',
+  'GITHUB_TOKEN',
 ]);
 
 export const MASKED_SENTINEL = '__WM_MASKED__';
@@ -58,6 +71,17 @@ export const HUMAN_LABELS: Record<RuntimeSecretKey, string> = {
   WTO_API_KEY: 'WTO API Key',
   AVIATIONSTACK_API: 'AviationStack API Key',
   ICAO_API_KEY: 'ICAO NOTAM API Key',
+  PORTCAST_API_KEY: 'Portcast API Key',
+  GLOBAL_FISHING_WATCH_API_KEY: 'Global Fishing Watch API Key',
+  ELECTRICITY_MAPS_API_KEY: 'Electricity Maps API Key',
+  SENTINEL_HUB_CLIENT_ID: 'Sentinel Hub Client ID',
+  SENTINEL_HUB_CLIENT_SECRET: 'Sentinel Hub Client Secret',
+  WAQI_API_TOKEN: 'WAQI API Token',
+  GLOBAL_FOREST_WATCH_API_KEY: 'Global Forest Watch API Key',
+  LIVEUAMAP_API_KEY: 'Liveuamap API Key',
+  WHALE_ALERT_API_KEY: 'Whale Alert API Key',
+  AIRFRAMES_API_KEY: 'Airframes API Key',
+  GITHUB_TOKEN: 'GitHub Personal Access Token',
 };
 
 export interface SettingsCategory {
@@ -75,21 +99,31 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: 'economy',
     label: 'Economic & Energy',
-    features: ['economicFred', 'energyEia', 'supplyChain'],
+    features: ['economicFred', 'energyEia', 'supplyChain', 'electricityMaps'],
   },
   {
     id: 'markets',
     label: 'Markets & Trade',
-    features: ['finnhubMarkets', 'wtoTrade'],
+    features: ['finnhubMarkets', 'wtoTrade', 'whaleAlertMarkets'],
   },
   {
     id: 'security',
     label: 'Security & Threats',
-    features: ['internetOutages', 'acledConflicts', 'ucdpConflicts', 'abuseChThreatIntel', 'alienvaultOtxThreatIntel', 'abuseIpdbThreatIntel'],
+    features: ['internetOutages', 'acledConflicts', 'ucdpConflicts', 'liveuamapConflicts', 'abuseChThreatIntel', 'alienvaultOtxThreatIntel', 'abuseIpdbThreatIntel'],
   },
   {
     id: 'tracking',
     label: 'Tracking & Sensing',
-    features: ['aisRelay', 'openskyRelay', 'wingbitsEnrichment', 'nasaFirms', 'aviationStack', 'icaoNotams', 'newsPerFeedFallback'],
+    features: ['aisRelay', 'openskyRelay', 'wingbitsEnrichment', 'nasaFirms', 'aviationStack', 'icaoNotams', 'portcastMaritime', 'globalFishingWatch', 'airframesMilitary', 'newsPerFeedFallback'],
+  },
+  {
+    id: 'climate',
+    label: 'Climate & Environment',
+    features: ['sentinelHubClimate', 'waqiAirQuality', 'globalForestWatch'],
+  },
+  {
+    id: 'research',
+    label: 'Research & Intelligence',
+    features: ['githubResearch'],
   },
 ];

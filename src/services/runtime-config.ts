@@ -25,7 +25,18 @@ export type RuntimeSecretKey =
   | 'WORLDMONITOR_API_KEY'
   | 'WTO_API_KEY'
   | 'AVIATIONSTACK_API'
-  | 'ICAO_API_KEY';
+  | 'ICAO_API_KEY'
+  | 'PORTCAST_API_KEY'
+  | 'GLOBAL_FISHING_WATCH_API_KEY'
+  | 'ELECTRICITY_MAPS_API_KEY'
+  | 'SENTINEL_HUB_CLIENT_ID'
+  | 'SENTINEL_HUB_CLIENT_SECRET'
+  | 'WAQI_API_TOKEN'
+  | 'GLOBAL_FOREST_WATCH_API_KEY'
+  | 'LIVEUAMAP_API_KEY'
+  | 'WHALE_ALERT_API_KEY'
+  | 'AIRFRAMES_API_KEY'
+  | 'GITHUB_TOKEN';
 
 export type RuntimeFeatureId =
   | 'aiGroq'
@@ -48,7 +59,17 @@ export type RuntimeFeatureId =
   | 'newsPerFeedFallback'
   | 'aviationStack'
   | 'ucdpConflicts'
-  | 'icaoNotams';
+  | 'icaoNotams'
+  | 'portcastMaritime'
+  | 'globalFishingWatch'
+  | 'electricityMaps'
+  | 'sentinelHubClimate'
+  | 'waqiAirQuality'
+  | 'globalForestWatch'
+  | 'liveuamapConflicts'
+  | 'whaleAlertMarkets'
+  | 'airframesMilitary'
+  | 'githubResearch';
 
 export interface RuntimeFeatureDefinition {
   id: RuntimeFeatureId;
@@ -99,6 +120,16 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   newsPerFeedFallback: false,
   aviationStack: true,
   icaoNotams: true,
+  portcastMaritime: true,
+  globalFishingWatch: true,
+  electricityMaps: true,
+  sentinelHubClimate: true,
+  waqiAirQuality: true,
+  globalForestWatch: true,
+  liveuamapConflicts: true,
+  whaleAlertMarkets: true,
+  airframesMilitary: true,
+  githubResearch: true,
 };
 
 export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
@@ -252,6 +283,76 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     description: 'Airport closure detection for MENA airports from ICAO NOTAM data service.',
     requiredSecrets: ['ICAO_API_KEY'],
     fallback: 'Closures detected only via AviationStack flight cancellation data.',
+  },
+  {
+    id: 'portcastMaritime',
+    name: 'Portcast port congestion',
+    description: 'Real-time port congestion and vessel dwell-time data from Portcast.',
+    requiredSecrets: ['PORTCAST_API_KEY'],
+    fallback: 'Port congestion data unavailable; vessel positions from AIS only.',
+  },
+  {
+    id: 'globalFishingWatch',
+    name: 'Global Fishing Watch SAR detections',
+    description: 'Synthetic-aperture radar vessel detections and fishing activity from Global Fishing Watch.',
+    requiredSecrets: ['GLOBAL_FISHING_WATCH_API_KEY'],
+    fallback: 'SAR detections unavailable; maritime panel shows AIS data only.',
+  },
+  {
+    id: 'electricityMaps',
+    name: 'Electricity Maps grid status',
+    description: 'Real-time power-breakdown and carbon-intensity data per grid zone from Electricity Maps.',
+    requiredSecrets: ['ELECTRICITY_MAPS_API_KEY'],
+    fallback: 'Grid status panel shows estimated data only.',
+  },
+  {
+    id: 'sentinelHubClimate',
+    name: 'Sentinel Hub pollution grid',
+    description: 'Satellite-derived NO₂ and aerosol pollution grids from Sentinel Hub (ESA Copernicus).',
+    requiredSecrets: ['SENTINEL_HUB_CLIENT_ID', 'SENTINEL_HUB_CLIENT_SECRET'],
+    fallback: 'Pollution grid unavailable; air quality from WAQI stations only.',
+  },
+  {
+    id: 'waqiAirQuality',
+    name: 'WAQI air quality readings',
+    description: 'Real-time AQI station data across global bounding boxes from the World Air Quality Index API.',
+    requiredSecrets: ['WAQI_API_TOKEN'],
+    fallback: 'Air quality panel shows no station data.',
+  },
+  {
+    id: 'globalForestWatch',
+    name: 'Global Forest Watch deforestation alerts',
+    description: 'Near-real-time deforestation and forest-loss alerts from Global Forest Watch.',
+    requiredSecrets: ['GLOBAL_FOREST_WATCH_API_KEY'],
+    fallback: 'Deforestation alerts unavailable.',
+  },
+  {
+    id: 'liveuamapConflicts',
+    name: 'Liveuamap conflict incidents',
+    description: 'Verified conflict and incident reports from the Liveuamap developer API.',
+    requiredSecrets: ['LIVEUAMAP_API_KEY'],
+    fallback: 'Falls back to ACLED and UCDP conflict data.',
+  },
+  {
+    id: 'whaleAlertMarkets',
+    name: 'Whale Alert large transfers',
+    description: 'Large on-chain cryptocurrency transfer monitoring via Whale Alert API.',
+    requiredSecrets: ['WHALE_ALERT_API_KEY'],
+    fallback: 'Whale transfer feed unavailable.',
+  },
+  {
+    id: 'airframesMilitary',
+    name: 'Airframes ACARS messages',
+    description: 'Military and civil ACARS message feed from Airframes.io for aviation intelligence.',
+    requiredSecrets: ['AIRFRAMES_API_KEY'],
+    fallback: 'ACARS message feed unavailable.',
+  },
+  {
+    id: 'githubResearch',
+    name: 'GitHub repository momentum',
+    description: 'GitHub API access for tracking repository growth, stars, and technology adoption trends.',
+    requiredSecrets: ['GITHUB_TOKEN'],
+    fallback: 'Repository momentum data unavailable; GitHub API rate limits apply without a token.',
   },
 ];
 
