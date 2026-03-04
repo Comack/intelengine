@@ -51,6 +51,105 @@ npm run desktop:build:tech
 
 The output AppImage will be in `src-tauri/target/release/bundle/appimage/`.
 
+### One-Time linuxdeploy Setup (Arch Linux only)
+
+On Arch Linux, Tauri's bundled linuxdeploy AppImage needs a workaround due to two issues:
+1. The bundled `strip` (GNU Binutils 2.35) can't handle modern ELF `.relr.dyn` sections from Arch's newer toolchain.
+2. GTK plugin's library search finds VMware/flatpak copies of GTK libs that require EOL `libffi.so.7`.
+
+**Step 1: Download and cache the real linuxdeploy AppImage**
+
+```bash
+mkdir -p ~/.cache/tauri
+# Download Tauri's expected linuxdeploy version
+wget -O ~/.cache/tauri/linuxdeploy-x86_64-real.AppImage \
+  "https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage"
+chmod +x ~/.cache/tauri/linuxdeploy-x86_64-real.AppImage
+```
+
+**Step 2: Pre-extract and patch the AppImage**
+
+```bash
+# Extract to persistent directory
+~/.cache/tauri/linuxdeploy-x86_64-real.AppImage --appimage-extract-and-run --appimage-extract 2>/dev/null || true
+mv squashfs-root ~/.cache/tauri/linuxdeploy-extracted
+
+# Replace bundled strip with system strip (clears AppImage's LD_LIBRARY_PATH)
+cat > ~/.cache/tauri/linuxdeploy-extracted/usr/bin/strip << 'EOF'
+#!/bin/sh
+exec env LD_LIBRARY_PATH="" /usr/bin/strip "$@"
+EOF
+chmod +x ~/.cache/tauri/linuxdeploy-extracted/usr/bin/strip
+
+# Fix GTK plugin: add -maxdepth 1 to lib search (prevents VMware lib contamination)
+sed -i 's|find /usr/lib -name "libgobject-|find /usr/lib -maxdepth 1 -name "libgobject-|' \
+  ~/.cache/tauri/linuxdeploy-plugin-gtk.sh
+
+# Fix GTK plugin: tolerate "File exists" on re-runs
+sed -i 's|ln $verbose -s |ln $verbose -sf |g' ~/.cache/tauri/linuxdeploy-plugin-gtk.sh
+```
+
+**Step 3: Build the ELF stub wrapper**
+
+Tauri writes null bytes at ELF offset 8 of the cached AppImage (to patch the arch field). A shell script shebang would be corrupted; a compiled ELF binary is not:
+
+```bash
+cat > /tmp/linuxdeploy-stub.c << 'CEOF'
+#include <unistd.h>
+#include <stdlib.h>
+int main(int argc, char **argv) {
+    const char *bash = "/bin/bash";
+    const char *wrapper = "/home/YOUR_USER/.cache/tauri/linuxdeploy-real-wrapper.sh";
+    char **newargv = (char **)malloc((argc + 3) * sizeof(char *));
+    if (!newargv) return 1;
+    newargv[0] = (char *)bash;
+    newargv[1] = (char *)wrapper;
+    for (int i = 1; i < argc; i++) newargv[i + 1] = argv[i];
+    newargv[argc + 1] = NULL;
+    execv(bash, newargv);
+    return 1;
+}
+CEOF
+# Replace YOUR_USER with your actual username
+sed -i "s/YOUR_USER/$USER/" /tmp/linuxdeploy-stub.c
+gcc -O2 -o ~/.cache/tauri/linuxdeploy-x86_64.AppImage /tmp/linuxdeploy-stub.c
+chmod +x ~/.cache/tauri/linuxdeploy-x86_64.AppImage
+```
+
+**Step 4: Create the real wrapper script**
+
+```bash
+cat > ~/.cache/tauri/linuxdeploy-real-wrapper.sh << 'EOF'
+#!/bin/bash
+set -e
+EXTRACT_DIR="$HOME/.cache/tauri/linuxdeploy-extracted"
+REAL_APPIMAGE="$HOME/.cache/tauri/linuxdeploy-x86_64-real.AppImage"
+# Filter --appimage-extract-and-run (not needed; already extracted)
+ARGS=()
+for arg in "$@"; do
+    [[ "$arg" == "--appimage-extract-and-run" ]] && continue
+    ARGS+=("$arg")
+done
+# Ensure plugins are findable
+export PATH="$HOME/.cache/tauri:$PATH"
+# Compute LDAI_OUTPUT if OUTPUT points to a directory
+if [ -n "$OUTPUT" ] && [ -d "$OUTPUT" ]; then
+    APPDIR=""
+    for a in "${ARGS[@]}"; do
+        if [[ "$a" == *.AppDir ]]; then APPDIR="$a"; fi
+    done
+    if [ -n "$APPDIR" ]; then
+        APPNAME=$(basename "$APPDIR" .AppDir)
+        export LDAI_OUTPUT="$OUTPUT/${APPNAME}-x86_64.AppImage"
+    fi
+fi
+exec "$EXTRACT_DIR/AppRun" "${ARGS[@]}"
+EOF
+chmod +x ~/.cache/tauri/linuxdeploy-real-wrapper.sh
+```
+
+After this one-time setup, `npm run desktop:build:full` will work on Arch Linux.
+
 ## Packaging for Arch
 
 Convert the built AppImage to a pacman package:
