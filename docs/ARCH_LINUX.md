@@ -41,12 +41,37 @@ npm install
 
 # Install proto toolchain (requires Go)
 make install
+```
 
-# Build desktop app (full variant)
+### Native Package Build (Recommended on Arch)
+
+The native `.deb` → `.pkg.tar.zst` path requires no linuxdeploy and avoids all
+AppImage-related compatibility issues on modern Arch/CachyOS:
+
+```bash
+# Build + package in one command (deb → Arch .pkg.tar.zst)
+npm run desktop:package:linux:full
+
+# Or other variants:
+npm run desktop:package:linux:tech
+npm run desktop:package:linux:finance
+```
+
+Output files:
+- `.deb`: `src-tauri/target/release/bundle/deb/World Monitor_<ver>_amd64.deb`
+- `.pkg.tar.zst`: `src-tauri/target/release/bundle/arch/world-monitor-<ver>-1-x86_64.pkg.tar.zst`
+
+### AppImage Build
+
+The AppImage build uses Tauri's linuxdeploy toolchain and requires a one-time
+setup on Arch Linux (see below). Use this for AppImage distribution only:
+
+```bash
+# Build AppImage (requires linuxdeploy setup below)
 npm run desktop:build:full
 
-# Build tech variant
-npm run desktop:build:tech
+# Or explicitly request AppImage from the package script:
+npm run desktop:package -- --os linux --variant full --bundle appimage
 ```
 
 The output AppImage will be in `src-tauri/target/release/bundle/appimage/`.
@@ -152,17 +177,32 @@ After this one-time setup, `npm run desktop:build:full` will work on Arch Linux.
 
 ## Packaging for Arch
 
-Convert the built AppImage to a pacman package:
+### Via native deb (recommended)
 
-```bash
-# After building, create .pkg.tar.zst
-npm run desktop:package:arch
-```
+`npm run desktop:package:linux:full` does everything in one command:
+builds the `.deb` and automatically converts it to `.pkg.tar.zst`.
 
 Install the resulting package:
 
 ```bash
-sudo pacman -U world-monitor-*.pkg.tar.zst
+sudo pacman -U src-tauri/target/release/bundle/arch/world-monitor-*.pkg.tar.zst
+```
+
+### Manual conversion of an existing deb
+
+If you already have a `.deb` from a previous build:
+
+```bash
+node scripts/arch-package.mjs --variant full
+```
+
+### Via AppImage (legacy)
+
+```bash
+# Build AppImage first (requires linuxdeploy setup above)
+npm run desktop:build:full
+# Convert to Arch package
+npm run desktop:package:arch
 ```
 
 ## Running the AppImage

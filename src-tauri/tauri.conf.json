@@ -40,7 +40,8 @@
       "dmg",
       "nsis",
       "msi",
-      "appimage"
+      "appimage",
+      "deb"
     ],
     "category": "Productivity",
     "shortDescription": "World Monitor desktop app (supports World and Tech variants)",
@@ -73,6 +74,19 @@
     "linux": {
       "appimage": {
         "bundleMediaFramework": true
+      },
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libglib2.0-0",
+          "libgdk-pixbuf-2.0-0",
+          "libgtk-3-0",
+          "libgstreamer1.0-0",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-bad",
+          "libglib-networking"
+        ]
       }
     }
   }

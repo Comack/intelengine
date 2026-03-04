@@ -20,20 +20,20 @@ const skipNodeRuntime = hasFlag('skip-node-runtime');
 const showHelp = hasFlag('help') || hasFlag('h');
 
 const validOs = new Set(['macos', 'windows', 'linux']);
-const validVariants = new Set(['full', 'tech']);
+const validVariants = new Set(['full', 'tech', 'finance']);
 
 if (showHelp) {
-  console.log('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech> [--sign] [--skip-node-runtime]');
+  console.log('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--skip-node-runtime] [--bundle <appimage|deb>]');
   process.exit(0);
 }
 
 if (!validOs.has(os)) {
-  console.error('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech> [--sign] [--skip-node-runtime]');
+  console.error('Usage: npm run desktop:package -- --os <macos|windows|linux> --variant <full|tech|finance> [--sign] [--skip-node-runtime] [--bundle <appimage|deb>]');
   process.exit(1);
 }
 
 if (!validVariants.has(variant)) {
-  console.error('Invalid variant. Use --variant full or --variant tech.');
+  console.error('Invalid variant. Use --variant full, --variant tech, or --variant finance.');
   process.exit(1);
 }
 
@@ -48,7 +48,17 @@ if ((syncVersionsResult.status ?? 1) !== 0) {
   process.exit(syncVersionsResult.status ?? 1);
 }
 
-const bundles = os === 'macos' ? 'app,dmg' : os === 'linux' ? 'appimage' : 'nsis,msi';
+// --bundle flag overrides per-OS default.
+// Linux default is deb (native package, no linuxdeploy required).
+// Use --bundle appimage to produce an AppImage instead.
+const bundleOverride = getArg('bundle');
+const bundles = bundleOverride
+  ? bundleOverride
+  : os === 'macos'
+    ? 'app,dmg'
+    : os === 'linux'
+      ? 'deb'
+      : 'nsis,msi';
 const env = {
   ...process.env,
   VITE_VARIANT: variant,
@@ -66,6 +76,8 @@ if (!existsSync(tauriBin)) {
 
 if (variant === 'tech') {
   cliArgs.push('--config', 'src-tauri/tauri.tech.conf.json');
+} else if (variant === 'finance') {
+  cliArgs.push('--config', 'src-tauri/tauri.finance.conf.json');
 }
 
 const resolveNodeTarget = () => {
@@ -148,4 +160,28 @@ if (result.error) {
   process.exit(1);
 }
 
-process.exit(result.status ?? 1);
+if ((result.status ?? 1) !== 0) {
+  process.exit(result.status ?? 1);
+}
+
+// On Linux deb builds, auto-convert to Arch .pkg.tar.zst if bsdtar and ar are available.
+if (os === 'linux' && bundles.includes('deb')) {
+  const hasBsdtar = spawnSync('which', ['bsdtar'], { stdio: 'ignore' }).status === 0;
+  const hasAr = spawnSync('which', ['ar'], { stdio: 'ignore' }).status === 0;
+  if (hasBsdtar && hasAr) {
+    console.log('\n[desktop-package] deb built — converting to Arch .pkg.tar.zst …');
+    const archResult = spawnSync(process.execPath, ['scripts/arch-package.mjs', '--variant', variant], {
+      stdio: 'inherit',
+    });
+    if (archResult.error) {
+      console.warn(`[desktop-package] arch-package.mjs failed to start: ${archResult.error.message}`);
+    } else if ((archResult.status ?? 1) !== 0) {
+      console.warn(`[desktop-package] arch-package.mjs exited with status ${archResult.status} (non-fatal)`);
+    }
+  } else {
+    console.log('[desktop-package] bsdtar/ar not found — skipping Arch package conversion.');
+    console.log('[desktop-package] Run  node scripts/arch-package.mjs --variant ' + variant + '  manually.');
+  }
+}
+
+process.exit(0);
