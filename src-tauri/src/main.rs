@@ -29,7 +29,7 @@ const MENU_HELP_GITHUB_ID: &str = "help.github";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
-const SUPPORTED_SECRET_KEYS: [&str; 25] = [
+const SUPPORTED_SECRET_KEYS: [&str; 36] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "FRED_API_KEY",
@@ -55,6 +55,17 @@ const SUPPORTED_SECRET_KEYS: [&str; 25] = [
     "WTO_API_KEY",
     "AVIATIONSTACK_API",
     "ICAO_API_KEY",
+    "PORTCAST_API_KEY",
+    "GLOBAL_FISHING_WATCH_API_KEY",
+    "ELECTRICITY_MAPS_API_KEY",
+    "SENTINEL_HUB_CLIENT_ID",
+    "SENTINEL_HUB_CLIENT_SECRET",
+    "WAQI_API_TOKEN",
+    "GLOBAL_FOREST_WATCH_API_KEY",
+    "LIVEUAMAP_API_KEY",
+    "WHALE_ALERT_API_KEY",
+    "AIRFRAMES_API_KEY",
+    "GITHUB_TOKEN",
 ];
 
 #[derive(Default)]

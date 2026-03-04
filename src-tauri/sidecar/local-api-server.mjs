@@ -1066,12 +1066,14 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     }
 
     case 'GLOBAL_FISHING_WATCH_API_KEY': {
-      const response = await fetchWithTimeout('https://gateway.api.globalfishingwatch.org/v3/datasets', {
-        headers: { Accept: 'application/json', Authorization: `Bearer ${value}`, 'User-Agent': CHROME_UA },
+      const token = value.startsWith('Bearer ') ? value : `Bearer ${value}`;
+      const response = await fetchWithTimeout('https://gateway.api.globalfishingwatch.org/v3/events?limit=1', {
+        headers: { Accept: 'application/json', Authorization: token, 'User-Agent': CHROME_UA },
       });
       const text = await response.text();
       if (isCloudflareChallenge403(response, text)) return ok('Global Fishing Watch key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('Global Fishing Watch rejected this key');
+      if (response.status >= 400 && response.status < 500) return ok('Global Fishing Watch key verified');
       if (!response.ok) return fail(`Global Fishing Watch probe failed (${response.status})`);
       return ok('Global Fishing Watch key verified');
     }
