@@ -16434,3 +16434,5 @@ body.has-breaking-alert .panels-grid {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.forensics-trace-svg { max-width: 100%; height: auto; }
+

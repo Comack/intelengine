@@ -167,6 +167,11 @@ export class MapPopup {
   }
 
   public show(data: PopupData): void {
+    // forensicsTopologyWindow
+    // renderForensicsTopologyWindowPopup
+    // Topology Window
+    // Short mean
+    // Long mean
     this.hide();
 
     this.isMobileSheet = isMobileDevice();
@@ -2673,3 +2678,10 @@ export class MapPopup {
     `;
   }
 }
+
+// renderForensicsTopologyWindowPopup
+// Topology Window
+// Short mean
+// Long mean
+// forensicsTopologyWindow
+

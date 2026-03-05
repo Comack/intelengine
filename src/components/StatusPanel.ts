@@ -23,23 +23,28 @@ const TECH_FEEDS = new Set([
   'Unicorns', 'Accelerators', 'Security', 'Policy', 'Layoffs',
   'Finance', 'Hardware', 'Cloud', 'Dev', 'Tech Events', 'Crypto',
   'Markets', 'Events', 'Producthunt', 'Funding', 'Polymarket',
-  'Cyber Threats'
+  'Cyber Threats', 'GitHub Momentum', 'Social Trends'
 ]);
 const TECH_APIS = new Set([
   'RSS Proxy', 'Finnhub', 'CoinGecko', 'Tech Events API', 'Service Status', 'Polymarket',
-  'Cyber Threats API'
+  'Cyber Threats API', 'GitHub'
 ]);
 
 const WORLD_FEEDS = new Set([
   'Politics', 'Middleeast', 'Tech', 'Ai', 'Finance',
   'Gov', 'Intel', 'Layoffs', 'Thinktanks', 'Energy',
   'Polymarket', 'Weather', 'NetBlocks', 'Shipping', 'Military',
-  'Cyber Threats', 'GPS Jam'
+  'Cyber Threats', 'GPS Jam', 'SAR Detections', 'Port Congestion',
+  'Grid Stress', 'BGP Anomalies', 'Radiation', 'Air Quality',
+  'Deforestation', 'ACARS Messages', 'Whale Transfers', 'Nav Warnings',
+  'Liveuamap', 'Pollution Grid', 'GitHub Momentum', 'Social Trends'
 ]);
 const WORLD_APIS = new Set([
   'RSS2JSON', 'Finnhub', 'CoinGecko', 'Polymarket', 'USGS', 'FRED',
   'AISStream', 'GDELT Doc', 'EIA', 'USASpending', 'PizzINT', 'FIRMS',
-  'Cyber Threats API', 'BIS', 'WTO', 'SupplyChain'
+  'Cyber Threats API', 'BIS', 'WTO', 'SupplyChain',
+  'Portcast', 'Global Fishing Watch', 'Electricity Maps', 'Sentinel Hub',
+  'WAQI', 'Global Forest Watch', 'Liveuamap', 'Whale Alert', 'Airframes', 'GitHub'
 ]);
 
 import { t } from '../services/i18n';

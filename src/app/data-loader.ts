@@ -69,22 +69,20 @@ import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
 import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, isInLearningMode } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
-import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
+import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents, fetchConflictIncidents, type ConflictIncident } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
-import { fetchClimateAnomalies, fetchAirQualityReadings, fetchDeforestationAlerts } from '@/services/climate';
-import { fetchSarDetections, fetchPortCongestion, fetchNavWarnings } from '@/services/maritime';
-import { fetchGridStatus, fetchRoutingAnomalies, fetchRadiationReadings } from '@/services/infrastructure';
+import { fetchClimateAnomalies, fetchAirQualityReadings, fetchDeforestationAlerts, fetchPollutionGrid, type AirQualityReading, type DeforestationAlert, type PollutionGridTile } from '@/services/climate';
+import { fetchSarDetections, fetchPortCongestion, fetchNavWarnings, type SarDarkShip, type NavigationalWarning } from '@/services/maritime';
+import { fetchGridStatus, fetchRoutingAnomalies, fetchRadiationReadings, type GridZone, type RoutingAnomaly, type RadiationReading } from '@/services/infrastructure';
 import { fetchWhaleTransfers } from '@/services/market';
 import { fetchAcarsMessages } from '@/services/military';
+import { fetchRepoMomentum, fetchSocialTrends } from '@/services/research';
 import { getSpaceWeather } from '@/services/space';
 import { ForensicsSignalBuilder } from '@/services/forensics-signal-builder';
 import { runForensicsShadow, listForensicsRuns, getForensicsPolicy, getForensicsTopologySummary } from '@/services/forensics';
 import type { ForensicsPanel } from '@/components/ForensicsPanel';
 import type { AisDisruptionEvent } from '@/types';
-import type { SarDarkShip } from '@/services/maritime';
-import type { GridZone, RoutingAnomaly } from '@/services/infrastructure';
 import type { WhaleTransfer } from '@/services/market';
-import type { AirQualityReading } from '@/services/climate';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
 import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
@@ -189,15 +187,23 @@ export class DataLoaderManager implements AppModule {
   private cachedGridZones: GridZone[] = [];
   private cachedRoutingAnomalies: RoutingAnomaly[] = [];
   private cachedAirQualityReadings: AirQualityReading[] = [];
+  private cachedRadiationReadings: RadiationReading[] = [];
+  private cachedDeforestationAlerts: DeforestationAlert[] = [];
+  private cachedConflictIncidents: ConflictIncident[] = [];
+  private cachedPollutionGrid: PollutionGridTile[] = [];
   private cachedAcarsMessages: Record<string, unknown>[] = [];
   private cachedWhaleTransfers: WhaleTransfer[] = [];
+  private cachedNavWarnings: NavigationalWarning[] = [];
   private sarFetchedAt = 0;
   private portFetchedAt = 0;
   private gridFetchedAt = 0;
   private routingFetchedAt = 0;
   private aqiFetchedAt = 0;
+  private radiationFetchedAt = 0;
+  private deforestationFetchedAt = 0;
   private acarsFetchedAt = 0;
   private whaleFetchedAt = 0;
+  private navFetchedAt = 0;
   private readonly applyTimeRangeFilterToNewsPanelsDebounced = debounce(() => {
     this.applyTimeRangeFilterToNewsPanels();
   }, 120);
@@ -464,6 +470,12 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'iranAttacks':
           await this.loadIranEvents();
+          break;
+        case 'conflictIncidents':
+          await this.loadConflictIncidents();
+          break;
+        case 'pollutionGrid':
+          await this.loadPollutionGrid();
           break;
         case 'ucdpEvents':
         case 'displacement':
@@ -2374,8 +2386,13 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('sarDetections', data.length > 0);
       signalAggregator.ingestSarDetections(data);
       dataFreshness.recordUpdate('sar_detections', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('SAR Detections', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('Global Fishing Watch', { status: 'ok' });
+    } catch (error) {
       this.ctx.map?.setLayerReady('sarDetections', false);
+      this.ctx.statusPanel?.updateFeed('SAR Detections', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('Global Fishing Watch', { status: 'error' });
+      dataFreshness.recordError('sar_detections', String(error));
     }
   }
 
@@ -2388,8 +2405,13 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('portCongestion', data.length > 0);
       signalAggregator.ingestPortCongestion(data);
       dataFreshness.recordUpdate('port_congestion', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('Port Congestion', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('Portcast', { status: 'ok' });
+    } catch (error) {
       this.ctx.map?.setLayerReady('portCongestion', false);
+      this.ctx.statusPanel?.updateFeed('Port Congestion', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('Portcast', { status: 'error' });
+      dataFreshness.recordError('port_congestion', String(error));
     }
   }
 
@@ -2402,8 +2424,13 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('gridZones', data.length > 0);
       signalAggregator.ingestGridZones(data);
       dataFreshness.recordUpdate('grid_zones', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('Grid Stress', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('Electricity Maps', { status: 'ok' });
+    } catch (error) {
       this.ctx.map?.setLayerReady('gridZones', false);
+      this.ctx.statusPanel?.updateFeed('Grid Stress', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('Electricity Maps', { status: 'error' });
+      dataFreshness.recordError('grid_zones', String(error));
     }
   }
 
@@ -2416,20 +2443,28 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('routingAnomalies', data.length > 0);
       signalAggregator.ingestRoutingAnomalies(data);
       dataFreshness.recordUpdate('routing_anomalies', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('BGP Anomalies', { status: 'ok', itemCount: data.length });
+    } catch (error) {
       this.ctx.map?.setLayerReady('routingAnomalies', false);
+      this.ctx.statusPanel?.updateFeed('BGP Anomalies', { status: 'error', errorMessage: String(error) });
+      dataFreshness.recordError('routing_anomalies', String(error));
     }
   }
 
   async loadRadiationReadings(): Promise<void> {
     try {
       const data = await fetchRadiationReadings();
+      this.cachedRadiationReadings = data;
+      this.radiationFetchedAt = Date.now();
       this.ctx.map?.setRadiationReadings(data);
       this.ctx.map?.setLayerReady('radiationReadings', data.length > 0);
       signalAggregator.ingestRadiationReadings(data);
       dataFreshness.recordUpdate('radiation_readings', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('Radiation', { status: 'ok', itemCount: data.length });
+    } catch (error) {
       this.ctx.map?.setLayerReady('radiationReadings', false);
+      this.ctx.statusPanel?.updateFeed('Radiation', { status: 'error', errorMessage: String(error) });
+      dataFreshness.recordError('radiation_readings', String(error));
     }
   }
 
@@ -2442,20 +2477,32 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('airQuality', data.length > 0);
       signalAggregator.ingestAirQualityReadings(data);
       dataFreshness.recordUpdate('air_quality', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('Air Quality', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('WAQI', { status: 'ok' });
+    } catch (error) {
       this.ctx.map?.setLayerReady('airQuality', false);
+      this.ctx.statusPanel?.updateFeed('Air Quality', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('WAQI', { status: 'error' });
+      dataFreshness.recordError('air_quality', String(error));
     }
   }
 
   async loadDeforestationAlerts(): Promise<void> {
     try {
       const data = await fetchDeforestationAlerts();
+      this.cachedDeforestationAlerts = data;
+      this.deforestationFetchedAt = Date.now();
       this.ctx.map?.setDeforestationAlerts(data);
       this.ctx.map?.setLayerReady('deforestationAlerts', data.length > 0);
       signalAggregator.ingestDeforestationAlerts(data);
       dataFreshness.recordUpdate('deforestation_alerts', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('Deforestation', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('Global Forest Watch', { status: 'ok' });
+    } catch (error) {
       this.ctx.map?.setLayerReady('deforestationAlerts', false);
+      this.ctx.statusPanel?.updateFeed('Deforestation', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('Global Forest Watch', { status: 'error' });
+      dataFreshness.recordError('deforestation_alerts', String(error));
     }
   }
 
@@ -2468,8 +2515,13 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('acarsMessages', data.length > 0);
       signalAggregator.ingestAcarsMessages(data);
       dataFreshness.recordUpdate('acars_messages', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('ACARS Messages', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('Airframes', { status: 'ok' });
+    } catch (error) {
       this.ctx.map?.setLayerReady('acarsMessages', false);
+      this.ctx.statusPanel?.updateFeed('ACARS Messages', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('Airframes', { status: 'error' });
+      dataFreshness.recordError('acars_messages', String(error));
     }
   }
 
@@ -2482,20 +2534,93 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('whaleTransfers', data.length > 0);
       signalAggregator.ingestWhaleTransfers(data);
       dataFreshness.recordUpdate('whale_transfers', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('Whale Transfers', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('Whale Alert', { status: 'ok' });
+    } catch (error) {
       this.ctx.map?.setLayerReady('whaleTransfers', false);
+      this.ctx.statusPanel?.updateFeed('Whale Transfers', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('Whale Alert', { status: 'error' });
+      dataFreshness.recordError('whale_transfers', String(error));
     }
   }
 
   async loadNavWarnings(): Promise<void> {
     try {
       const data = await fetchNavWarnings();
+      this.cachedNavWarnings = data;
+      this.navFetchedAt = Date.now();
       this.ctx.map?.setNavWarnings(data);
       this.ctx.map?.setLayerReady('navWarnings', data.length > 0);
       signalAggregator.ingestNavWarnings(data);
       dataFreshness.recordUpdate('nav_warnings', data.length);
-    } catch {
+      this.ctx.statusPanel?.updateFeed('Nav Warnings', { status: 'ok', itemCount: data.length });
+    } catch (error) {
       this.ctx.map?.setLayerReady('navWarnings', false);
+      this.ctx.statusPanel?.updateFeed('Nav Warnings', { status: 'error', errorMessage: String(error) });
+      dataFreshness.recordError('nav_warnings', String(error));
+    }
+  }
+
+  async loadConflictIncidents(): Promise<void> {
+    try {
+      const data = await fetchConflictIncidents();
+      this.cachedConflictIncidents = data;
+      this.ctx.map?.setConflictIncidents(data);
+      this.ctx.map?.setLayerReady('conflictIncidents', data.length > 0);
+      signalAggregator.ingestConflictIncidents(data);
+      dataFreshness.recordUpdate('conflict_incidents', data.length);
+      this.ctx.statusPanel?.updateFeed('Liveuamap', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('Liveuamap', { status: 'ok' });
+    } catch (error) {
+      this.ctx.map?.setLayerReady('conflictIncidents', false);
+      this.ctx.statusPanel?.updateFeed('Liveuamap', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('Liveuamap', { status: 'error' });
+      dataFreshness.recordError('conflict_incidents', String(error));
+    }
+  }
+
+  async loadPollutionGrid(): Promise<void> {
+    try {
+      // Use a global bounding box for initial load or get from map
+      const data = await fetchPollutionGrid(-60, 80, -180, 180);
+      this.cachedPollutionGrid = data;
+      this.ctx.map?.setPollutionGrid(data);
+      this.ctx.map?.setLayerReady('pollutionGrid', data.length > 0);
+      signalAggregator.ingestPollutionGrid(data);
+      dataFreshness.recordUpdate('pollution_grid', data.length);
+      this.ctx.statusPanel?.updateFeed('Pollution Grid', { status: 'ok', itemCount: data.length });
+      this.ctx.statusPanel?.updateApi('Sentinel Hub', { status: 'ok' });
+    } catch (error) {
+      this.ctx.map?.setLayerReady('pollutionGrid', false);
+      this.ctx.statusPanel?.updateFeed('Pollution Grid', { status: 'error', errorMessage: String(error) });
+      this.ctx.statusPanel?.updateApi('Sentinel Hub', { status: 'error' });
+      dataFreshness.recordError('pollution_grid', String(error));
+    }
+  }
+
+  async loadRepoMomentum(): Promise<void> {
+    try {
+      const data = await fetchRepoMomentum();
+      signalAggregator.ingestRepoMomentum(data);
+      dataFreshness.recordUpdate('repo_momentum', data.length);
+      this.ctx.statusPanel?.updateApi('GitHub', { status: 'ok' });
+      this.ctx.statusPanel?.updateFeed('GitHub Momentum', { status: 'ok', itemCount: data.length });
+    } catch (error) {
+      this.ctx.statusPanel?.updateApi('GitHub', { status: 'error' });
+      this.ctx.statusPanel?.updateFeed('GitHub Momentum', { status: 'error', errorMessage: String(error) });
+      dataFreshness.recordError('repo_momentum', String(error));
+    }
+  }
+
+  async loadSocialTrends(): Promise<void> {
+    try {
+      const data = await fetchSocialTrends();
+      signalAggregator.ingestSocialTrends(data);
+      dataFreshness.recordUpdate('social_trends', data.length);
+      this.ctx.statusPanel?.updateFeed('Social Trends', { status: 'ok', itemCount: data.length });
+    } catch (error) {
+      this.ctx.statusPanel?.updateFeed('Social Trends', { status: 'error', errorMessage: String(error) });
+      dataFreshness.recordError('social_trends', String(error));
     }
   }
 
@@ -2544,14 +2669,22 @@ export class DataLoaderManager implements AppModule {
         acarsMessages: this.cachedAcarsMessages,
         whaleTransfers: this.cachedWhaleTransfers,
         airQualityReadings: this.cachedAirQualityReadings,
+        radiationReadings: this.cachedRadiationReadings,
+        deforestationAlerts: this.cachedDeforestationAlerts,
+        conflictIncidents: this.cachedConflictIncidents,
+        pollutionGrid: this.cachedPollutionGrid,
+        navWarnings: this.cachedNavWarnings,
         spaceWeather: this.ctx.intelligenceCache.spaceWeather ?? null,
         routingFetchedAt: this.routingFetchedAt,
         gridFetchedAt: this.gridFetchedAt,
         sarFetchedAt: this.sarFetchedAt,
         portFetchedAt: this.portFetchedAt,
+        radiationFetchedAt: this.radiationFetchedAt,
+        deforestationFetchedAt: this.deforestationFetchedAt,
         acarsFetchedAt: this.acarsFetchedAt,
         whaleFetchedAt: this.whaleFetchedAt,
         aqiFetchedAt: this.aqiFetchedAt,
+        navFetchedAt: this.navFetchedAt,
         spaceFetchedAt: this.ctx.intelligenceCache.spaceWeather ? now : 0,
       };
 

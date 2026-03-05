@@ -104,6 +104,46 @@ export interface IranEvent {
   severity: string;
 }
 
+export interface ListConflictIncidentsRequest {
+  limit: number;
+  region: string;
+}
+
+export interface ListConflictIncidentsResponse {
+  incidents: ConflictIncident[];
+}
+
+export interface ConflictIncident {
+  id: string;
+  title: string;
+  description: string;
+  sourceUrl: string;
+  lat: number;
+  lon: number;
+  incidentType: string;
+  createdAt: string;
+  region: string;
+}
+
+export interface ListSituationReportsRequest {
+  limit: number;
+  query: string;
+}
+
+export interface ListSituationReportsResponse {
+  reports: SituationReport[];
+}
+
+export interface SituationReport {
+  id: string;
+  title: string;
+  source: string;
+  url: string;
+  publishedAt: string;
+  summary: string;
+  countries: string[];
+}
+
 export type UcdpViolenceType = "UCDP_VIOLENCE_TYPE_UNSPECIFIED" | "UCDP_VIOLENCE_TYPE_STATE_BASED" | "UCDP_VIOLENCE_TYPE_NON_STATE" | "UCDP_VIOLENCE_TYPE_ONE_SIDED";
 
 export interface FieldViolation {
@@ -258,6 +298,58 @@ export class ConflictServiceClient {
     }
 
     return await resp.json() as ListIranEventsResponse;
+  }
+
+  async listConflictIncidents(req: ListConflictIncidentsRequest, options?: ConflictServiceCallOptions): Promise<ListConflictIncidentsResponse> {
+    let path = "/api/conflict/v1/list-conflict-incidents";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    if (req.region != null && req.region !== "") params.set("region", String(req.region));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListConflictIncidentsResponse;
+  }
+
+  async listSituationReports(req: ListSituationReportsRequest, options?: ConflictServiceCallOptions): Promise<ListSituationReportsResponse> {
+    let path = "/api/conflict/v1/list-situation-reports";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSituationReportsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

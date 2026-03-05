@@ -37,6 +37,16 @@ const TIER_HEADERS: Record<CacheTier, string> = {
 const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/maritime/v1/get-vessel-snapshot': 'no-store',
 
+  '/api/climate/v1/list-air-quality-readings': 'slow',
+  '/api/climate/v1/list-deforestation-alerts': 'slow',
+  '/api/infrastructure/v1/get-grid-status': 'slow',
+  '/api/infrastructure/v1/list-radiation-readings': 'slow',
+  '/api/infrastructure/v1/list-routing-anomalies': 'slow',
+  '/api/maritime/v1/get-port-congestion': 'slow',
+  '/api/maritime/v1/list-sar-detections': 'slow',
+  '/api/market/v1/list-whale-transfers': 'slow',
+  '/api/military/v1/list-acars-messages': 'slow',
+
   '/api/market/v1/list-market-quotes': 'medium',
   '/api/market/v1/list-crypto-quotes': 'medium',
   '/api/market/v1/list-commodity-quotes': 'medium',

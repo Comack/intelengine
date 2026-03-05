@@ -7,6 +7,8 @@ import "worldmonitor/conflict/v1/list_acled_events.proto";
 import "worldmonitor/conflict/v1/list_ucdp_events.proto";
 import "worldmonitor/conflict/v1/get_humanitarian_summary.proto";
 import "worldmonitor/conflict/v1/list_iran_events.proto";
+import "worldmonitor/conflict/v1/list_conflict_incidents.proto";
+import "worldmonitor/conflict/v1/list_situation_reports.proto";
 
 // ConflictService provides APIs for armed conflict data from ACLED, UCDP, and HAPI/HDX.
 service ConflictService {
@@ -30,5 +32,15 @@ service ConflictService {
   // ListIranEvents retrieves scraped conflict events from LiveUAMap Iran.
   rpc ListIranEvents(ListIranEventsRequest) returns (ListIranEventsResponse) {
     option (sebuf.http.config) = {path: "/list-iran-events", method: HTTP_METHOD_GET};
+  }
+
+  // ListConflictIncidents retrieves live conflict incidents from LiveUAMap and other sources.
+  rpc ListConflictIncidents(ListConflictIncidentsRequest) returns (ListConflictIncidentsResponse) {
+    option (sebuf.http.config) = {path: "/list-conflict-incidents", method: HTTP_METHOD_GET};
+  }
+
+  // ListSituationReports retrieves humanitarian situation reports from ReliefWeb.
+  rpc ListSituationReports(ListSituationReportsRequest) returns (ListSituationReportsResponse) {
+    option (sebuf.http.config) = {path: "/list-situation-reports", method: HTTP_METHOD_GET};
   }
 }

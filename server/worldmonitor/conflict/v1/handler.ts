@@ -21,10 +21,14 @@ import { listAcledEvents } from './list-acled-events';
 import { listUcdpEvents } from './list-ucdp-events';
 import { getHumanitarianSummary } from './get-humanitarian-summary';
 import { listIranEvents } from './list-iran-events';
+import { listConflictIncidents } from './list-conflict-incidents';
+import { listSituationReports } from './list-situation-reports';
 
 export const conflictHandler: ConflictServiceHandler = {
   listAcledEvents,
   listUcdpEvents,
   getHumanitarianSummary,
   listIranEvents,
+  listConflictIncidents,
+  listSituationReports,
 };

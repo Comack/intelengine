@@ -80,6 +80,32 @@ interface AirQualityReading {
   country?: string;
   aqi: number;
 }
+
+interface RadiationReading {
+  id?: string;
+  cpm: number;
+}
+
+interface DeforestationAlert {
+  id?: string;
+  nearStrategicSite?: boolean;
+}
+
+interface NavigationalWarning {
+  id?: string;
+}
+
+interface ConflictIncident {
+  id: string;
+  title: string;
+  region?: string;
+}
+
+interface PollutionGridTile {
+  lat: number;
+  lon: number;
+  no2MolPerM2: number;
+}
 import { SITE_VARIANT } from '@/config';
 import { FINANCIAL_CENTERS, COMMODITY_HUBS, STOCK_EXCHANGES } from '@/config/finance-geo';
 import { signalAggregator } from '@/services/signal-aggregator';
@@ -125,6 +151,11 @@ export interface ForensicsSignalContext {
   acarsMessages: AcarsMessage[];
   whaleTransfers: WhaleTransfer[];
   airQualityReadings: AirQualityReading[];
+  radiationReadings: RadiationReading[];
+  deforestationAlerts: DeforestationAlert[];
+  navWarnings: NavigationalWarning[];
+  conflictIncidents: ConflictIncident[];
+  pollutionGrid: PollutionGridTile[];
   spaceWeather: SpaceWeatherStatus | null;
   routingFetchedAt: number;
   gridFetchedAt: number;
@@ -133,6 +164,9 @@ export interface ForensicsSignalContext {
   acarsFetchedAt: number;
   whaleFetchedAt: number;
   aqiFetchedAt: number;
+  radiationFetchedAt: number;
+  deforestationFetchedAt: number;
+  navFetchedAt: number;
   spaceFetchedAt: number;
 }
 
@@ -719,6 +753,11 @@ export class ForensicsSignalBuilder {
       air_quality_spike: 'climate',
       so2_industrial: 'climate',
       grid_stress: 'infrastructure',
+      routing_anomaly: 'infrastructure',
+      radiation_spike: 'climate',
+      deforestation_alert: 'climate',
+      acars_alert: 'military',
+      nav_warning: 'maritime',
       whale_transfer: 'market',
       info_ops_edit_war: 'cyber',
       sec_material_event: 'economic',
@@ -816,8 +855,15 @@ export class ForensicsSignalBuilder {
     const sarSignals = this.buildSarDarkShipSignals(now).sort((a, b) => b.value - a.value);
     const gridSignals = this.buildGridStatusSignals(now).sort((a, b) => b.value - a.value);
     const aqiSignals = this.buildAirQualitySignals(now).sort((a, b) => b.value - a.value);
+    const portSignals = this.buildPortCongestionSignals(now).sort((a, b) => b.value - a.value);
+    const radSignals = this.buildRadiationSignals(now).sort((a, b) => b.value - a.value);
+    const defSignals = this.buildDeforestationSignals(now).sort((a, b) => b.value - a.value);
+    const acarsSignals = this.buildAcarsMessageSignals(now).sort((a, b) => b.value - a.value);
+    const navSignals = this.buildNavWarningSignals(now).sort((a, b) => b.value - a.value);
+    const incidentSignals = this.buildConflictIncidentSignals(now).sort((a, b) => b.value - a.value);
+    const pollutionSignals = this.buildPollutionGridSignals(now).sort((a, b) => b.value - a.value);
     const merged = new Map<string, ForensicsSignalInput>();
-    for (const signal of [...baseSignals, ...countryRiskSignals, ...trajectorySignals, ...spaceSignals, ...routingSignals, ...sarSignals, ...gridSignals, ...aqiSignals]) {
+    for (const signal of [...baseSignals, ...countryRiskSignals, ...trajectorySignals, ...spaceSignals, ...routingSignals, ...sarSignals, ...gridSignals, ...aqiSignals, ...portSignals, ...radSignals, ...defSignals, ...acarsSignals, ...navSignals, ...incidentSignals, ...pollutionSignals]) {
       const key = `${signal.sourceId}:${signal.signalType}`;
       const existing = merged.get(key);
       if (!existing || signal.value > existing.value) {
@@ -1237,6 +1283,153 @@ export class ForensicsSignalBuilder {
       });
     }
     return signals.sort((a, b) => b.value - a.value);
+  }
+
+  buildPortCongestionSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.portCongestion.length === 0) return [];
+    const observedAt = this.ctx.portFetchedAt;
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+    const signals: ForensicsSignalInput[] = [];
+    for (const p of this.ctx.portCongestion) {
+      const idx = Number(p.congestionIndex) || 0;
+      if (idx < 0.5) continue;
+      signals.push({
+        sourceId: `port:${p.portId || p.portName || p.id || 'unknown'}`,
+        region: String(p.country || 'global'),
+        domain: 'maritime',
+        signalType: 'port_congestion',
+        value: Math.round(idx * 100),
+        confidence: this.confidenceWithFreshness(0.65, 0.1, freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals;
+  }
+
+  buildRadiationSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.radiationReadings.length === 0) return [];
+    const observedAt = this.ctx.radiationFetchedAt || now;
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+    const signals: ForensicsSignalInput[] = [];
+    for (const r of this.ctx.radiationReadings) {
+      if (r.cpm < 60) continue;
+      signals.push({
+        sourceId: `radiation:${r.id}`,
+        region: 'global',
+        domain: 'climate',
+        signalType: 'radiation_spike',
+        value: Math.min(100, Math.round(r.cpm / 2)),
+        confidence: this.confidenceWithFreshness(0.7, 0.1, freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals;
+  }
+
+  buildDeforestationSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.deforestationAlerts.length === 0) return [];
+    const observedAt = this.ctx.deforestationFetchedAt || now;
+    const freshness = computeFreshnessPenalty(observedAt, SLOW_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+    const signals: ForensicsSignalInput[] = [];
+    for (const d of this.ctx.deforestationAlerts) {
+      signals.push({
+        sourceId: `deforest:${d.id}`,
+        region: 'global',
+        domain: 'climate',
+        signalType: 'deforestation_alert',
+        value: d.nearStrategicSite ? 85 : 45,
+        confidence: this.confidenceWithFreshness(0.8, 0.1, freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals;
+  }
+
+  buildAcarsMessageSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.acarsMessages.length === 0) return [];
+    const observedAt = this.ctx.acarsFetchedAt || now;
+    const freshness = computeFreshnessPenalty(observedAt, FAST_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+    const signals: ForensicsSignalInput[] = [];
+    for (const m of this.ctx.acarsMessages) {
+      signals.push({
+        sourceId: `acars:${m.id || m.flightId || 'unknown'}`,
+        region: 'global',
+        domain: 'military',
+        signalType: 'acars_alert',
+        value: m.milCategory === 'ACARS_MIL_CATEGORY_MEDICAL_EVAC' ? 75 : 55,
+        confidence: this.confidenceWithFreshness(0.8, 0.1, freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals;
+  }
+
+  buildNavWarningSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.navWarnings.length === 0) return [];
+    const observedAt = this.ctx.navFetchedAt || now;
+    const freshness = computeFreshnessPenalty(observedAt, SLOW_FRESHNESS_PROFILE, now);
+    if (freshness.isStale) return [];
+    const signals: ForensicsSignalInput[] = [];
+    for (const n of this.ctx.navWarnings) {
+      signals.push({
+        sourceId: `nav:${n.id}`,
+        region: 'global',
+        domain: 'maritime',
+        signalType: 'nav_warning',
+        value: 65,
+        confidence: this.confidenceWithFreshness(0.9, 0.05, freshness.penalty),
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals;
+  }
+
+  buildConflictIncidentSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.conflictIncidents.length === 0) return [];
+    const observedAt = now; // Live feed
+    const signals: ForensicsSignalInput[] = [];
+    for (const i of this.ctx.conflictIncidents) {
+      signals.push({
+        sourceId: `incident:${i.id}`,
+        region: i.region || 'global',
+        domain: 'maritime', // Default domain
+        signalType: 'conflict_incident',
+        value: 90,
+        confidence: 0.85,
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals;
+  }
+
+  buildPollutionGridSignals(now = Date.now()): ForensicsSignalInput[] {
+    if (this.ctx.pollutionGrid.length === 0) return [];
+    const observedAt = now;
+    const signals: ForensicsSignalInput[] = [];
+    for (const t of this.ctx.pollutionGrid) {
+      if (t.no2MolPerM2 < 0.0003) continue;
+      signals.push({
+        sourceId: `pollution:${t.lat},${t.lon}`,
+        region: 'global',
+        domain: 'climate',
+        signalType: 'pollution_grid',
+        value: Math.round(t.no2MolPerM2 * 1000000 / 10),
+        confidence: 0.75,
+        observedAt,
+        evidenceIds: [],
+      });
+    }
+    return signals;
   }
 
   buildGridStatusSignals(now = Date.now()): ForensicsSignalInput[] {

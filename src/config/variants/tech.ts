@@ -259,6 +259,8 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   // New signal layers
   sarDetections: false,
   portCongestion: false,
@@ -321,6 +323,8 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   // New signal layers
   sarDetections: false,
   portCongestion: false,

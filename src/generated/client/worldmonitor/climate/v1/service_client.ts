@@ -82,6 +82,48 @@ export interface DeforestationAlert {
   detectedAt: string;
 }
 
+export interface GetPollutionGridRequest {
+  latMin: number;
+  latMax: number;
+  lonMin: number;
+  lonMax: number;
+}
+
+export interface GetPollutionGridResponse {
+  tiles: PollutionGridTile[];
+  acquiredAt: string;
+}
+
+export interface PollutionGridTile {
+  lat: number;
+  lon: number;
+  no2MolPerM2: number;
+  so2MolPerM2: number;
+  aod: number;
+  acquiredAt: string;
+  cloudCoveragePct: number;
+}
+
+export interface GetWeatherForecastRequest {
+}
+
+export interface GetWeatherForecastResponse {
+  zones: WeatherForecastZone[];
+  fetchedAt: string;
+}
+
+export interface WeatherForecastZone {
+  lat: number;
+  lon: number;
+  locationName: string;
+  precipitationMm7d: number;
+  floodRiskScore: number;
+  maxWindSpeedKmh: number;
+  extremeEventType: string;
+  forecastFrom: string;
+  forecastUntil: string;
+}
+
 export type AnomalySeverity = "ANOMALY_SEVERITY_UNSPECIFIED" | "ANOMALY_SEVERITY_NORMAL" | "ANOMALY_SEVERITY_MODERATE" | "ANOMALY_SEVERITY_EXTREME";
 
 export type AnomalyType = "ANOMALY_TYPE_UNSPECIFIED" | "ANOMALY_TYPE_WARM" | "ANOMALY_TYPE_COLD" | "ANOMALY_TYPE_WET" | "ANOMALY_TYPE_DRY" | "ANOMALY_TYPE_MIXED";
@@ -212,6 +254,57 @@ export class ClimateServiceClient {
     }
 
     return await resp.json() as ListDeforestationAlertsResponse;
+  }
+
+  async getPollutionGrid(req: GetPollutionGridRequest, options?: ClimateServiceCallOptions): Promise<GetPollutionGridResponse> {
+    let path = "/api/climate/v1/get-pollution-grid";
+    const params = new URLSearchParams();
+    if (req.latMin != null && req.latMin !== 0) params.set("lat_min", String(req.latMin));
+    if (req.latMax != null && req.latMax !== 0) params.set("lat_max", String(req.latMax));
+    if (req.lonMin != null && req.lonMin !== 0) params.set("lon_min", String(req.lonMin));
+    if (req.lonMax != null && req.lonMax !== 0) params.set("lon_max", String(req.lonMax));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetPollutionGridResponse;
+  }
+
+  async getWeatherForecast(req: GetWeatherForecastRequest, options?: ClimateServiceCallOptions): Promise<GetWeatherForecastResponse> {
+    let path = "/api/climate/v1/get-weather-forecast";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetWeatherForecastResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

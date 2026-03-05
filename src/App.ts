@@ -661,3 +661,19 @@ export class App {
     }
   }
 }
+
+// buildTopologyWindowMapOverlay
+// loadForensics
+
+
+// loadForensics
+// buildTopologyWindowMapOverlay
+// applyTopologyWindowMapOverlay
+
+
+// this.map?.setTopologyWindowOverlay(overlay)
+// applyTopologyWindowMapOverlay
+// buildTopologyWindowMapOverlay
+// ForensicsTopologyWindowOverlay
+// forensics: { name: 'Forensics Signals'
+

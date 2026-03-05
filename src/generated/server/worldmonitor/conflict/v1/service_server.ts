@@ -104,6 +104,46 @@ export interface IranEvent {
   severity: string;
 }
 
+export interface ListConflictIncidentsRequest {
+  limit: number;
+  region: string;
+}
+
+export interface ListConflictIncidentsResponse {
+  incidents: ConflictIncident[];
+}
+
+export interface ConflictIncident {
+  id: string;
+  title: string;
+  description: string;
+  sourceUrl: string;
+  lat: number;
+  lon: number;
+  incidentType: string;
+  createdAt: string;
+  region: string;
+}
+
+export interface ListSituationReportsRequest {
+  limit: number;
+  query: string;
+}
+
+export interface ListSituationReportsResponse {
+  reports: SituationReport[];
+}
+
+export interface SituationReport {
+  id: string;
+  title: string;
+  source: string;
+  url: string;
+  publishedAt: string;
+  summary: string;
+  countries: string[];
+}
+
 export type UcdpViolenceType = "UCDP_VIOLENCE_TYPE_UNSPECIFIED" | "UCDP_VIOLENCE_TYPE_STATE_BASED" | "UCDP_VIOLENCE_TYPE_NON_STATE" | "UCDP_VIOLENCE_TYPE_ONE_SIDED";
 
 export interface FieldViolation {
@@ -155,6 +195,8 @@ export interface ConflictServiceHandler {
   listUcdpEvents(ctx: ServerContext, req: ListUcdpEventsRequest): Promise<ListUcdpEventsResponse>;
   getHumanitarianSummary(ctx: ServerContext, req: GetHumanitarianSummaryRequest): Promise<GetHumanitarianSummaryResponse>;
   listIranEvents(ctx: ServerContext, req: ListIranEventsRequest): Promise<ListIranEventsResponse>;
+  listConflictIncidents(ctx: ServerContext, req: ListConflictIncidentsRequest): Promise<ListConflictIncidentsResponse>;
+  listSituationReports(ctx: ServerContext, req: ListSituationReportsRequest): Promise<ListSituationReportsResponse>;
 }
 
 export function createConflictServiceRoutes(
@@ -327,6 +369,102 @@ export function createConflictServiceRoutes(
 
           const result = await handler.listIranEvents(ctx, body);
           return new Response(JSON.stringify(result as ListIranEventsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/conflict/v1/list-conflict-incidents",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListConflictIncidentsRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+            region: params.get("region") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listConflictIncidents", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listConflictIncidents(ctx, body);
+          return new Response(JSON.stringify(result as ListConflictIncidentsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/conflict/v1/list-situation-reports",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListSituationReportsRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+            query: params.get("query") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSituationReports", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSituationReports(ctx, body);
+          return new Response(JSON.stringify(result as ListSituationReportsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

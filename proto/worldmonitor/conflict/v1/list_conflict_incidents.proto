@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package worldmonitor.conflict.v1;
 
+import "sebuf/http/annotations.proto";
+
 message ConflictIncident {
   string id = 1;
   string title = 2;
@@ -15,8 +17,8 @@ message ConflictIncident {
 }
 
 message ListConflictIncidentsRequest {
-  int32 limit = 1; // Default 100
-  string region = 2; // Optional region filter
+  int32 limit = 1 [(sebuf.http.query) = { name: "limit" }]; // Default 100
+  string region = 2 [(sebuf.http.query) = { name: "region" }]; // Optional region filter
 }
 
 message ListConflictIncidentsResponse {

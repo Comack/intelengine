@@ -6,11 +6,13 @@ import {
   type ListClimateAnomaliesResponse,
   type AirQualityReading,
   type DeforestationAlert,
+  type PollutionGridTile,
+  type WeatherForecastZone,
 } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 
-export type { AirQualityReading, DeforestationAlert };
+export type { AirQualityReading, DeforestationAlert, PollutionGridTile, WeatherForecastZone };
 
 // Re-export consumer-friendly type matching legacy shape exactly.
 // Consumers import this type from '@/services/climate' and see the same
@@ -125,6 +127,32 @@ const deforestationBreaker = createCircuitBreaker<DeforestationAlert[]>({ name: 
 export async function fetchDeforestationAlerts(strategicOnly = false, limit = 200): Promise<DeforestationAlert[]> {
   return deforestationBreaker.execute(
     () => client.listDeforestationAlerts({ limit, strategicOnly }).then((r) => r.alerts),
+    [],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pollution grid (Sentinel Hub)
+// ---------------------------------------------------------------------------
+
+const pollutionBreaker = createCircuitBreaker<PollutionGridTile[]>({ name: 'Pollution Grid', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
+
+export async function fetchPollutionGrid(latMin: number, latMax: number, lonMin: number, lonMax: number): Promise<PollutionGridTile[]> {
+  return pollutionBreaker.execute(
+    () => client.getPollutionGrid({ latMin, latMax, lonMin, lonMax }).then((r) => r.tiles),
+    [],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Weather forecasts (Open-Meteo)
+// ---------------------------------------------------------------------------
+
+const forecastBreaker = createCircuitBreaker<WeatherForecastZone[]>({ name: 'Weather Forecasts', cacheTtlMs: 3 * 60 * 60 * 1000, persistCache: true });
+
+export async function fetchWeatherForecasts(): Promise<WeatherForecastZone[]> {
+  return forecastBreaker.execute(
+    () => client.getWeatherForecast({}).then((r) => r.zones),
     [],
   );
 }

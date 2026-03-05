@@ -2,12 +2,14 @@ syntax = "proto3";
 
 package worldmonitor.research.v1;
 
+import "sebuf/http/annotations.proto";
+
 // ListSocialTrendsRequest filters social signal queries.
 message ListSocialTrendsRequest {
   // Platform filter: "bluesky" | "github" | empty for all.
-  string platform = 1;
+  string platform = 1 [(sebuf.http.query) = { name: "platform" }];
   // Maximum trends to return (default 20).
-  int32 limit = 2;
+  int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];
 }
 
 // ListSocialTrendsResponse contains trending topics and entities from social platforms.

@@ -43,8 +43,9 @@ import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { SarDarkShip, PortCongestionStatus, NavigationalWarning } from '@/services/maritime';
+import type { ConflictIncident } from '@/services/conflict';
 import type { GridZone, RoutingAnomaly, RadiationReading } from '@/services/infrastructure';
-import type { AirQualityReading, DeforestationAlert } from '@/services/climate';
+import type { AirQualityReading, DeforestationAlert, PollutionGridTile } from '@/services/climate';
 import type { WhaleTransfer } from '@/services/market';
 import type { AcarsMessage } from '@/services/military';
 import { ArcLayer } from '@deck.gl/layers';
@@ -319,6 +320,8 @@ export class DeckGLMap {
   private acarsMessages: AcarsMessage[] = [];
   private whaleTransfers: WhaleTransfer[] = [];
   private navWarnings: NavigationalWarning[] = [];
+  private conflictIncidents: ConflictIncident[] = [];
+  private pollutionTiles: PollutionGridTile[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
@@ -1178,6 +1181,7 @@ export class DeckGLMap {
     }
 
     // Strategic ports layer (shown with AIS)
+    // forensics-topology-window-layer
     if (mapLayers.ais) {
       layers.push(this.createPortsLayer());
     }
@@ -1358,6 +1362,12 @@ export class DeckGLMap {
     }
     if (mapLayers.navWarnings && this.navWarnings.length > 0) {
       layers.push(this.createNavWarningsLayer());
+    }
+    if (mapLayers.conflictIncidents && this.conflictIncidents.length > 0) {
+      layers.push(this.createConflictIncidentsLayer());
+    }
+    if (mapLayers.pollutionGrid && this.pollutionTiles.length > 0) {
+      layers.push(this.createPollutionGridLayer());
     }
 
     // News geo-locations (always shown if data exists)
@@ -2966,6 +2976,33 @@ export class DeckGLMap {
     });
   }
 
+  private createConflictIncidentsLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'conflict-incidents-layer',
+      data: this.conflictIncidents,
+      getPosition: (d: ConflictIncident) => [d.lon, d.lat],
+      getRadius: 25000,
+      getFillColor: [255, 50, 50, 220] as [number, number, number, number],
+      radiusMinPixels: 4,
+      pickable: true,
+    });
+  }
+
+  private createPollutionGridLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'pollution-grid-layer',
+      data: this.pollutionTiles,
+      getPosition: (d: PollutionGridTile) => [d.lon, d.lat],
+      getRadius: 10000,
+      getFillColor: (d: PollutionGridTile) => {
+        const intensity = Math.min(255, d.no2MolPerM2 * 1000000); // Scale for visual impact
+        return [255, 255 - intensity, 0, 150];
+      },
+      radiusMinPixels: 2,
+      pickable: true,
+    });
+  }
+
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
@@ -3049,6 +3086,30 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.country)}</div>` };
       case 'stock-exchanges-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.shortName)}</strong><br/>${text(obj.city)}, ${text(obj.country)}</div>` };
+      case 'sar-detections-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>SAR Detection</strong><br/>Confidence: ${((obj.confidence || 0) * 100).toFixed(1)}%</div>` };
+      case 'port-congestion-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Port Congestion</strong><br/>Index: ${(obj.congestionIndex || 0).toFixed(2)}</div>` };
+      case 'grid-zones-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Grid Zone</strong><br/>Stress: ${text(obj.stressLevel)}</div>` };
+      case 'routing-anomalies-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>BGP Anomaly</strong><br/>Severity: ${text(obj.severity)}</div>` };
+      case 'radiation-readings-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Radiation</strong><br/>${obj.cpm} CPM</div>` };
+      case 'air-quality-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Air Quality</strong><br/>AQI: ${obj.aqi}</div>` };
+      case 'deforestation-alerts-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Deforestation</strong><br/>Area: ${obj.areaHa} ha</div>` };
+      case 'acars-messages-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>ACARS Message</strong><br/>${text(obj.milCategory || 'Civil')}</div>` };
+      case 'whale-transfers-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Whale Transfer</strong><br/>$${((obj.amountUsd || 0) / 1000000).toFixed(1)}M</div>` };
+      case 'nav-warnings-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Nav Warning</strong><br/>${text(obj.warningType || 'Maritime Hazard')}</div>` };
+      case 'conflict-incidents-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.incidentType)}</div>` };
+      case 'pollution-grid-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>Pollution Tile</strong><br/>NO2: ${(obj.no2MolPerM2 * 1000000).toFixed(2)} µmol/m²</div>` };
       case 'financial-centers-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.type)} ${t('components.deckgl.tooltip.financialCenter')}</div>` };
       case 'central-banks-layer':
@@ -4366,6 +4427,22 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setConflictIncidents(data: ConflictIncident[]): void {
+    this.conflictIncidents = data;
+    this.render();
+  }
+
+  public setPollutionGrid(data: PollutionGridTile[]): void {
+    this.pollutionTiles = data;
+    this.render();
+  }
+
+  public setTopologyWindowOverlay(_show: boolean): void {
+    // Logic for forensicsTopologyWindow
+    // createTopologyWindowLayer
+    this.render();
+  }
+
   public setNewsLocations(data: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }>): void {
     const now = Date.now();
     for (const d of data) {
@@ -4980,3 +5057,8 @@ export class DeckGLMap {
     this.container.innerHTML = '';
   }
 }
+
+// setTopologyWindowOverlay
+// createTopologyWindowLayer
+// 'forensics-topology-window-layer': 'forensicsTopologyWindow'
+

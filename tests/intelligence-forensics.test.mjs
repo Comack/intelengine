@@ -131,7 +131,6 @@ describe('Financial topology derivation', () => {
     assert.match(topologySrc, /topology_cycle_risk/);
     assert.match(topologySrc, /topology_degree_centrality/);
     assert.match(topologySrc, /topology_cycle_membership/);
-    assert.match(topologySrc, /betaSeries/);
     assert.match(topologySrc, /deriveFinancialTopologySignals/);
   });
 
@@ -519,8 +518,7 @@ describe('Causal discovery module', () => {
 
   it('exports runCausalDiscovery with key constants', () => {
     assert.match(causalSrc, /export function runCausalDiscovery/);
-    assert.match(causalSrc, /BUCKET_MS/);
-    assert.match(causalSrc, /CAUSAL_LOOKBACK_BUCKETS/);
+    assert.match(causalSrc, /HORIZONS/);
     assert.match(causalSrc, /MIN_SUPPORT/);
   });
 

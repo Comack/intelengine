@@ -110,6 +110,44 @@ export interface TechEventCoords {
   virtual: boolean;
 }
 
+export interface GetRepoMomentumRequest {
+}
+
+export interface GetRepoMomentumResponse {
+  repos: RepoMomentum[];
+  computedAt: string;
+}
+
+export interface RepoMomentum {
+  repo: string;
+  ownerEntity: string;
+  stars1d: number;
+  forks1d: number;
+  prOpens1d: number;
+  momentumScore: number;
+  computedAt: string;
+}
+
+export interface ListSocialTrendsRequest {
+  platform: string;
+  limit: number;
+}
+
+export interface ListSocialTrendsResponse {
+  trends: SocialTrend[];
+  sampledAt: string;
+}
+
+export interface SocialTrend {
+  topic: string;
+  platform: string;
+  mentionCount1h: number;
+  velocity: number;
+  topPosts: string[];
+  matchedEntities: string[];
+  observedAt: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -159,6 +197,8 @@ export interface ResearchServiceHandler {
   listTrendingRepos(ctx: ServerContext, req: ListTrendingReposRequest): Promise<ListTrendingReposResponse>;
   listHackernewsItems(ctx: ServerContext, req: ListHackernewsItemsRequest): Promise<ListHackernewsItemsResponse>;
   listTechEvents(ctx: ServerContext, req: ListTechEventsRequest): Promise<ListTechEventsResponse>;
+  getRepoMomentum(ctx: ServerContext, req: GetRepoMomentumRequest): Promise<GetRepoMomentumResponse>;
+  listSocialTrends(ctx: ServerContext, req: ListSocialTrendsRequest): Promise<ListSocialTrendsResponse>;
 }
 
 export function createResearchServiceRoutes(
@@ -344,6 +384,91 @@ export function createResearchServiceRoutes(
 
           const result = await handler.listTechEvents(ctx, body);
           return new Response(JSON.stringify(result as ListTechEventsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/research/v1/get-repo-momentum",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetRepoMomentumRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getRepoMomentum(ctx, body);
+          return new Response(JSON.stringify(result as GetRepoMomentumResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/research/v1/list-social-trends",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListSocialTrendsRequest = {
+            platform: params.get("platform") ?? "",
+            limit: Number(params.get("limit") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listSocialTrends", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listSocialTrends(ctx, body);
+          return new Response(JSON.stringify(result as ListSocialTrendsResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

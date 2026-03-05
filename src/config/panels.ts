@@ -59,6 +59,8 @@ const FULL_PANELS: Record<string, PanelConfig> = {
 
 const FULL_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
+  conflictIncidents: false,
+  pollutionGrid: false,
   gpsJamming: true,
   conflicts: true,
   bases: true,
@@ -121,6 +123,8 @@ const FULL_MAP_LAYERS: MapLayers = {
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
+  conflictIncidents: false,
+  pollutionGrid: false,
   gpsJamming: false,
   conflicts: true,
   bases: false,
@@ -270,6 +274,8 @@ const TECH_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   // New signal layers (tech: BGP routing anomalies primary)
   sarDetections: false,
   portCongestion: false,
@@ -332,6 +338,8 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   // New signal layers (all off on mobile tech)
   sarDetections: false,
   portCongestion: false,
@@ -433,6 +441,8 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: true,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   // New signal layers (finance: whale transfers + port congestion primary)
   sarDetections: false,
   portCongestion: true,
@@ -495,6 +505,8 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   // New signal layers (all off on mobile finance)
   sarDetections: false,
   portCongestion: false,
@@ -573,6 +585,8 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   renewableInstallations: true,
   tradeRoutes: false,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   // New signal layers (all off in happy variant)
   sarDetections: false,
   portCongestion: false,
@@ -635,6 +649,8 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   renewableInstallations: true,
   tradeRoutes: false,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   // New signal layers (all off in happy variant)
   sarDetections: false,
   portCongestion: false,

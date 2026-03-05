@@ -32,6 +32,10 @@ const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
   port_congestion: 'port congestion',
   whale_transfer: 'whale transfer',
   nav_warning: 'navigational warning',
+  conflict_incident: 'conflict incident',
+  pollution_grid: 'pollution anomaly',
+  repo_momentum: 'GitHub momentum',
+  social_trend: 'social trend',
 };
 
 const SIGNAL_TYPE_ICONS: Record<SignalType, string> = {
@@ -53,6 +57,10 @@ const SIGNAL_TYPE_ICONS: Record<SignalType, string> = {
   port_congestion: '🚢',
   whale_transfer: '🐋',
   nav_warning: '⚓',
+  conflict_incident: '⚔️',
+  pollution_grid: '☁️',
+  repo_momentum: '🐙',
+  social_trend: '📈',
 };
 
 class FocalPointDetector {

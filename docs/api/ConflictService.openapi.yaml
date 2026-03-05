@@ -182,6 +182,82 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/conflict/v1/list-conflict-incidents:
+        get:
+            tags:
+                - ConflictService
+            summary: ListConflictIncidents
+            description: ListConflictIncidents retrieves live conflict incidents from LiveUAMap and other sources.
+            operationId: ListConflictIncidents
+            parameters:
+                - name: limit
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: region
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListConflictIncidentsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/conflict/v1/list-situation-reports:
+        get:
+            tags:
+                - ConflictService
+            summary: ListSituationReports
+            description: ListSituationReports retrieves humanitarian situation reports from ReliefWeb.
+            operationId: ListSituationReports
+            parameters:
+                - name: limit
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: query
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListSituationReportsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -482,3 +558,75 @@ components:
                     format: int64
                 severity:
                     type: string
+        ListConflictIncidentsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                region:
+                    type: string
+        ListConflictIncidentsResponse:
+            type: object
+            properties:
+                incidents:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ConflictIncident'
+        ConflictIncident:
+            type: object
+            properties:
+                id:
+                    type: string
+                title:
+                    type: string
+                description:
+                    type: string
+                sourceUrl:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                incidentType:
+                    type: string
+                createdAt:
+                    type: string
+                region:
+                    type: string
+        ListSituationReportsRequest:
+            type: object
+            properties:
+                limit:
+                    type: integer
+                    format: int32
+                query:
+                    type: string
+        ListSituationReportsResponse:
+            type: object
+            properties:
+                reports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SituationReport'
+        SituationReport:
+            type: object
+            properties:
+                id:
+                    type: string
+                title:
+                    type: string
+                source:
+                    type: string
+                url:
+                    type: string
+                publishedAt:
+                    type: string
+                summary:
+                    type: string
+                countries:
+                    type: array
+                    items:
+                        type: string

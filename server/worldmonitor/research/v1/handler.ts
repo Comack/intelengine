@@ -13,10 +13,14 @@ import { listArxivPapers } from './list-arxiv-papers';
 import { listTrendingRepos } from './list-trending-repos';
 import { listHackernewsItems } from './list-hackernews-items';
 import { listTechEvents } from './list-tech-events';
+import { getRepoMomentum } from './get-repo-momentum';
+import { listSocialTrends } from './list-social-trends';
 
 export const researchHandler: ResearchServiceHandler = {
   listArxivPapers,
   listTrendingRepos,
   listHackernewsItems,
   listTechEvents,
+  getRepoMomentum,
+  listSocialTrends,
 };

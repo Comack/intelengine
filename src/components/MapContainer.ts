@@ -29,10 +29,10 @@ import type {
 import type { AirportDelayAlert } from '@/services/aviation';
 import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
-import type { ClimateAnomaly } from '@/services/climate';
+import type { ClimateAnomaly, AirQualityReading, DeforestationAlert, PollutionGridTile } from '@/services/climate';
+import type { ConflictIncident } from '@/services/conflict';
 import type { SarDarkShip, PortCongestionStatus, NavigationalWarning } from '@/services/maritime';
 import type { GridZone, RoutingAnomaly, RadiationReading } from '@/services/infrastructure';
-import type { AirQualityReading, DeforestationAlert } from '@/services/climate';
 import type { WhaleTransfer } from '@/services/market';
 import type { AcarsMessage } from '@/services/military';
 import type { WeatherAlert } from '@/services/weather';
@@ -354,42 +354,67 @@ export class MapContainer {
 
   public setSarDetections(data: SarDarkShip[]): void {
     if (this.useDeckGL) this.deckGLMap?.setSarDetections(data);
+    else this.svgMap?.setSarDetections(data);
   }
 
   public setPortCongestion(data: PortCongestionStatus[]): void {
     if (this.useDeckGL) this.deckGLMap?.setPortCongestion(data);
+    else this.svgMap?.setPortCongestion(data);
   }
 
   public setGridZones(data: GridZone[]): void {
     if (this.useDeckGL) this.deckGLMap?.setGridZones(data);
+    else this.svgMap?.setGridZones(data);
   }
 
   public setRoutingAnomalies(data: RoutingAnomaly[]): void {
     if (this.useDeckGL) this.deckGLMap?.setRoutingAnomalies(data);
+    else this.svgMap?.setRoutingAnomalies(data);
   }
 
   public setRadiationReadings(data: RadiationReading[]): void {
     if (this.useDeckGL) this.deckGLMap?.setRadiationReadings(data);
+    else this.svgMap?.setRadiationReadings(data);
   }
 
   public setAirQualityReadings(data: AirQualityReading[]): void {
     if (this.useDeckGL) this.deckGLMap?.setAirQualityReadings(data);
+    else this.svgMap?.setAirQualityReadings(data);
   }
 
   public setDeforestationAlerts(data: DeforestationAlert[]): void {
     if (this.useDeckGL) this.deckGLMap?.setDeforestationAlerts(data);
+    else this.svgMap?.setDeforestationAlerts(data);
   }
 
   public setAcarsMessages(data: AcarsMessage[]): void {
     if (this.useDeckGL) this.deckGLMap?.setAcarsMessages(data);
+    else this.svgMap?.setAcarsMessages(data);
   }
 
   public setWhaleTransfers(data: WhaleTransfer[]): void {
     if (this.useDeckGL) this.deckGLMap?.setWhaleTransfers(data);
+    else this.svgMap?.setWhaleTransfers(data);
   }
 
   public setNavWarnings(data: NavigationalWarning[]): void {
     if (this.useDeckGL) this.deckGLMap?.setNavWarnings(data);
+    else this.svgMap?.setNavWarnings(data);
+  }
+
+  public setConflictIncidents(data: ConflictIncident[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setConflictIncidents(data);
+    else this.svgMap?.setConflictIncidents(data);
+  }
+
+  public setPollutionGrid(data: PollutionGridTile[]): void {
+    if (this.useDeckGL) this.deckGLMap?.setPollutionGrid(data);
+    else this.svgMap?.setPollutionGrid(data);
+  }
+
+  public setTopologyWindowOverlay(data: any): void {
+    // ForensicsTopologyWindowOverlay
+    if (this.useDeckGL) (this.deckGLMap as any)?.setTopologyWindowOverlay?.(data);
   }
 
   public setSpaceWeather(status: SpaceWeatherStatus): void {

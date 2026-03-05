@@ -3,9 +3,13 @@ import type { ClimateServiceHandler } from '../../../../src/generated/server/wor
 import { listClimateAnomalies } from './list-climate-anomalies';
 import { listAirQualityReadings } from './list-air-quality-readings';
 import { listDeforestationAlerts } from './list-deforestation-alerts';
+import { getPollutionGrid } from './get-pollution-grid';
+import { getWeatherForecast } from './get-weather-forecast';
 
 export const climateHandler: ClimateServiceHandler = {
   listClimateAnomalies,
   listAirQualityReadings,
   listDeforestationAlerts,
+  getPollutionGrid,
+  getWeatherForecast,
 };

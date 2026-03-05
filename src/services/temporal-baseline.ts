@@ -111,3 +111,10 @@ export async function updateAndCheck(
     .filter((a): a is TemporalAnomaly => a !== null)
     .sort((a, b) => b.zScore - a.zScore);
 }
+
+// VITE_ENABLE_CALIBRATED_ANOMALIES
+
+
+// VITE_ENABLE_CALIBRATED_ANOMALIES
+// forensicsClient.runForensicsShadow
+

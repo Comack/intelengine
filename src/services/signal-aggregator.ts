@@ -13,9 +13,11 @@ import type {
 } from '@/types';
 import type { SarDarkShip, PortCongestionStatus, NavigationalWarning } from './maritime';
 import type { GridZone, RoutingAnomaly, RadiationReading } from './infrastructure';
-import type { AirQualityReading, DeforestationAlert } from './climate';
+import type { AirQualityReading, DeforestationAlert, PollutionGridTile } from './climate';
 import type { WhaleTransfer } from './market';
 import type { AcarsMessage } from './military';
+import type { ConflictIncident } from './conflict';
+import type { RepoMomentum, SocialTrend } from './research';
 import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
 
 export type SignalType =
@@ -37,6 +39,10 @@ export type SignalType =
   | 'port_congestion'       // Port congestion (Kpler/marine APIs)
   | 'whale_transfer'        // Large on-chain crypto transfer (Whale Alert)
   | 'nav_warning'           // Navigational warning (maritime authorities)
+  | 'conflict_incident'     // LiveUAMap conflict incident
+  | 'pollution_grid'        // Sentinel-5P pollution anomaly
+  | 'repo_momentum'         // GitHub repository momentum
+  | 'social_trend';         // Social platform trending topic
 
 export interface GeoSignal {
   type: SignalType;
@@ -619,6 +625,79 @@ class SignalAggregator {
     this.pruneOld();
   }
 
+  ingestConflictIncidents(incidents: ConflictIncident[]): void {
+    this.clearSignalType('conflict_incident');
+    for (const i of incidents) {
+      const code = this.coordsToCountry(i.lat, i.lon);
+      this.signals.push({
+        type: 'conflict_incident',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: i.lat,
+        lon: i.lon,
+        severity: 'high',
+        title: i.title,
+        timestamp: new Date(i.createdAt),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestPollutionGrid(tiles: PollutionGridTile[]): void {
+    this.clearSignalType('pollution_grid');
+    for (const t of tiles) {
+      if (t.no2MolPerM2 < 0.0002) continue;
+      const code = this.coordsToCountry(t.lat, t.lon);
+      this.signals.push({
+        type: 'pollution_grid',
+        country: code,
+        countryName: getCountryNameByCode(code) ?? code,
+        lat: t.lat,
+        lon: t.lon,
+        severity: 'medium',
+        title: 'Pollution Anomaly (Sentinel-5P)',
+        timestamp: new Date(Number(t.acquiredAt)),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestRepoMomentum(repos: RepoMomentum[]): void {
+    this.clearSignalType('repo_momentum');
+    for (const r of repos) {
+      if (r.momentumScore < 70) continue;
+      this.signals.push({
+        type: 'repo_momentum',
+        country: 'global',
+        countryName: 'Global',
+        lat: 0,
+        lon: 0,
+        severity: 'low',
+        title: `High momentum: ${r.repo}`,
+        timestamp: new Date(Number(r.computedAt)),
+      });
+    }
+    this.pruneOld();
+  }
+
+  ingestSocialTrends(trends: SocialTrend[]): void {
+    this.clearSignalType('social_trend');
+    for (const t of trends) {
+      if (t.velocity < 5) continue;
+      this.signals.push({
+        type: 'social_trend',
+        country: 'global',
+        countryName: 'Global',
+        lat: 0,
+        lon: 0,
+        severity: 'low',
+        title: `Trending: ${t.topic} (${t.platform})`,
+        timestamp: new Date(Number(t.observedAt)),
+      });
+    }
+    this.pruneOld();
+  }
+
   private pruneOld(): void {
     const cutoff = Date.now() - this.WINDOW_MS;
     this.signals = this.signals.filter(s => s.timestamp.getTime() > cutoff);
@@ -694,6 +773,10 @@ class SignalAggregator {
           port_congestion: 'port congestion',
           whale_transfer: 'whale transfers',
           nav_warning: 'navigational warnings',
+          conflict_incident: 'conflict incidents',
+          pollution_grid: 'pollution anomalies',
+          repo_momentum: 'repo momentum',
+          social_trend: 'social trends',
         };
 
         const typeDescriptions = [...allTypes].map(t => typeLabels[t]).join(', ');
@@ -760,6 +843,10 @@ class SignalAggregator {
       port_congestion: 0,
       whale_transfer: 0,
       nav_warning: 0,
+      conflict_incident: 0,
+      pollution_grid: 0,
+      repo_momentum: 0,
+      social_trend: 0,
     };
 
     for (const s of this.signals) {

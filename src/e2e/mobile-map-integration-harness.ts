@@ -128,6 +128,8 @@ const layers = {
   renewableInstallations: false,
   tradeRoutes: false,
   iranAttacks: false,
+  conflictIncidents: false,
+  pollutionGrid: false,
   sarDetections: false,
   portCongestion: false,
   gridZones: false,

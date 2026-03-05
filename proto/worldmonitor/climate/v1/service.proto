@@ -6,6 +6,8 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/climate/v1/list_climate_anomalies.proto";
 import "worldmonitor/climate/v1/list_air_quality_readings.proto";
 import "worldmonitor/climate/v1/list_deforestation_alerts.proto";
+import "worldmonitor/climate/v1/get_pollution_grid.proto";
+import "worldmonitor/climate/v1/get_weather_forecast.proto";
 
 // ClimateService provides APIs for climate anomaly data from Open-Meteo, air quality
 // readings from the World Air Quality Index project (WAQI), and deforestation alerts
@@ -26,5 +28,15 @@ service ClimateService {
   // ListDeforestationAlerts retrieves active deforestation alerts from Global Forest Watch.
   rpc ListDeforestationAlerts(ListDeforestationAlertsRequest) returns (ListDeforestationAlertsResponse) {
     option (sebuf.http.config) = {path: "/list-deforestation-alerts", method: HTTP_METHOD_GET};
+  }
+
+  // GetPollutionGrid retrieves satellite-derived pollution data (NO2, Aerosol) from Sentinel Hub.
+  rpc GetPollutionGrid(GetPollutionGridRequest) returns (GetPollutionGridResponse) {
+    option (sebuf.http.config) = {path: "/get-pollution-grid", method: HTTP_METHOD_GET};
+  }
+
+  // GetWeatherForecast retrieves 7-day weather forecasts for a specific location.
+  rpc GetWeatherForecast(GetWeatherForecastRequest) returns (GetWeatherForecastResponse) {
+    option (sebuf.http.config) = {path: "/get-weather-forecast", method: HTTP_METHOD_GET};
   }
 }

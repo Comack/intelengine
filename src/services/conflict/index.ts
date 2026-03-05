@@ -8,6 +8,8 @@ import {
   type GetHumanitarianSummaryResponse,
   type IranEvent,
   type ListIranEventsResponse,
+  type ConflictIncident,
+  type SituationReport,
 } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { createCircuitBreaker } from '@/utils';
@@ -19,10 +21,12 @@ const acledBreaker = createCircuitBreaker<ListAcledEventsResponse>({ name: 'ACLE
 const ucdpBreaker = createCircuitBreaker<ListUcdpEventsResponse>({ name: 'UCDP Events', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const hapiBreaker = createCircuitBreaker<GetHumanitarianSummaryResponse>({ name: 'HDX HAPI', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const iranBreaker = createCircuitBreaker<ListIranEventsResponse>({ name: 'Iran Events', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
+const incidentBreaker = createCircuitBreaker<ConflictIncident[]>({ name: 'Conflict Incidents', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
+const reportBreaker = createCircuitBreaker<SituationReport[]>({ name: 'Situation Reports', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
 
 const emptyIranFallback: ListIranEventsResponse = { events: [], scrapedAt: '0' };
 
-export type { IranEvent };
+export type { IranEvent, ConflictIncident, SituationReport };
 
 // ---- Exported Types (match legacy shapes exactly) ----
 
@@ -380,4 +384,18 @@ export async function fetchIranEvents(): Promise<IranEvent[]> {
     return r.json() as Promise<ListIranEventsResponse>;
   }, emptyIranFallback);
   return resp.events;
+}
+
+export async function fetchConflictIncidents(limit = 100, region = ''): Promise<ConflictIncident[]> {
+  return incidentBreaker.execute(
+    () => client.listConflictIncidents({ limit, region }).then((r) => r.incidents),
+    [],
+  );
+}
+
+export async function fetchSituationReports(limit = 20, query = ''): Promise<SituationReport[]> {
+  return reportBreaker.execute(
+    () => client.listSituationReports({ limit, query }).then((r) => r.reports),
+    [],
+  );
 }

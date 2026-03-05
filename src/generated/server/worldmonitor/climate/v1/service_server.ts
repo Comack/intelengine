@@ -82,6 +82,48 @@ export interface DeforestationAlert {
   detectedAt: string;
 }
 
+export interface GetPollutionGridRequest {
+  latMin: number;
+  latMax: number;
+  lonMin: number;
+  lonMax: number;
+}
+
+export interface GetPollutionGridResponse {
+  tiles: PollutionGridTile[];
+  acquiredAt: string;
+}
+
+export interface PollutionGridTile {
+  lat: number;
+  lon: number;
+  no2MolPerM2: number;
+  so2MolPerM2: number;
+  aod: number;
+  acquiredAt: string;
+  cloudCoveragePct: number;
+}
+
+export interface GetWeatherForecastRequest {
+}
+
+export interface GetWeatherForecastResponse {
+  zones: WeatherForecastZone[];
+  fetchedAt: string;
+}
+
+export interface WeatherForecastZone {
+  lat: number;
+  lon: number;
+  locationName: string;
+  precipitationMm7d: number;
+  floodRiskScore: number;
+  maxWindSpeedKmh: number;
+  extremeEventType: string;
+  forecastFrom: string;
+  forecastUntil: string;
+}
+
 export type AnomalySeverity = "ANOMALY_SEVERITY_UNSPECIFIED" | "ANOMALY_SEVERITY_NORMAL" | "ANOMALY_SEVERITY_MODERATE" | "ANOMALY_SEVERITY_EXTREME";
 
 export type AnomalyType = "ANOMALY_TYPE_UNSPECIFIED" | "ANOMALY_TYPE_WARM" | "ANOMALY_TYPE_COLD" | "ANOMALY_TYPE_WET" | "ANOMALY_TYPE_DRY" | "ANOMALY_TYPE_MIXED";
@@ -136,6 +178,8 @@ export interface ClimateServiceHandler {
   listClimateAnomalies(ctx: ServerContext, req: ListClimateAnomaliesRequest): Promise<ListClimateAnomaliesResponse>;
   listAirQualityReadings(ctx: ServerContext, req: ListAirQualityReadingsRequest): Promise<ListAirQualityReadingsResponse>;
   listDeforestationAlerts(ctx: ServerContext, req: ListDeforestationAlertsRequest): Promise<ListDeforestationAlertsResponse>;
+  getPollutionGrid(ctx: ServerContext, req: GetPollutionGridRequest): Promise<GetPollutionGridResponse>;
+  getWeatherForecast(ctx: ServerContext, req: GetWeatherForecastRequest): Promise<GetWeatherForecastResponse>;
 }
 
 export function createClimateServiceRoutes(
@@ -266,6 +310,93 @@ export function createClimateServiceRoutes(
 
           const result = await handler.listDeforestationAlerts(ctx, body);
           return new Response(JSON.stringify(result as ListDeforestationAlertsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/climate/v1/get-pollution-grid",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetPollutionGridRequest = {
+            latMin: Number(params.get("lat_min") ?? "0"),
+            latMax: Number(params.get("lat_max") ?? "0"),
+            lonMin: Number(params.get("lon_min") ?? "0"),
+            lonMax: Number(params.get("lon_max") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getPollutionGrid", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getPollutionGrid(ctx, body);
+          return new Response(JSON.stringify(result as GetPollutionGridResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/climate/v1/get-weather-forecast",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetWeatherForecastRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getWeatherForecast(ctx, body);
+          return new Response(JSON.stringify(result as GetWeatherForecastResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

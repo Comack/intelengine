@@ -361,6 +361,9 @@ export class MapComponent {
       'natural', 'weather',                               // natural
       'economic',                                         // economic
       'waterways',                                        // labels
+      'sarDetections', 'portCongestion', 'gridZones', 'routingAnomalies',
+      'radiationReadings', 'airQuality', 'deforestationAlerts', 'acarsMessages',
+      'whaleTransfers', 'navWarnings', 'conflictIncidents', 'pollutionGrid'
     ];
     const techLayers: (keyof MapLayers)[] = [
       'cables', 'datacenters', 'outages',                // tech infrastructure
@@ -407,10 +410,23 @@ export class MapComponent {
       gulfInvestments: 'components.deckgl.layers.gulfInvestments',
       iranAttacks: 'components.deckgl.layers.iranAttacks',
       gpsJamming: 'components.deckgl.layers.gpsJamming',
+      sarDetections: 'SAR Dark Vessels',
+      portCongestion: 'Port Congestion',
+      gridZones: 'Grid Stress',
+      routingAnomalies: 'BGP Anomalies',
+      radiationReadings: 'Radiation',
+      airQuality: 'Air Quality',
+      deforestationAlerts: 'Deforestation',
+      acarsMessages: 'ACARS Messages',
+      whaleTransfers: 'Whale Transfers',
+      navWarnings: 'Nav Warnings',
+      conflictIncidents: 'Conflict Incidents',
+      pollutionGrid: 'Pollution Grid',
     };
     const getLayerLabel = (layer: keyof MapLayers): string => {
       if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
       const key = layerLabelKeys[layer];
+      if (key && !key.includes('.')) return key;
       return key ? t(key) : layer;
     };
 
@@ -3629,6 +3645,19 @@ export class MapComponent {
     // SVG fallback: news locations rendered as simple circles
     // For now, skip on SVG map to keep mobile lightweight
   }
+
+  public setSarDetections(_data: unknown[]): void {}
+  public setPortCongestion(_data: unknown[]): void {}
+  public setGridZones(_data: unknown[]): void {}
+  public setRoutingAnomalies(_data: unknown[]): void {}
+  public setRadiationReadings(_data: unknown[]): void {}
+  public setAirQualityReadings(_data: unknown[]): void {}
+  public setDeforestationAlerts(_data: unknown[]): void {}
+  public setAcarsMessages(_data: unknown[]): void {}
+  public setWhaleTransfers(_data: unknown[]): void {}
+  public setNavWarnings(_data: unknown[]): void {}
+  public setConflictIncidents(_data: unknown[]): void {}
+  public setPollutionGrid(_data: unknown[]): void {}
 
   public setTechActivity(activities: TechHubActivity[]): void {
     this.techActivities = activities;

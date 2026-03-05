@@ -48,7 +48,11 @@ export type DataSourceId =
   | 'acars_messages'      // ACARS military messages
   | 'whale_transfers'     // Crypto whale transfers
   | 'nav_warnings'       // Navigational warnings
-  | 'space_weather';     // Space weather (NOAA SWPC)
+  | 'space_weather'      // Space weather (NOAA SWPC)
+  | 'conflict_incidents' // LiveUAMap conflict incidents
+  | 'pollution_grid'     // Sentinel-5P pollution grid
+  | 'repo_momentum'      // GitHub repository momentum
+  | 'social_trends';     // Social platform trends
 
 export type FreshnessStatus = 'fresh' | 'stale' | 'very_stale' | 'no_data' | 'disabled' | 'error';
 
@@ -127,6 +131,10 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   whale_transfers: { name: 'Crypto Whale Transfers', requiredForRisk: false, panelId: 'map' },
   nav_warnings: { name: 'Navigational Warnings', requiredForRisk: false, panelId: 'map' },
   space_weather: { name: 'Space Weather (NOAA SWPC)', requiredForRisk: false, panelId: 'map' },
+  conflict_incidents: { name: 'Liveuamap Incidents', requiredForRisk: false, panelId: 'map' },
+  pollution_grid: { name: 'Pollution Grid', requiredForRisk: false, panelId: 'map' },
+  repo_momentum: { name: 'GitHub Momentum', requiredForRisk: false, panelId: 'map' },
+  social_trends: { name: 'Social Trends', requiredForRisk: false, panelId: 'map' },
 };
 
 class DataFreshnessTracker {
@@ -398,6 +406,10 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   whale_transfers: 'Crypto whale transfer data unavailable—large capital movement undetected',
   nav_warnings: 'Navigational warning data unavailable—maritime hazards may be undetected',
   space_weather: 'Space weather data unavailable—geomagnetic storm alerts may be missed',
+  conflict_incidents: 'Live conflict incidents unavailable—incident situational awareness reduced',
+  pollution_grid: 'Pollution grid data unavailable—aerosol/NO2 hotspots undetected',
+  repo_momentum: 'Repository momentum tracking unavailable—tech adoption trends hidden',
+  social_trends: 'Social platform trends unavailable—fast-moving narrative signals missed',
 };
 
 /**

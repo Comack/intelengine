@@ -2,16 +2,18 @@ syntax = "proto3";
 
 package worldmonitor.climate.v1;
 
+import "sebuf/http/annotations.proto";
+
 // GetPollutionGridRequest specifies the bounding box for Sentinel-5P pollution data.
 message GetPollutionGridRequest {
   // Southern latitude boundary in degrees.
-  double lat_min = 1;
+  double lat_min = 1 [(sebuf.http.query) = { name: "lat_min" }];
   // Northern latitude boundary in degrees.
-  double lat_max = 2;
+  double lat_max = 2 [(sebuf.http.query) = { name: "lat_max" }];
   // Western longitude boundary in degrees.
-  double lon_min = 3;
+  double lon_min = 3 [(sebuf.http.query) = { name: "lon_min" }];
   // Eastern longitude boundary in degrees.
-  double lon_max = 4;
+  double lon_max = 4 [(sebuf.http.query) = { name: "lon_max" }];
 }
 
 // GetPollutionGridResponse contains Sentinel-5P derived pollution tiles for the requested area.

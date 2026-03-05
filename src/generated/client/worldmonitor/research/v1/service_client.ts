@@ -110,6 +110,44 @@ export interface TechEventCoords {
   virtual: boolean;
 }
 
+export interface GetRepoMomentumRequest {
+}
+
+export interface GetRepoMomentumResponse {
+  repos: RepoMomentum[];
+  computedAt: string;
+}
+
+export interface RepoMomentum {
+  repo: string;
+  ownerEntity: string;
+  stars1d: number;
+  forks1d: number;
+  prOpens1d: number;
+  momentumScore: number;
+  computedAt: string;
+}
+
+export interface ListSocialTrendsRequest {
+  platform: string;
+  limit: number;
+}
+
+export interface ListSocialTrendsResponse {
+  trends: SocialTrend[];
+  sampledAt: string;
+}
+
+export interface SocialTrend {
+  topic: string;
+  platform: string;
+  mentionCount1h: number;
+  velocity: number;
+  topPosts: string[];
+  matchedEntities: string[];
+  observedAt: string;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -267,6 +305,55 @@ export class ResearchServiceClient {
     }
 
     return await resp.json() as ListTechEventsResponse;
+  }
+
+  async getRepoMomentum(req: GetRepoMomentumRequest, options?: ResearchServiceCallOptions): Promise<GetRepoMomentumResponse> {
+    let path = "/api/research/v1/get-repo-momentum";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetRepoMomentumResponse;
+  }
+
+  async listSocialTrends(req: ListSocialTrendsRequest, options?: ResearchServiceCallOptions): Promise<ListSocialTrendsResponse> {
+    let path = "/api/research/v1/list-social-trends";
+    const params = new URLSearchParams();
+    if (req.platform != null && req.platform !== "") params.set("platform", String(req.platform));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListSocialTrendsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

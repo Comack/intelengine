@@ -549,6 +549,10 @@ export interface MapLayers {
   tradeRoutes: boolean;
   // Iran attacks layer
   iranAttacks: boolean;
+  // Conflict incidents (LiveUAMap)
+  conflictIncidents: boolean;
+  // Pollution grid (Sentinel Hub)
+  pollutionGrid: boolean;
   // GPS/GNSS interference layer
   gpsJamming: boolean;
   // SAR dark ship detections (Global Fishing Watch)
