@@ -27,19 +27,23 @@ function renderSection(title: string, quotes: GulfQuote[]): string {
 }
 
 export class GulfEconomiesPanel extends Panel {
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
-
   constructor() {
     super({ id: 'gulf-economies', title: t('panels.gulfEconomies') });
-    setTimeout(() => void this.fetchData(), 8_000);
+  }
+
+  protected override onPanelVisibilityChanged(visible: boolean): void {
+    if (visible) {
+      void this.fetchData();
+    }
   }
 
   destroy(): void {
-    if (this.pollTimer) clearInterval(this.pollTimer);
     super.destroy();
   }
 
   public async fetchData(): Promise<void> {
+    if (!this.isVisible() || document.hidden) return;
+
     try {
       const data = await client.listGulfQuotes({});
       if (!this.element?.isConnected) return;
@@ -48,10 +52,6 @@ export class GulfEconomiesPanel extends Panel {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
       this.showError(t('common.failedMarketData'));
-    }
-
-    if (!this.pollTimer && this.element?.isConnected) {
-      this.pollTimer = setInterval(() => void this.fetchData(), 60_000);
     }
   }
 

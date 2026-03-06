@@ -91,6 +91,12 @@ export class CountersPanel extends Panel {
     this.animFrameId = requestAnimationFrame(this.tick);
   }
 
+  private stopTicking(): void {
+    if (this.animFrameId === null) return;
+    cancelAnimationFrame(this.animFrameId);
+    this.animFrameId = null;
+  }
+
   /**
    * Animation tick -- arrow function for correct `this` binding.
    * Updates all 6 counter values using textContent (not innerHTML)
@@ -107,14 +113,16 @@ export class CountersPanel extends Panel {
     this.animFrameId = requestAnimationFrame(this.tick);
   };
 
+  protected override onPanelVisibilityChanged(visible: boolean): void {
+    if (visible) this.startTicking();
+    else this.stopTicking();
+  }
+
   /**
    * Clean up animation frame and call parent destroy.
    */
   public destroy(): void {
-    if (this.animFrameId !== null) {
-      cancelAnimationFrame(this.animFrameId);
-      this.animFrameId = null;
-    }
+    this.stopTicking();
     this.valueElements.clear();
     super.destroy();
   }

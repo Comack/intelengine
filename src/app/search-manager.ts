@@ -210,7 +210,7 @@ export class SearchManager implements AppModule {
         if (this.ctx.searchModal?.isOpen()) {
           this.ctx.searchModal.close();
         } else {
-          this.updateSearchIndex();
+          this.updateSearchIndex(true);
           this.ctx.searchModal?.open();
         }
       }
@@ -505,8 +505,9 @@ export class SearchManager implements AppModule {
     }, 100);
   }
 
-  updateSearchIndex(): void {
+  updateSearchIndex(force = false): void {
     if (!this.ctx.searchModal) return;
+    if (!force && !this.ctx.searchModal.isOpen()) return;
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
@@ -516,7 +517,6 @@ export class SearchManager implements AppModule {
       subtitle: n.source,
       data: n,
     }));
-    console.log(`[Search] Indexing ${newsItems.length} news items (allNews total: ${this.ctx.allNews.length})`);
     this.ctx.searchModal.registerSource('news', newsItems);
 
     if (this.ctx.latestPredictions.length > 0) {

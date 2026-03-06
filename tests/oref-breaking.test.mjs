@@ -60,15 +60,22 @@ describe('data-loader oref breaking news wiring', () => {
     assert.ok(DL.includes('dispatchOrefBreakingAlert'), 'data-loader should import dispatchOrefBreakingAlert');
   });
 
-  it('calls dispatchOrefBreakingAlert on initial fetch', () => {
+  it('routes initial OREF fetch through handleOrefAlertsUpdate', () => {
     const orefSection = DL.slice(DL.indexOf('// OREF sirens'), DL.indexOf('// GPS/GNSS'));
-    const initialCall = orefSection.indexOf('dispatchOrefBreakingAlert');
-    assert.ok(initialCall > -1, 'should call on initial fetch');
+    assert.ok(orefSection.includes('this.handleOrefAlertsUpdate(data)'), 'initial fetch should delegate to shared handler');
   });
 
-  it('calls dispatchOrefBreakingAlert in onOrefAlertsUpdate callback', () => {
-    const orefSection = DL.slice(DL.indexOf('// OREF sirens'), DL.indexOf('// GPS/GNSS'));
-    const callbackSection = orefSection.slice(orefSection.indexOf('onOrefAlertsUpdate'));
-    assert.ok(callbackSection.includes('dispatchOrefBreakingAlert'), 'should call in update callback');
+  it('routes OREF subscription updates through handleOrefAlertsUpdate callback', () => {
+    assert.ok(
+      DL.includes('onOrefAlertsUpdate((update) => this.handleOrefAlertsUpdate(update))'),
+      'subscription updates should use the shared handler',
+    );
+  });
+
+  it('dispatches breaking alerts inside handleOrefAlertsUpdate when alerts are present', () => {
+    const start = DL.indexOf('private handleOrefAlertsUpdate');
+    const end = DL.indexOf('private async tryFetchDigest');
+    const handlerBody = start >= 0 && end > start ? DL.slice(start, end) : '';
+    assert.ok(handlerBody.includes('if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts)'));
   });
 });

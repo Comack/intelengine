@@ -2,10 +2,11 @@ import { Panel } from './Panel';
 import { fetchLiveVideoInfo } from '@/services/live-news';
 import { isDesktopRuntime, getRemoteApiBaseUrl, getApiBaseUrl, getLocalApiPort } from '@/services/runtime';
 import { t } from '../services/i18n';
-import { loadFromStorage, saveToStorage } from '@/utils';
+import { loadFromStorage, rafSchedule, saveToStorage } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { STORAGE_KEYS, SITE_VARIANT } from '@/config';
 import { getStreamQuality } from '@/services/ai-flow-settings';
+import { onUserActivity } from '@/services/activity-signal';
 
 // YouTube IFrame Player API types
 type YouTubePlayer = {
@@ -317,6 +318,7 @@ export class LiveNewsPanel extends Panel {
   private readonly IDLE_PAUSE_MS = 5 * 60 * 1000; // 5 minutes
   private boundVisibilityHandler!: () => void;
   private boundIdleResetHandler!: () => void;
+  private unsubGlobalActivity: (() => void) | null = null;
 
   // YouTube Player API state
   private player: YouTubePlayer | null = null;
@@ -334,9 +336,15 @@ export class LiveNewsPanel extends Panel {
   private desktopEmbedIframe: HTMLIFrameElement | null = null;
   private desktopEmbedRenderToken = 0;
   private suppressChannelClick = false;
+  private dragChannelButton: HTMLElement | null = null;
+  private dragStarted = false;
+  private dragStartX = 0;
+  private boundChannelDragMouseMove!: (e: MouseEvent) => void;
+  private boundChannelDragMouseUp!: () => void;
   private boundMessageHandler!: (e: MessageEvent) => void;
-  private muteSyncInterval: ReturnType<typeof setInterval> | null = null;
-  private static readonly MUTE_SYNC_POLL_MS = 500;
+  private muteSyncTimeout: ReturnType<typeof setTimeout> | null = null;
+  private static readonly MUTE_SYNC_ACTIVE_POLL_MS = 500;
+  private static readonly MUTE_SYNC_BACKGROUND_POLL_MS = 2500;
 
   // Bot-check detection: if player doesn't become ready within this timeout,
   // YouTube is likely showing "Sign in to confirm you're not a bot".
@@ -351,6 +359,8 @@ export class LiveNewsPanel extends Panel {
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+  private panelActive = true;
+  private readonly schedulePlayerSync = rafSchedule(() => this.syncPlayerState());
 
   constructor() {
     super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide' });
@@ -512,29 +522,48 @@ export class LiveNewsPanel extends Panel {
   private setupIdleDetection(): void {
     // Suspend idle timer when hidden, resume when visible
     this.boundVisibilityHandler = () => {
-      if (document.hidden) {
+      if (document.hidden || !this.panelActive) {
         // Suspend idle timer so background playback isn't killed
         if (this.idleTimeout) clearTimeout(this.idleTimeout);
+        this.stopMuteSyncPolling();
       } else {
         this.resumeFromIdle();
         this.boundIdleResetHandler();
+        this.startMuteSyncPolling();
       }
     };
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
     // Track user activity to detect idle (pauses after 5 min inactivity)
     this.boundIdleResetHandler = () => {
+      if (!this.panelActive) return;
       if (this.idleTimeout) clearTimeout(this.idleTimeout);
       this.resumeFromIdle();
       this.idleTimeout = setTimeout(() => this.pauseForIdle(), this.IDLE_PAUSE_MS);
     };
 
-    ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(event => {
-      document.addEventListener(event, this.boundIdleResetHandler, { passive: true });
-    });
+    this.unsubGlobalActivity?.();
+    this.unsubGlobalActivity = onUserActivity(() => this.boundIdleResetHandler());
 
     // Start the idle timer
     this.boundIdleResetHandler();
+  }
+
+  protected override onPanelVisibilityChanged(visible: boolean): void {
+    this.panelActive = visible;
+    if (!visible) {
+      if (this.idleTimeout) {
+        clearTimeout(this.idleTimeout);
+        this.idleTimeout = null;
+      }
+      this.pauseForIdle();
+      this.stopMuteSyncPolling();
+      return;
+    }
+
+    this.resumeFromIdle();
+    this.boundIdleResetHandler();
+    this.startMuteSyncPolling();
   }
 
   private pauseForIdle(): void {
@@ -547,15 +576,35 @@ export class LiveNewsPanel extends Panel {
   }
 
   private stopMuteSyncPolling(): void {
-    if (this.muteSyncInterval !== null) {
-      clearInterval(this.muteSyncInterval);
-      this.muteSyncInterval = null;
+    if (this.muteSyncTimeout !== null) {
+      clearTimeout(this.muteSyncTimeout);
+      this.muteSyncTimeout = null;
     }
   }
 
   private startMuteSyncPolling(): void {
-    this.stopMuteSyncPolling();
-    this.muteSyncInterval = setInterval(() => this.syncMuteStateFromPlayer(), LiveNewsPanel.MUTE_SYNC_POLL_MS);
+    if (!this.panelActive || document.hidden || this.useDesktopEmbedProxy || !this.player || !this.isPlayerReady) {
+      this.stopMuteSyncPolling();
+      return;
+    }
+
+    if (this.muteSyncTimeout !== null) return;
+
+    const tick = () => {
+      this.muteSyncTimeout = null;
+      this.syncMuteStateFromPlayer();
+      const interval = this.getMuteSyncPollInterval();
+      this.muteSyncTimeout = setTimeout(tick, interval);
+    };
+
+    this.muteSyncTimeout = setTimeout(tick, this.getMuteSyncPollInterval());
+  }
+
+  private getMuteSyncPollInterval(): number {
+    if (!this.panelActive || document.hidden || !this.isPlaying) {
+      return LiveNewsPanel.MUTE_SYNC_BACKGROUND_POLL_MS;
+    }
+    return LiveNewsPanel.MUTE_SYNC_ACTIVE_POLL_MS;
   }
 
   private syncMuteStateFromPlayer(): void {
@@ -610,6 +659,7 @@ export class LiveNewsPanel extends Panel {
       this.isPlaying = true;
       this.updateLiveIndicator();
       void this.initializePlayer();
+      this.startMuteSyncPolling();
     }
   }
 
@@ -643,8 +693,9 @@ export class LiveNewsPanel extends Panel {
       this.ensurePlayerContainer();
       void this.initializePlayer();
     } else {
-      this.syncPlayerState();
+      this.schedulePlayerSync();
     }
+    this.startMuteSyncPolling();
   }
 
   private createMuteButton(): void {
@@ -721,7 +772,7 @@ export class LiveNewsPanel extends Panel {
   private toggleMute(): void {
     this.isMuted = !this.isMuted;
     this.updateMuteIcon();
-    this.syncPlayerState();
+    this.schedulePlayerSync();
   }
 
   /** Creates a single channel tab button with click and drag handlers. */
@@ -752,54 +803,55 @@ export class LiveNewsPanel extends Panel {
     }
 
     // Mouse-based drag reorder (works in WKWebView/Tauri)
-    let dragging: HTMLElement | null = null;
-    let dragStarted = false;
-    let startX = 0;
     const THRESHOLD = 6;
 
-    this.channelSwitcher.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      const btn = (e.target as HTMLElement).closest('.live-channel-btn') as HTMLElement | null;
-      if (!btn) return;
-      this.suppressChannelClick = false;
-      dragging = btn;
-      dragStarted = false;
-      startX = e.clientX;
-      e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!dragging || !this.channelSwitcher) return;
-      if (!dragStarted) {
-        if (Math.abs(e.clientX - startX) < THRESHOLD) return;
-        dragStarted = true;
-        dragging.classList.add('live-channel-dragging');
+    this.boundChannelDragMouseMove = (e: MouseEvent) => {
+      if (!this.dragChannelButton || !this.channelSwitcher) return;
+      if (!this.dragStarted) {
+        if (Math.abs(e.clientX - this.dragStartX) < THRESHOLD) return;
+        this.dragStarted = true;
+        this.dragChannelButton.classList.add('live-channel-dragging');
       }
       const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.live-channel-btn') as HTMLElement | null;
-      if (!target || target === dragging) return;
-      const all = Array.from(this.channelSwitcher!.querySelectorAll('.live-channel-btn'));
-      const idx = all.indexOf(dragging);
+      if (!target || target === this.dragChannelButton) return;
+      const all = Array.from(this.channelSwitcher.querySelectorAll('.live-channel-btn'));
+      const idx = all.indexOf(this.dragChannelButton);
       const targetIdx = all.indexOf(target);
       if (idx === -1 || targetIdx === -1) return;
       if (idx < targetIdx) {
-        target.parentElement?.insertBefore(dragging, target.nextSibling);
+        target.parentElement?.insertBefore(this.dragChannelButton, target.nextSibling);
       } else {
-        target.parentElement?.insertBefore(dragging, target);
+        target.parentElement?.insertBefore(this.dragChannelButton, target);
       }
-    });
+    };
 
-    document.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      if (dragStarted) {
-        dragging.classList.remove('live-channel-dragging');
+    this.boundChannelDragMouseUp = () => {
+      if (!this.dragChannelButton) return;
+      if (this.dragStarted) {
+        this.dragChannelButton.classList.remove('live-channel-dragging');
         this.applyChannelOrderFromDom();
         this.suppressChannelClick = true;
         setTimeout(() => {
           this.suppressChannelClick = false;
         }, 0);
       }
-      dragging = null;
-      dragStarted = false;
+      this.dragChannelButton = null;
+      this.dragStarted = false;
+      document.removeEventListener('mousemove', this.boundChannelDragMouseMove);
+      document.removeEventListener('mouseup', this.boundChannelDragMouseUp);
+    };
+
+    this.channelSwitcher.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const btn = (e.target as HTMLElement).closest('.live-channel-btn') as HTMLElement | null;
+      if (!btn) return;
+      this.suppressChannelClick = false;
+      this.dragChannelButton = btn;
+      this.dragStarted = false;
+      this.dragStartX = e.clientX;
+      document.addEventListener('mousemove', this.boundChannelDragMouseMove);
+      document.addEventListener('mouseup', this.boundChannelDragMouseUp);
+      e.preventDefault();
     });
 
     const toolbar = document.createElement('div');
@@ -951,7 +1003,7 @@ export class LiveNewsPanel extends Panel {
       return;
     }
 
-    this.syncPlayerState();
+    this.schedulePlayerSync();
   }
 
   private showOfflineMessage(channel: LiveChannel): void {
@@ -1267,7 +1319,7 @@ export class LiveNewsPanel extends Panel {
           if (iframe) iframe.referrerPolicy = 'strict-origin-when-cross-origin';
           const quality = getStreamQuality();
           if (quality !== 'auto') this.player?.setPlaybackQuality?.(quality);
-          this.syncPlayerState();
+          this.schedulePlayerSync();
           this.startMuteSyncPolling();
         },
         onError: (event) => {
@@ -1466,7 +1518,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   public refresh(): void {
-    this.syncPlayerState();
+    this.schedulePlayerSync();
   }
 
   /** Reload channel list from storage (e.g. after edit in separate channel management window). */
@@ -1494,14 +1546,17 @@ export class LiveNewsPanel extends Panel {
       clearTimeout(this.idleTimeout);
       this.idleTimeout = null;
     }
+    this.stopMuteSyncPolling();
+    this.schedulePlayerSync.cancel();
 
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     document.removeEventListener('keydown', this.boundFullscreenEscHandler);
     window.removeEventListener('message', this.boundMessageHandler);
+    document.removeEventListener('mousemove', this.boundChannelDragMouseMove);
+    document.removeEventListener('mouseup', this.boundChannelDragMouseUp);
     if (this.isFullscreen) this.toggleFullscreen();
-    ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach(event => {
-      document.removeEventListener(event, this.boundIdleResetHandler);
-    });
+    this.unsubGlobalActivity?.();
+    this.unsubGlobalActivity = null;
 
     this.playerContainer = null;
 

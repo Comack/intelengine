@@ -27,6 +27,9 @@ export class InsightsPanel extends Panel {
   private lastClusters: ClusteredEvent[] = [];
   private aiFlowUnsubscribe: (() => void) | null = null;
   private updateGeneration = 0;
+  private updateInFlight = false;
+  private pendingClusters: ClusteredEvent[] | null = null;
+  private lastProcessedClusterSignature = '';
   private static readonly BRIEF_COOLDOWN_MS = 120000; // 2 min cooldown (API has limits)
   private static readonly BRIEF_CACHE_KEY = 'summary:world-brief';
 
@@ -257,15 +260,30 @@ export class InsightsPanel extends Panel {
   }
 
   public async updateInsights(clusters: ClusteredEvent[]): Promise<void> {
-    if (this.isHidden) return;
-
     this.lastClusters = clusters;
+    if (this.isHidden || !this.isVisible()) {
+      this.pendingClusters = clusters;
+      return;
+    }
+
+    const clusterSignature = this.getClusterSignature(clusters);
+    if (this.updateInFlight) {
+      this.pendingClusters = clusters;
+      return;
+    }
+    if (clusterSignature === this.lastProcessedClusterSignature) {
+      return;
+    }
+
+    this.updateInFlight = true;
     this.updateGeneration++;
     const thisGeneration = this.updateGeneration;
 
     if (clusters.length === 0) {
       this.setDataBadge('unavailable');
       this.setContent(`<div class="insights-empty">${t('components.insights.waitingForData')}</div>`);
+      this.lastProcessedClusterSignature = clusterSignature;
+      this.updateInFlight = false;
       return;
     }
 
@@ -273,6 +291,8 @@ export class InsightsPanel extends Panel {
     if (!isDesktopRuntime() && !isAnyAiProviderEnabled()) {
       this.setDataBadge('unavailable');
       this.renderDisabledState();
+      this.lastProcessedClusterSignature = clusterSignature;
+      this.updateInFlight = false;
       return;
     }
 
@@ -407,10 +427,26 @@ export class InsightsPanel extends Panel {
       if (this.updateGeneration !== thisGeneration) return;
 
       this.renderInsights(importantClusters, sentiments, worldBrief);
+      this.lastProcessedClusterSignature = clusterSignature;
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
       this.setContent('<div class="insights-error">Analysis failed - retrying...</div>');
+    } finally {
+      this.updateInFlight = false;
+      if (this.pendingClusters) {
+        const next = this.pendingClusters;
+        this.pendingClusters = null;
+        void this.updateInsights(next);
+      }
     }
+  }
+
+  protected override onPanelVisibilityChanged(visible: boolean): void {
+    if (!visible || this.isHidden) return;
+    if (!this.pendingClusters) return;
+    const next = this.pendingClusters;
+    this.pendingClusters = null;
+    void this.updateInsights(next);
   }
 
   private renderInsights(
@@ -699,6 +735,10 @@ export class InsightsPanel extends Panel {
     }
 
     if (this.lastClusters.length > 0) {
+      if (!this.isVisible()) {
+        this.pendingClusters = this.lastClusters;
+        return;
+      }
       void this.updateInsights(this.lastClusters);
       return;
     }
@@ -710,5 +750,11 @@ export class InsightsPanel extends Panel {
   public override destroy(): void {
     this.aiFlowUnsubscribe?.();
     super.destroy();
+  }
+
+  private getClusterSignature(clusters: ClusteredEvent[]): string {
+    return clusters
+      .map((cluster) => `${cluster.id}|${cluster.lastUpdated.getTime()}|${cluster.sourceCount}`)
+      .join('\n');
   }
 }

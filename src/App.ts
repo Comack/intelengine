@@ -15,12 +15,13 @@ import { startLearning } from '@/services/country-instability';
 import { dataFreshness } from '@/services/data-freshness';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
 import type { ParsedMapUrlState } from '@/utils';
-import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner } from '@/components';
+import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner, type MapPerformanceProfile } from '@/components';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
 import type { ETFFlowsPanel } from '@/components/ETFFlowsPanel';
 import type { MacroSignalsPanel } from '@/components/MacroSignalsPanel';
+import type { GulfEconomiesPanel } from '@/components/GulfEconomiesPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { StrategicRiskPanel } from '@/components/StrategicRiskPanel';
 import { isDesktopRuntime } from '@/services/runtime';
@@ -31,25 +32,36 @@ import { initI18n } from '@/services/i18n';
 
 import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount } from '@/config/feeds';
 import { fetchBootstrapData } from '@/services/bootstrap';
+import { PerformanceGovernor } from '@/services/performance-governor';
+import { queueIdleWork } from '@/services/dashboard-update-scheduler';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
 import { SearchManager } from '@/app/search-manager';
-import { RefreshScheduler } from '@/app/refresh-scheduler';
+import { RefreshScheduler, type RefreshPolicy } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { resolveUserRegion } from '@/utils/user-location';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
+const MAP_PERFORMANCE_PROFILES: readonly MapPerformanceProfile[] = ['quality', 'balanced', 'smooth'];
 
 export type { CountryBriefSignals } from '@/app/app-context';
 
+function isMapPerformanceProfile(value: string | null): value is MapPerformanceProfile {
+  return value != null && MAP_PERFORMANCE_PROFILES.includes(value as MapPerformanceProfile);
+}
+
 export class App {
   private state: AppContext;
+  private mapPerformanceProfile: MapPerformanceProfile;
+  private performanceGovernor: PerformanceGovernor | null = null;
   private pendingDeepLinkCountry: string | null = null;
   private pendingDeepLinkExpanded = false;
   private pendingDeepLinkStoryCode: string | null = null;
   private deepLinkTimers: ReturnType<typeof setTimeout>[] = [];
+  private deferredWarmupCancel: { cancel: () => void } | null = null;
+  private deferredWarmupStarted = false;
 
   private panelLayout: PanelLayoutManager;
   private dataLoader: DataLoaderManager;
@@ -71,6 +83,14 @@ export class App {
 
     const isMobile = isMobileDevice();
     const isDesktopApp = isDesktopRuntime();
+    const defaultMapPerformanceProfile: MapPerformanceProfile = isDesktopApp ? 'balanced' : 'quality';
+    const storedMapPerformanceProfile = localStorage.getItem(STORAGE_KEYS.mapPerformanceProfile);
+    this.mapPerformanceProfile = isMapPerformanceProfile(storedMapPerformanceProfile)
+      ? storedMapPerformanceProfile
+      : defaultMapPerformanceProfile;
+    if (storedMapPerformanceProfile !== this.mapPerformanceProfile) {
+      localStorage.setItem(STORAGE_KEYS.mapPerformanceProfile, this.mapPerformanceProfile);
+    }
     const monitors = loadFromStorage<Monitor[]>(STORAGE_KEYS.monitors, []);
 
     // Use mobile-specific defaults on first load (no saved layers)
@@ -307,7 +327,7 @@ export class App {
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {
-      updateSearchIndex: () => this.searchManager.updateSearchIndex(),
+      updateSearchIndex: (force?: boolean) => this.searchManager.updateSearchIndex(force),
       loadAllData: () => this.dataLoader.loadAllData(),
       flushStaleRefreshes: () => this.refreshScheduler.flushStaleRefreshes(),
       setHiddenSince: (ts) => this.refreshScheduler.setHiddenSince(ts),
@@ -387,6 +407,8 @@ export class App {
 
     // Phase 1: Layout (creates map + panels — they'll find hydrated data)
     this.panelLayout.init();
+    this.state.map?.setPerformanceProfile(this.mapPerformanceProfile);
+    this.startPerformanceGovernor();
 
     // Happy variant: pre-populate panels from persistent cache for instant render
     if (SITE_VARIANT === 'happy') {
@@ -445,10 +467,10 @@ export class App {
       this.eventHandlers.syncUrlState();
     });
 
-    // Phase 6: Data loading
+    // Phase 6: Critical data loading
     this.dataLoader.syncDataFreshnessWithLayers();
-    await preloadCountryGeometry();
-    await this.dataLoader.loadAllData();
+    await this.dataLoader.loadCriticalData();
+    this.scheduleDeferredWarmup();
 
     startLearning();
 
@@ -482,6 +504,10 @@ export class App {
 
   public destroy(): void {
     this.state.isDestroyed = true;
+    this.performanceGovernor?.stop();
+    this.performanceGovernor = null;
+    this.deferredWarmupCancel?.cancel();
+    this.deferredWarmupCancel = null;
 
     // Destroy all modules in reverse order
     for (let i = this.modules.length - 1; i >= 0; i--) {
@@ -498,6 +524,71 @@ export class App {
     destroyBreakingNewsAlerts();
     this.state.map?.destroy();
     disconnectAisStream();
+  }
+
+  private scheduleDeferredWarmup(): void {
+    if (this.deferredWarmupStarted || this.deferredWarmupCancel || this.state.isDestroyed) return;
+    this.deferredWarmupCancel = queueIdleWork(() => {
+      this.deferredWarmupCancel = null;
+      this.deferredWarmupStarted = true;
+      void this.runDeferredWarmup();
+    }, 900);
+  }
+
+  private async runDeferredWarmup(): Promise<void> {
+    if (this.state.isDestroyed) return;
+    await Promise.allSettled([
+      preloadCountryGeometry(),
+      this.dataLoader.loadDeferredData(),
+    ]);
+  }
+
+  private startPerformanceGovernor(): void {
+    if (!this.state.map?.isDeckGLMode()) return;
+    this.performanceGovernor?.stop();
+    const applySchedulerLoad = (profile: MapPerformanceProfile) => {
+      if (profile === 'smooth') {
+        this.refreshScheduler.setPerformanceLoad('high');
+        return;
+      }
+      if (profile === 'balanced') {
+        this.refreshScheduler.setPerformanceLoad('elevated');
+        return;
+      }
+      this.refreshScheduler.setPerformanceLoad('normal');
+    };
+    applySchedulerLoad(this.mapPerformanceProfile);
+    this.performanceGovernor = new PerformanceGovernor({
+      getStats: () => {
+        const stats = (window as unknown as { __wmMapPerf?: unknown }).__wmMapPerf as
+          | {
+              profile: MapPerformanceProfile;
+              interactionActive: boolean;
+              lastFlushMs: number;
+              lastBuildMs: number;
+              layerCount: number;
+              updatedAt: number;
+            }
+          | undefined;
+        return stats ?? null;
+      },
+      getProfile: () => this.mapPerformanceProfile,
+      setProfile: (profile, reason) => {
+        if (profile === this.mapPerformanceProfile) return;
+        this.mapPerformanceProfile = profile;
+        this.state.map?.setPerformanceProfile(profile);
+        applySchedulerLoad(profile);
+        localStorage.setItem(STORAGE_KEYS.mapPerformanceProfile, profile);
+        if (import.meta.env.DEV) {
+          console.info(`[PerfGovernor] map profile -> ${profile} (${reason})`);
+        }
+      },
+      isMapVisible: () => {
+        const mapEnabled = this.state.panelSettings.map?.enabled !== false;
+        return mapEnabled && !document.hidden;
+      },
+    });
+    this.performanceGovernor.start();
   }
 
   private handleDeepLinks(): void {
@@ -568,31 +659,121 @@ export class App {
   }
 
   private setupRefreshIntervals(): void {
+    const visiblePolicy = (
+      intervalMs: number,
+      condition: () => boolean,
+      priority: RefreshPolicy['priority'] = 'normal',
+      runImmediately = true,
+    ): RefreshPolicy => ({
+      intervalMs,
+      condition,
+      priority,
+      runImmediately,
+    });
+
     // Always refresh news for all variants
-    this.refreshScheduler.scheduleRefresh('news', () => this.dataLoader.loadNews(), REFRESH_INTERVALS.feeds);
+    this.refreshScheduler.scheduleRefresh('news', () => this.dataLoader.loadNews(), {
+      intervalMs: REFRESH_INTERVALS.feeds,
+      priority: 'critical',
+      runImmediately: true,
+    });
 
     // Happy variant only refreshes news -- skip all geopolitical/financial/military refreshes
     if (SITE_VARIANT !== 'happy') {
       this.refreshScheduler.registerAll([
-        { name: 'markets', fn: () => this.dataLoader.loadMarkets(), intervalMs: REFRESH_INTERVALS.markets },
-        { name: 'predictions', fn: () => this.dataLoader.loadPredictions(), intervalMs: REFRESH_INTERVALS.predictions },
-        { name: 'pizzint', fn: () => this.dataLoader.loadPizzInt(), intervalMs: 10 * 60 * 1000 },
-        { name: 'natural', fn: () => this.dataLoader.loadNatural(), intervalMs: 60 * 60 * 1000, condition: () => this.state.mapLayers.natural },
-        { name: 'weather', fn: () => this.dataLoader.loadWeatherAlerts(), intervalMs: 10 * 60 * 1000, condition: () => this.state.mapLayers.weather },
-        { name: 'fred', fn: () => this.dataLoader.loadFredData(), intervalMs: 30 * 60 * 1000 },
-        { name: 'oil', fn: () => this.dataLoader.loadOilAnalytics(), intervalMs: 30 * 60 * 1000 },
-        { name: 'spending', fn: () => this.dataLoader.loadGovernmentSpending(), intervalMs: 60 * 60 * 1000 },
-        { name: 'bis', fn: () => this.dataLoader.loadBisData(), intervalMs: 60 * 60 * 1000 },
-        { name: 'firms', fn: () => this.dataLoader.loadFirmsData(), intervalMs: 30 * 60 * 1000 },
-        { name: 'ais', fn: () => this.dataLoader.loadAisSignals(), intervalMs: REFRESH_INTERVALS.ais, condition: () => this.state.mapLayers.ais },
-        { name: 'cables', fn: () => this.dataLoader.loadCableActivity(), intervalMs: 30 * 60 * 1000, condition: () => this.state.mapLayers.cables },
-        { name: 'cableHealth', fn: () => this.dataLoader.loadCableHealth(), intervalMs: 2 * 60 * 60 * 1000, condition: () => this.state.mapLayers.cables },
-        { name: 'flights', fn: () => this.dataLoader.loadFlightDelays(), intervalMs: 2 * 60 * 60 * 1000, condition: () => this.state.mapLayers.flights },
         {
-          name: 'cyberThreats', fn: () => {
+          name: 'markets',
+          fn: () => this.dataLoader.loadMarkets(),
+          policy: visiblePolicy(
+            REFRESH_INTERVALS.markets,
+            () => this.isAnyPanelVisible(['markets', 'heatmap', 'commodities', 'crypto', 'strategic-risk', 'forensics']),
+            'normal',
+            false,
+          ),
+        },
+        {
+          name: 'predictions',
+          fn: () => this.dataLoader.loadPredictions(),
+          policy: visiblePolicy(
+            REFRESH_INTERVALS.predictions,
+            () => this.isAnyPanelVisible(['polymarket', 'strategic-risk', 'forensics']),
+            'normal',
+            false,
+          ),
+        },
+        {
+          name: 'pizzint',
+          fn: () => this.dataLoader.loadPizzInt(),
+          policy: visiblePolicy(
+            10 * 60 * 1000,
+            () => SITE_VARIANT === 'full' && !!this.state.pizzintIndicator,
+            'idle',
+            false,
+          ),
+        },
+        { name: 'natural', fn: () => this.dataLoader.loadNatural(), policy: visiblePolicy(60 * 60 * 1000, () => this.state.mapLayers.natural, 'idle', false) },
+        { name: 'weather', fn: () => this.dataLoader.loadWeatherAlerts(), policy: visiblePolicy(10 * 60 * 1000, () => this.state.mapLayers.weather, 'idle', false) },
+        {
+          name: 'fred',
+          fn: () => this.dataLoader.loadFredData(),
+          policy: visiblePolicy(
+            30 * 60 * 1000,
+            () => this.isAnyPanelVisible(['economic', 'strategic-risk', 'forensics']),
+            'idle',
+            false,
+          ),
+        },
+        {
+          name: 'oil',
+          fn: () => this.dataLoader.loadOilAnalytics(),
+          policy: visiblePolicy(
+            30 * 60 * 1000,
+            () => this.isAnyPanelVisible(['economic', 'strategic-risk', 'forensics']),
+            'idle',
+            false,
+          ),
+        },
+        {
+          name: 'spending',
+          fn: () => this.dataLoader.loadGovernmentSpending(),
+          policy: visiblePolicy(
+            60 * 60 * 1000,
+            () => this.isAnyPanelVisible(['economic', 'strategic-risk', 'forensics']),
+            'idle',
+            false,
+          ),
+        },
+        {
+          name: 'bis',
+          fn: () => this.dataLoader.loadBisData(),
+          policy: visiblePolicy(
+            60 * 60 * 1000,
+            () => this.isAnyPanelVisible(['economic', 'strategic-risk', 'forensics']),
+            'idle',
+            false,
+          ),
+        },
+        {
+          name: 'firms',
+          fn: () => this.dataLoader.loadFirmsData(),
+          policy: visiblePolicy(
+            30 * 60 * 1000,
+            () => this.state.mapLayers.fires || this.isAnyPanelVisible(['satellite-fires', 'cii', 'strategic-risk']),
+            'normal',
+            false,
+          ),
+        },
+        { name: 'ais', fn: () => this.dataLoader.loadAisSignals(), policy: visiblePolicy(REFRESH_INTERVALS.ais, () => this.state.mapLayers.ais, 'normal', false) },
+        { name: 'cables', fn: () => this.dataLoader.loadCableActivity(), policy: visiblePolicy(30 * 60 * 1000, () => this.state.mapLayers.cables, 'idle', false) },
+        { name: 'cableHealth', fn: () => this.dataLoader.loadCableHealth(), policy: visiblePolicy(2 * 60 * 60 * 1000, () => this.state.mapLayers.cables, 'idle', false) },
+        { name: 'flights', fn: () => this.dataLoader.loadFlightDelays(), policy: visiblePolicy(2 * 60 * 60 * 1000, () => this.state.mapLayers.flights, 'idle', false) },
+        {
+          name: 'cyberThreats',
+          fn: () => {
             this.state.cyberThreatsCache = null;
             return this.dataLoader.loadCyberThreats();
-          }, intervalMs: 10 * 60 * 1000, condition: () => CYBER_LAYER_ENABLED && this.state.mapLayers.cyberThreats
+          },
+          policy: visiblePolicy(10 * 60 * 1000, () => CYBER_LAYER_ENABLED && this.state.mapLayers.cyberThreats, 'normal', false),
         },
       ]);
     }
@@ -601,52 +782,58 @@ export class App {
     this.refreshScheduler.scheduleRefresh(
       'service-status',
       () => (this.state.panels['service-status'] as ServiceStatusPanel).fetchStatus(),
-      60_000,
-      () => !!this.state.panels['service-status']
+      visiblePolicy(60_000, () => this.isPanelVisible('service-status'))
     );
     this.refreshScheduler.scheduleRefresh(
       'stablecoins',
       () => (this.state.panels['stablecoins'] as StablecoinPanel).fetchData(),
-      3 * 60_000,
-      () => !!this.state.panels['stablecoins']
+      visiblePolicy(3 * 60_000, () => this.isPanelVisible('stablecoins'))
     );
     this.refreshScheduler.scheduleRefresh(
       'etf-flows',
       () => (this.state.panels['etf-flows'] as ETFFlowsPanel).fetchData(),
-      3 * 60_000,
-      () => !!this.state.panels['etf-flows']
+      visiblePolicy(3 * 60_000, () => this.isPanelVisible('etf-flows'))
     );
     this.refreshScheduler.scheduleRefresh(
       'macro-signals',
       () => (this.state.panels['macro-signals'] as MacroSignalsPanel).fetchData(),
-      3 * 60_000,
-      () => !!this.state.panels['macro-signals']
+      visiblePolicy(3 * 60_000, () => this.isPanelVisible('macro-signals'))
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'gulf-economies',
+      () => (this.state.panels['gulf-economies'] as GulfEconomiesPanel).fetchData(),
+      visiblePolicy(60_000, () => this.isPanelVisible('gulf-economies'))
     );
     this.refreshScheduler.scheduleRefresh(
       'strategic-posture',
       () => (this.state.panels['strategic-posture'] as StrategicPosturePanel).refresh(),
-      15 * 60_000,
-      () => !!this.state.panels['strategic-posture']
+      visiblePolicy(15 * 60_000, () => this.isPanelVisible('strategic-posture'), 'normal', false)
     );
     this.refreshScheduler.scheduleRefresh(
       'strategic-risk',
       () => (this.state.panels['strategic-risk'] as StrategicRiskPanel).refresh(),
-      5 * 60_000,
-      () => !!this.state.panels['strategic-risk']
+      visiblePolicy(5 * 60_000, () => this.isPanelVisible('strategic-risk'), 'normal', false)
     );
 
     // WTO trade policy data — annual data, poll every 10 min to avoid hammering upstream
     if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
-      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), 10 * 60 * 1000);
-      this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), 10 * 60 * 1000);
+      this.refreshScheduler.scheduleRefresh(
+        'tradePolicy',
+        () => this.dataLoader.loadTradePolicy(),
+        visiblePolicy(10 * 60 * 1000, () => this.isPanelVisible('trade-policy'), 'idle', false),
+      );
+      this.refreshScheduler.scheduleRefresh(
+        'supplyChain',
+        () => this.dataLoader.loadSupplyChain(),
+        visiblePolicy(10 * 60 * 1000, () => this.isPanelVisible('supply-chain'), 'idle', false),
+      );
     }
 
     // Telegram Intel (near real-time, 60s refresh)
     this.refreshScheduler.scheduleRefresh(
       'telegram-intel',
       () => this.dataLoader.loadTelegramIntel(),
-      60_000,
-      () => !!this.state.panels['telegram-intel']
+      visiblePolicy(60_000, () => this.isPanelVisible('telegram-intel'), 'critical')
     );
 
     // Refresh intelligence signals for CII (geopolitical variant only)
@@ -657,8 +844,31 @@ export class App {
         if (military) this.state.intelligenceCache.military = military;
         if (iranEvents) this.state.intelligenceCache.iranEvents = iranEvents;
         return this.dataLoader.loadIntelligenceSignals();
-      }, 15 * 60 * 1000);
+      }, visiblePolicy(
+        15 * 60 * 1000,
+        () =>
+          this.isAnyPanelVisible(['cii', 'strategic-posture', 'strategic-risk', 'forensics', 'population-exposure', 'ucdp-events', 'displacement', 'climate', 'security-advisories', 'oref-sirens', 'telegram-intel']) ||
+          this.isAnyMapLayerEnabled(['outages', 'protests', 'military', 'ucdpEvents', 'displacement', 'climate', 'gpsJamming']),
+        'critical',
+        false,
+      ));
     }
+  }
+
+  private isPanelVisible(panelId: string): boolean {
+    const panel = this.state.panels[panelId];
+    if (!panel) return false;
+    const setting = this.state.panelSettings[panelId];
+    if (setting && !setting.enabled) return false;
+    return panel.isVisible();
+  }
+
+  private isAnyPanelVisible(panelIds: string[]): boolean {
+    return panelIds.some((id) => this.isPanelVisible(id));
+  }
+
+  private isAnyMapLayerEnabled(layerIds: (keyof MapLayers)[]): boolean {
+    return layerIds.some((id) => this.state.mapLayers[id]);
   }
 }
 
@@ -676,4 +886,3 @@ export class App {
 // buildTopologyWindowMapOverlay
 // ForensicsTopologyWindowOverlay
 // forensics: { name: 'Forensics Signals'
-

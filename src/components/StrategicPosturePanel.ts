@@ -11,11 +11,14 @@ import { buildNewsContext } from '@/utils/news-context';
 export class StrategicPosturePanel extends Panel {
   private postures: TheaterPostureSummary[] = [];
   private vesselTimeouts: ReturnType<typeof setTimeout>[] = [];
+  private staleRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
   private loadingElapsedInterval: ReturnType<typeof setInterval> | null = null;
   private loadingStartTime: number = 0;
   private onLocationClick?: (lat: number, lon: number) => void;
   private lastTimestamp: string = '';
   private isStale: boolean = false;
+  private contentEventsBound = false;
+  private boundContentClickHandler: ((event: MouseEvent) => void) | null = null;
 
   constructor(private getLatestNews?: () => NewsItem[]) {
     super({
@@ -29,14 +32,10 @@ export class StrategicPosturePanel extends Panel {
   }
 
   private init(): void {
+    this.bindContentEvents();
     this.showLoading();
     void this.fetchAndRender();
-    // Re-augment with vessels after stream has had time to populate
-    // AIS data accumulates gradually - check at 30s, 60s, 90s, 120s
-    this.vesselTimeouts.push(setTimeout(() => this.reaugmentVessels(), 30 * 1000));
-    this.vesselTimeouts.push(setTimeout(() => this.reaugmentVessels(), 60 * 1000));
-    this.vesselTimeouts.push(setTimeout(() => this.reaugmentVessels(), 90 * 1000));
-    this.vesselTimeouts.push(setTimeout(() => this.reaugmentVessels(), 120 * 1000));
+    this.scheduleVesselReaugmentations();
   }
 
   private isPanelVisible(): boolean {
@@ -45,10 +44,23 @@ export class StrategicPosturePanel extends Panel {
 
   private async reaugmentVessels(): Promise<void> {
     if (!this.isPanelVisible() || this.postures.length === 0) return;
-    console.log('[StrategicPosturePanel] Re-augmenting with vessels...');
     await this.augmentWithVessels();
     if (!this.element?.isConnected) return;
     this.render();
+  }
+
+  private scheduleVesselReaugmentations(): void {
+    this.clearVesselReaugmentations();
+    if (!this.isPanelVisible()) return;
+    const delaysMs = [30_000, 60_000, 90_000, 120_000];
+    this.vesselTimeouts = delaysMs.map((delayMs) => setTimeout(() => {
+      void this.reaugmentVessels();
+    }, delayMs));
+  }
+
+  private clearVesselReaugmentations(): void {
+    this.vesselTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    this.vesselTimeouts = [];
   }
 
   public override showLoading(): void {
@@ -151,7 +163,12 @@ export class StrategicPosturePanel extends Panel {
 
       // If we rendered stale localStorage data, re-fetch fresh after a short delay
       if (this.isStale) {
-        setTimeout(() => {
+        if (this.staleRefreshTimeout) {
+          clearTimeout(this.staleRefreshTimeout);
+        }
+        this.staleRefreshTimeout = setTimeout(() => {
+          this.staleRefreshTimeout = null;
+          if (!this.isPanelVisible()) return;
           void this.fetchAndRender();
         }, 3000);
       }
@@ -165,7 +182,6 @@ export class StrategicPosturePanel extends Panel {
   private async augmentWithVessels(): Promise<void> {
     try {
       const { vessels } = await fetchMilitaryVessels();
-      console.log(`[StrategicPosturePanel] Got ${vessels.length} total military vessels`);
       if (vessels.length === 0) {
         // AIS stream hasn't accumulated data yet — restore from cache
         this.restoreVesselCounts();
@@ -197,10 +213,6 @@ export class StrategicPosturePanel extends Panel {
         ).length;
         posture.totalVessels = theaterVessels.length;
 
-        if (theaterVessels.length > 0) {
-          console.log(`[StrategicPosturePanel] ${posture.shortName}: ${theaterVessels.length} vessels`, theaterVessels.map(v => v.vesselType));
-        }
-
         // Add vessel operators to byOperator
         for (const v of theaterVessels) {
           const op = v.operator || 'unknown';
@@ -213,7 +225,6 @@ export class StrategicPosturePanel extends Panel {
 
       // Recalculate posture levels now that vessels are included
       recalcPostureWithVessels(this.postures);
-      console.log('[StrategicPosturePanel] Augmented with', vessels.length, 'vessels, posture levels recalculated');
     } catch (error) {
       console.warn('[StrategicPosturePanel] Failed to fetch vessels:', error);
       // Restore cached vessel counts if live fetch failed
@@ -261,7 +272,6 @@ export class StrategicPosturePanel extends Panel {
           p.totalVessels = cached.totalVessels;
         }
       }
-      console.log('[StrategicPosturePanel] Restored cached vessel counts');
     } catch { /* parse error */ }
   }
 
@@ -473,94 +483,95 @@ export class StrategicPosturePanel extends Panel {
     `;
 
     this.setContent(html);
-    this.attachEventListeners();
   }
 
-  private attachEventListeners(): void {
-    this.content.querySelector('.posture-refresh-btn')?.addEventListener('click', () => {
-      this.refresh();
-    });
+  private bindContentEvents(): void {
+    if (this.contentEventsBound) return;
+    this.contentEventsBound = true;
 
-    const theaters = this.content.querySelectorAll('.posture-theater');
-    theaters.forEach((el) => {
-      el.addEventListener('click', (e) => {
-        // Prevent click if we clicked the deduce button specifically
-        if ((e.target as HTMLElement).closest('.posture-deduce-btn')) {
-          return;
-        }
+    this.boundContentClickHandler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
 
-        const lat = parseFloat((el as HTMLElement).dataset.lat || '0');
-        const lon = parseFloat((el as HTMLElement).dataset.lon || '0');
-        console.log('[StrategicPosturePanel] Theater clicked:', {
-          lat,
-          lon,
-          dataLat: (el as HTMLElement).dataset.lat,
-          dataLon: (el as HTMLElement).dataset.lon,
-          element: (el as HTMLElement).textContent?.slice(0, 30),
-          hasHandler: !!this.onLocationClick,
-        });
-        if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
-          console.log('[StrategicPosturePanel] Calling onLocationClick with:', lat, lon);
-          this.onLocationClick(lat, lon);
-        } else {
-          console.warn('[StrategicPosturePanel] No handler or invalid coords!', {
-            hasHandler: !!this.onLocationClick,
-            lat,
-            lon,
-          });
-        }
-      });
-    });
+      const refreshBtn = target.closest('.posture-refresh-btn');
+      if (refreshBtn && this.content.contains(refreshBtn)) {
+        void this.refresh();
+        return;
+      }
 
-    const deduceBtns = this.content.querySelectorAll('.posture-deduce-btn');
-    deduceBtns.forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        try {
-          const theaterDataStr = (btn as HTMLElement).dataset.theater;
-          if (!theaterDataStr) return;
+      const deduceBtn = target.closest<HTMLElement>('.posture-deduce-btn');
+      if (deduceBtn && this.content.contains(deduceBtn)) {
+        event.stopPropagation();
+        this.dispatchDeductionContext(deduceBtn);
+        return;
+      }
 
-          const p = JSON.parse(theaterDataStr);
-          const query = `What is the expected strategic impact of the current military posture in the ${p.shortName} theater?`;
-          let geoContext = `Theater: ${p.shortName} (${p.theaterName}). Military Assets: ${p.totalAircraft} aircraft, ${p.totalVessels} naval vessels. Readiness Level: ${p.postureLevel}. Assets breakdown: ${p.fighters} fighters, ${p.bombers} bombers, ${p.carriers} carriers, ${p.submarines} submarines. Focus/Target: ${p.targetNation || 'Unknown'}.`;
+      const theaterEl = target.closest<HTMLElement>('.posture-theater');
+      if (!theaterEl || !this.content.contains(theaterEl)) return;
+      const lat = parseFloat(theaterEl.dataset.lat || '0');
+      const lon = parseFloat(theaterEl.dataset.lon || '0');
+      if (this.onLocationClick && !Number.isNaN(lat) && !Number.isNaN(lon)) {
+        this.onLocationClick(lat, lon);
+      }
+    };
 
-          if (this.getLatestNews) {
-            const newsCtx = buildNewsContext(this.getLatestNews);
-            if (newsCtx) geoContext += `\n\n${newsCtx}`;
-          }
+    this.content.addEventListener('click', this.boundContentClickHandler);
+  }
 
-          const detail: DeductContextDetail = { query, geoContext, autoSubmit: true };
-          document.dispatchEvent(new CustomEvent('wm:deduct-context', { detail }));
-        } catch (err) {
-          console.error('[StrategicPosturePanel] Failed to dispatch deduction event', err);
-        }
-      });
-    });
+  private dispatchDeductionContext(button: HTMLElement): void {
+    try {
+      const theaterDataStr = button.dataset.theater;
+      if (!theaterDataStr) return;
+
+      const p = JSON.parse(theaterDataStr);
+      const query = `What is the expected strategic impact of the current military posture in the ${p.shortName} theater?`;
+      let geoContext = `Theater: ${p.shortName} (${p.theaterName}). Military Assets: ${p.totalAircraft} aircraft, ${p.totalVessels} naval vessels. Readiness Level: ${p.postureLevel}. Assets breakdown: ${p.fighters} fighters, ${p.bombers} bombers, ${p.carriers} carriers, ${p.submarines} submarines. Focus/Target: ${p.targetNation || 'Unknown'}.`;
+
+      if (this.getLatestNews) {
+        const newsCtx = buildNewsContext(this.getLatestNews);
+        if (newsCtx) geoContext += `\n\n${newsCtx}`;
+      }
+
+      const detail: DeductContextDetail = { query, geoContext, autoSubmit: true };
+      document.dispatchEvent(new CustomEvent('wm:deduct-context', { detail }));
+    } catch (err) {
+      console.error('[StrategicPosturePanel] Failed to dispatch deduction event', err);
+    }
   }
 
   public setLocationClickHandler(handler: (lat: number, lon: number) => void): void {
-    console.log('[StrategicPosturePanel] setLocationClickHandler called, handler:', typeof handler);
     this.onLocationClick = handler;
-    // Verify it's stored
-    console.log('[StrategicPosturePanel] Handler stored, onLocationClick now:', typeof this.onLocationClick);
   }
 
   public getPostures(): TheaterPostureSummary[] {
     return this.postures;
   }
 
-  public override show(): void {
-    const wasHidden = this.element.classList.contains('hidden');
-    super.show();
-    if (wasHidden) {
+  protected override onPanelVisibilityChanged(visible: boolean): void {
+    if (visible) {
+      this.scheduleVesselReaugmentations();
       void this.fetchAndRender();
+      return;
     }
+    if (this.staleRefreshTimeout) {
+      clearTimeout(this.staleRefreshTimeout);
+      this.staleRefreshTimeout = null;
+    }
+    this.clearVesselReaugmentations();
   }
 
   public destroy(): void {
     this.stopLoadingTimer();
-    this.vesselTimeouts.forEach(t => clearTimeout(t));
-    this.vesselTimeouts = [];
+    if (this.staleRefreshTimeout) {
+      clearTimeout(this.staleRefreshTimeout);
+      this.staleRefreshTimeout = null;
+    }
+    this.clearVesselReaugmentations();
+    if (this.boundContentClickHandler) {
+      this.content.removeEventListener('click', this.boundContentClickHandler);
+      this.boundContentClickHandler = null;
+    }
+    this.contentEventsBound = false;
     super.destroy();
   }
 }

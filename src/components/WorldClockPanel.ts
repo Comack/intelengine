@@ -49,6 +49,7 @@ const CITY_REGIONS: { name: string; ids: string[] }[] = [
   { name: 'Middle East & Africa', ids: ['riyadh', 'dubai', 'cairo', 'lagos', 'johannesburg'] },
   { name: 'Asia-Pacific', ids: ['mumbai', 'bangkok', 'jakarta', 'kuala-lumpur', 'singapore', 'hong-kong', 'shanghai', 'taipei', 'seoul', 'tokyo', 'sydney', 'auckland'] },
 ];
+const CITY_BY_ID = new Map(WORLD_CITIES.map((city) => [city.id, city]));
 
 const TIMEZONE_TO_CITY: Record<string, string> = {};
 for (const c of WORLD_CITIES) {
@@ -173,6 +174,14 @@ const STYLE = `<style>
 .wc-row.wc-drag-over-below{box-shadow:inset 0 -2px 0 #44ff88}
 </style>`;
 
+interface ClockRowElements {
+  row: HTMLElement;
+  time: HTMLElement;
+  tz: HTMLElement;
+  bar: HTMLElement;
+  status: HTMLElement | null;
+}
+
 export class WorldClockPanel extends Panel {
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private selectedCities: string[] = [];
@@ -182,6 +191,10 @@ export class WorldClockPanel extends Panel {
   private dragging = false;
   private dragCityId: string | null = null;
   private dragStartY = 0;
+  private boundDragMouseMove!: (e: MouseEvent) => void;
+  private boundDragMouseUp!: (e: MouseEvent) => void;
+  private clockRows = new Map<string, ClockRowElements>();
+  private cacheRowsTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     super({ id: 'world-clock', title: 'World Clock', trackActivity: false });
@@ -213,9 +226,29 @@ export class WorldClockPanel extends Panel {
 
     this.setupDragHandlers();
     this.renderClocks();
+    this.startTicking();
+  }
+
+  private startTicking(): void {
+    if (this.tickInterval !== null) return;
     this.tickInterval = setInterval(() => {
-      if (!this.showingSettings && !this.dragging) this.renderClocks();
+      if (!this.showingSettings && !this.dragging) this.refreshClockValues();
     }, 1000);
+  }
+
+  private stopTicking(): void {
+    if (this.tickInterval === null) return;
+    clearInterval(this.tickInterval);
+    this.tickInterval = null;
+  }
+
+  protected override onPanelVisibilityChanged(visible: boolean): void {
+    if (visible) {
+      this.renderClocks();
+      this.startTicking();
+    } else {
+      this.stopTicking();
+    }
   }
 
   private toggleSettings(): void {
@@ -234,11 +267,16 @@ export class WorldClockPanel extends Panel {
   }
 
   private renderSettings(): void {
+    this.clockRows.clear();
+    if (this.cacheRowsTimer) {
+      clearTimeout(this.cacheRowsTimer);
+      this.cacheRowsTimer = null;
+    }
     let html = STYLE + '<div class="wc-settings-view">';
     for (const region of CITY_REGIONS) {
       html += `<div class="wc-region-header">${region.name}</div><div class="wc-region-grid">`;
       for (const id of region.ids) {
-        const city = WORLD_CITIES.find(c => c.id === id);
+        const city = CITY_BY_ID.get(id);
         if (!city) continue;
         const checked = this.selectedCities.includes(city.id) ? 'checked' : '';
         html += `<label class="wc-city-option"><input type="checkbox" data-city-id="${city.id}" ${checked}><span class="wc-opt-name">${city.city}</span><span class="wc-opt-label">${city.label}</span></label>`;
@@ -252,19 +290,7 @@ export class WorldClockPanel extends Panel {
   private setupDragHandlers(): void {
     const content = this.content;
 
-    content.addEventListener('mousedown', (e: MouseEvent) => {
-      const handle = (e.target as HTMLElement).closest('.wc-drag-handle') as HTMLElement | null;
-      if (!handle) return;
-      const row = handle.closest('.wc-row') as HTMLElement | null;
-      if (!row) return;
-      e.preventDefault();
-      this.dragCityId = row.dataset.cityId ?? null;
-      this.dragStartY = e.clientY;
-      this.dragging = false;
-      row.classList.add('wc-dragging');
-    });
-
-    document.addEventListener('mousemove', (e: MouseEvent) => {
+    this.boundDragMouseMove = (e: MouseEvent) => {
       if (!this.dragCityId) return;
       if (!this.dragging && Math.abs(e.clientY - this.dragStartY) < 8) return;
       this.dragging = true;
@@ -278,9 +304,9 @@ export class WorldClockPanel extends Panel {
           row.classList.add(e.clientY < rect.top + rect.height / 2 ? 'wc-drag-over-above' : 'wc-drag-over-below');
         }
       }
-    });
+    };
 
-    document.addEventListener('mouseup', (e: MouseEvent) => {
+    this.boundDragMouseUp = (e: MouseEvent) => {
       if (!this.dragCityId) return;
       const dragId = this.dragCityId;
       this.dragCityId = null;
@@ -313,15 +339,68 @@ export class WorldClockPanel extends Panel {
       }
       this.dragging = false;
       this.renderClocks();
+      document.removeEventListener('mousemove', this.boundDragMouseMove);
+      document.removeEventListener('mouseup', this.boundDragMouseUp);
+    };
+
+    content.addEventListener('mousedown', (e: MouseEvent) => {
+      const handle = (e.target as HTMLElement).closest('.wc-drag-handle') as HTMLElement | null;
+      if (!handle) return;
+      const row = handle.closest('.wc-row') as HTMLElement | null;
+      if (!row) return;
+      e.preventDefault();
+      this.dragCityId = row.dataset.cityId ?? null;
+      this.dragStartY = e.clientY;
+      this.dragging = false;
+      row.classList.add('wc-dragging');
+      document.addEventListener('mousemove', this.boundDragMouseMove);
+      document.addEventListener('mouseup', this.boundDragMouseUp);
+    });
+  }
+
+  private getSortedCities(): CityEntry[] {
+    return this.selectedCities
+      .map((id) => CITY_BY_ID.get(id))
+      .filter((city): city is CityEntry => city != null);
+  }
+
+  private getStatusHtml(city: CityEntry, hour: number, dayOfWeek: string): string {
+    if (city.marketOpen === undefined || city.marketClose === undefined) return '';
+    const isWeekday = dayOfWeek !== 'Sat' && dayOfWeek !== 'Sun';
+    const isOpen = isWeekday && hour >= city.marketOpen && hour < city.marketClose;
+    return isOpen
+      ? '<span class="wc-status open"><span class="wc-dot open"></span>OPEN</span>'
+      : '<span class="wc-status closed"><span class="wc-dot closed"></span>CLSD</span>';
+  }
+
+  private cacheClockRows(): void {
+    this.clockRows.clear();
+    const rows = this.content.querySelectorAll<HTMLElement>('.wc-row[data-city-id]');
+    rows.forEach((row) => {
+      const cityId = row.dataset.cityId;
+      const time = row.querySelector<HTMLElement>('.wc-time');
+      const tz = row.querySelector<HTMLElement>('.wc-tz-label');
+      const bar = row.querySelector<HTMLElement>('.wc-bar');
+      if (!cityId || !time || !tz || !bar) return;
+      this.clockRows.set(cityId, {
+        row,
+        time,
+        tz,
+        bar,
+        status: row.querySelector<HTMLElement>('.wc-status'),
+      });
     });
   }
 
   private renderClocks(): void {
-    const sorted = this.selectedCities
-      .map(id => WORLD_CITIES.find(c => c.id === id))
-      .filter((c): c is CityEntry => !!c);
+    const sorted = this.getSortedCities();
 
     if (sorted.length === 0) {
+      this.clockRows.clear();
+      if (this.cacheRowsTimer) {
+        clearTimeout(this.cacheRowsTimer);
+        this.cacheRowsTimer = null;
+      }
       this.setContent(STYLE + '<div class="wc-empty">No cities selected. Click \u2699 to add cities.</div>');
       return;
     }
@@ -333,31 +412,66 @@ export class WorldClockPanel extends Panel {
       const pct = ((h * 3600 + m * 60 + s) / 86400) * 100;
       const abbr = getTzAbbr(city.timezone);
       const isHome = city.id === this.homeCityId;
-      const isWeekday = dayOfWeek !== 'Sat' && dayOfWeek !== 'Sun';
-
-      let statusHtml = '';
-      if (city.marketOpen !== undefined && city.marketClose !== undefined) {
-        const isOpen = isWeekday && h >= city.marketOpen && h < city.marketClose;
-        statusHtml = isOpen
-          ? '<span class="wc-status open"><span class="wc-dot open"></span>OPEN</span>'
-          : '<span class="wc-status closed"><span class="wc-dot closed"></span>CLSD</span>';
-      }
+      const statusHtml = this.getStatusHtml(city, h, dayOfWeek);
 
       const rowCls = ['wc-row'];
       if (isHome) rowCls.push('wc-home');
       if (!isDay) rowCls.push('wc-night');
 
-      html += `<div class="${rowCls.join(' ')}" data-city-id="${city.id}"><div class="wc-drag-handle" title="Drag to reorder">\u22EE</div><div class="wc-info"><div class="wc-name">${city.city}${isHome ? '<span class="wc-home-tag">\u2302</span>' : ''}</div><div class="wc-detail"><span class="wc-exchange">${city.label}</span>${statusHtml}</div></div><div class="wc-clock"><div class="wc-time">${pad2(h)}:${pad2(m)}:${pad2(s)}</div><div class="wc-tz"><div class="wc-bar-wrap"><div class="wc-bar ${isDay ? 'day' : 'night'}" style="width:${pct.toFixed(1)}%"></div></div><span>${dayOfWeek} ${abbr}</span></div></div></div>`;
+      html += `<div class="${rowCls.join(' ')}" data-city-id="${city.id}"><div class="wc-drag-handle" title="Drag to reorder">\u22EE</div><div class="wc-info"><div class="wc-name">${city.city}${isHome ? '<span class="wc-home-tag">\u2302</span>' : ''}</div><div class="wc-detail"><span class="wc-exchange">${city.label}</span>${statusHtml}</div></div><div class="wc-clock"><div class="wc-time">${pad2(h)}:${pad2(m)}:${pad2(s)}</div><div class="wc-tz"><div class="wc-bar-wrap"><div class="wc-bar ${isDay ? 'day' : 'night'}" style="width:${pct.toFixed(1)}%"></div></div><span class="wc-tz-label">${dayOfWeek} ${abbr}</span></div></div></div>`;
     }
     html += '</div>';
     this.setContent(html);
+    if (this.cacheRowsTimer) clearTimeout(this.cacheRowsTimer);
+    this.cacheRowsTimer = setTimeout(() => {
+      this.cacheRowsTimer = null;
+      this.cacheClockRows();
+      this.refreshClockValues();
+    }, 180);
+  }
+
+  private refreshClockValues(): void {
+    const sorted = this.getSortedCities();
+    if (sorted.length === 0 || this.clockRows.size === 0) return;
+    if (sorted.length !== this.clockRows.size) {
+      this.renderClocks();
+      return;
+    }
+
+    for (const city of sorted) {
+      const refs = this.clockRows.get(city.id);
+      if (!refs) {
+        this.renderClocks();
+        return;
+      }
+
+      const { h, m, s, dayOfWeek } = getTimeInZone(city.timezone);
+      const isDay = h >= 6 && h < 20;
+      const pct = ((h * 3600 + m * 60 + s) / 86400) * 100;
+      const abbr = getTzAbbr(city.timezone);
+
+      refs.time.textContent = `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
+      refs.tz.textContent = `${dayOfWeek} ${abbr}`.trim();
+      refs.bar.style.width = `${pct.toFixed(1)}%`;
+      refs.bar.classList.toggle('day', isDay);
+      refs.bar.classList.toggle('night', !isDay);
+      refs.row.classList.toggle('wc-night', !isDay);
+
+      if (refs.status) {
+        refs.status.outerHTML = this.getStatusHtml(city, h, dayOfWeek);
+        refs.status = refs.row.querySelector<HTMLElement>('.wc-status');
+      }
+    }
   }
 
   destroy(): void {
-    if (this.tickInterval) {
-      clearInterval(this.tickInterval);
-      this.tickInterval = null;
+    this.stopTicking();
+    if (this.cacheRowsTimer) {
+      clearTimeout(this.cacheRowsTimer);
+      this.cacheRowsTimer = null;
     }
+    document.removeEventListener('mousemove', this.boundDragMouseMove);
+    document.removeEventListener('mouseup', this.boundDragMouseUp);
     super.destroy();
   }
 }

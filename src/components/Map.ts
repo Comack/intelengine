@@ -162,6 +162,11 @@ export class MapComponent {
   private lastRenderTime = 0;
   private readonly MIN_RENDER_INTERVAL_MS = 100;
   private healthCheckIntervalId: ReturnType<typeof setInterval> | null = null;
+  private interactionActive = false;
+  private interactionIdleTimeout: ReturnType<typeof setTimeout> | null = null;
+  private lastLabelVisibilityAt = 0;
+  private readonly INTERACTION_LABEL_UPDATE_MS = 180;
+  private readonly INTERACTION_IDLE_MS = 160;
 
   constructor(container: HTMLElement, initialState: MapState) {
     this.container = container;
@@ -253,6 +258,28 @@ export class MapComponent {
       clearInterval(this.healthCheckIntervalId);
       this.healthCheckIntervalId = null;
     }
+    if (this.interactionIdleTimeout) {
+      clearTimeout(this.interactionIdleTimeout);
+      this.interactionIdleTimeout = null;
+    }
+  }
+
+  private setInteractionActive(active: boolean): void {
+    if (this.interactionActive === active) return;
+    this.interactionActive = active;
+    if (!active) {
+      this.lastLabelVisibilityAt = 0;
+      this.updateLabelVisibility(this.state.zoom);
+    }
+  }
+
+  private bumpInteractionWindow(): void {
+    this.setInteractionActive(true);
+    if (this.interactionIdleTimeout) clearTimeout(this.interactionIdleTimeout);
+    this.interactionIdleTimeout = setTimeout(() => {
+      this.interactionIdleTimeout = null;
+      this.setInteractionActive(false);
+    }, this.INTERACTION_IDLE_MS);
   }
 
   private createControls(): HTMLElement {
@@ -686,6 +713,7 @@ export class MapComponent {
       'wheel',
       (e) => {
         e.preventDefault();
+        this.bumpInteractionWindow();
 
         // Check if this is a pinch gesture (ctrlKey is set for trackpad pinch)
         if (e.ctrlKey) {
@@ -715,6 +743,7 @@ export class MapComponent {
       if (shouldIgnoreInteractionStart(e.target)) return;
       if (e.button === 0) { // Left click
         isDragging = true;
+        this.setInteractionActive(true);
         lastPos = { x: e.clientX, y: e.clientY };
         this.container.style.cursor = 'grabbing';
       }
@@ -722,6 +751,7 @@ export class MapComponent {
 
     document.addEventListener('mousemove', (e) => {
       if (!isDragging) return;
+      this.bumpInteractionWindow();
 
       const dx = e.clientX - lastPos.x;
       const dy = e.clientY - lastPos.y;
@@ -738,6 +768,7 @@ export class MapComponent {
       if (isDragging) {
         isDragging = false;
         this.container.style.cursor = 'grab';
+        this.setInteractionActive(false);
       }
     });
 
@@ -756,6 +787,7 @@ export class MapComponent {
 
       if (e.touches.length === 2 && touch1 && touch2) {
         e.preventDefault();
+        this.setInteractionActive(true);
         touchDragActive = false;
         lastTouchDist = Math.hypot(
           touch2.clientX - touch1.clientX,
@@ -767,6 +799,7 @@ export class MapComponent {
         };
       } else if (e.touches.length === 1 && touch1) {
         isDragging = true;
+        this.setInteractionActive(true);
         touchDragActive = false;
         touchStartPos = { x: touch1.clientX, y: touch1.clientY };
         lastPos = { x: touch1.clientX, y: touch1.clientY };
@@ -781,6 +814,7 @@ export class MapComponent {
 
       if (e.touches.length === 2 && touch1 && touch2) {
         e.preventDefault();
+        this.bumpInteractionWindow();
 
         const dist = Math.hypot(
           touch2.clientX - touch1.clientX,
@@ -809,6 +843,7 @@ export class MapComponent {
         }
 
         e.preventDefault();
+        this.bumpInteractionWindow();
 
         const dx = touch1.clientX - lastPos.x;
         const dy = touch1.clientY - lastPos.y;
@@ -853,6 +888,7 @@ export class MapComponent {
       touchDragActive = false;
       lastTouchDist = 0;
       touchHistory.length = 0;
+      this.setInteractionActive(false);
     });
 
     this.container.addEventListener('click', (e) => {
@@ -1560,19 +1596,12 @@ export class MapComponent {
 
     // Earthquakes (magnitude-based sizing) - part of NATURAL layer
     if (this.state.layers.natural) {
-      console.log('[Map] Rendering earthquakes. Total:', this.earthquakes.length, 'Layer enabled:', this.state.layers.natural);
       const filteredQuakes = this.state.timeRange === 'all'
         ? this.earthquakes
         : this.earthquakes.filter((eq) => eq.occurredAt >= Date.now() - this.getTimeRangeMs());
-      console.log('[Map] After time filter:', filteredQuakes.length, 'earthquakes. TimeRange:', this.state.timeRange);
-      let rendered = 0;
       filteredQuakes.forEach((eq) => {
         const pos = projection([eq.location?.longitude ?? 0, eq.location?.latitude ?? 0]);
-        if (!pos) {
-          console.log('[Map] Earthquake position null for:', eq.place, eq.location?.longitude, eq.location?.latitude);
-          return;
-        }
-        rendered++;
+        if (!pos) return;
 
         const size = Math.max(8, eq.magnitude * 3);
         const div = document.createElement('div');
@@ -1601,7 +1630,6 @@ export class MapComponent {
 
         this.overlays.appendChild(div);
       });
-      console.log('[Map] Actually rendered', rendered, 'earthquake markers');
     }
 
     // Economic Centers (always HTML - emoji icons for type distinction)
@@ -3038,7 +3066,6 @@ export class MapComponent {
   ]);
 
   public toggleLayer(layer: keyof MapLayers, source: 'user' | 'programmatic' = 'user'): void {
-    console.log(`[Map.toggleLayer] ${layer}: ${this.state.layers[layer]} -> ${!this.state.layers[layer]}`);
     this.state.layers[layer] = !this.state.layers[layer];
     if (this.state.layers[layer]) {
       const thresholds = MapComponent.LAYER_ZOOM_THRESHOLDS[layer];
@@ -3344,7 +3371,11 @@ export class MapComponent {
     this.wrapper.style.setProperty('--zoom', String(zoom));
 
     // Smart label hiding based on zoom level and overlap
-    this.updateLabelVisibility(zoom);
+    const now = performance.now();
+    if (!this.interactionActive || now - this.lastLabelVisibilityAt >= this.INTERACTION_LABEL_UPDATE_MS) {
+      this.updateLabelVisibility(zoom);
+      this.lastLabelVisibilityAt = now;
+    }
     this.updateZoomLayerVisibility();
     this.emitStateChange();
   }
@@ -3530,12 +3561,10 @@ export class MapComponent {
   }
 
   public setCenter(lat: number, lon: number): void {
-    console.log('[Map] setCenter called:', { lat, lon });
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
-    console.log('[Map] projected pos:', pos, 'container:', { width, height }, 'zoom:', this.state.zoom);
     if (!pos) return;
     // Pan formula: after applyTransform() computes tx = centerOffset + pan*zoom,
     // and transform is translate(tx,ty) scale(zoom), to center on pos:
@@ -3558,11 +3587,8 @@ export class MapComponent {
   }
 
   public setEarthquakes(earthquakes: Earthquake[]): void {
-    console.log('[Map] setEarthquakes called with', earthquakes.length, 'earthquakes');
     if (earthquakes.length > 0 || this.earthquakes.length === 0) {
       this.earthquakes = earthquakes;
-    } else {
-      console.log('[Map] Keeping existing', this.earthquakes.length, 'earthquakes (new data was empty)');
     }
     this.render();
   }

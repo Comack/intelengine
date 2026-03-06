@@ -46,12 +46,14 @@ import type { Platform } from '@/components/DownloadBanner';
 import { invokeTauri } from '@/services/tauri-bridge';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
+import { broadcastUserActivity } from '@/services/activity-signal';
 import { UnifiedSettings } from '@/components/UnifiedSettings';
+import { dashboardUpdateScheduler } from '@/services/dashboard-update-scheduler';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 
 export interface EventHandlerCallbacks {
-  updateSearchIndex: () => void;
+  updateSearchIndex: (force?: boolean) => void;
   loadAllData: () => Promise<void>;
   flushStaleRefreshes: () => void;
   setHiddenSince: (ts: number) => void;
@@ -77,10 +79,12 @@ export class EventHandlerManager implements AppModule {
   private boundResizeBlur: (() => void) | null = null;
   private boundResizeVisibility: (() => void) | null = null;
   private panelViewObserver: IntersectionObserver | null = null;
+  private panelViewMutationObserver: MutationObserver | null = null;
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
   private readonly IDLE_PAUSE_MS = 2 * 60 * 1000;
+  private lastActivityBroadcastAt = 0;
   private readonly debouncedUrlSync = debounce(() => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
@@ -187,6 +191,10 @@ export class EventHandlerManager implements AppModule {
       this.panelViewObserver.disconnect();
       this.panelViewObserver = null;
     }
+    if (this.panelViewMutationObserver) {
+      this.panelViewMutationObserver.disconnect();
+      this.panelViewMutationObserver = null;
+    }
     if (this.boundResizeMouseMove) {
       document.removeEventListener('mousemove', this.boundResizeMouseMove);
       this.boundResizeMouseMove = null;
@@ -213,7 +221,7 @@ export class EventHandlerManager implements AppModule {
 
   private setupEventListeners(): void {
     document.getElementById('searchBtn')?.addEventListener('click', () => {
-      this.callbacks.updateSearchIndex();
+      this.callbacks.updateSearchIndex(true);
       this.ctx.searchModal?.open();
     });
 
@@ -286,8 +294,11 @@ export class EventHandlerManager implements AppModule {
       trackMapViewChange(regionSelect.value);
     });
 
+    const debouncedMapResizeRender = debounce(() => {
+      this.requestMapRender('window-resize');
+    }, 100);
     this.boundResizeHandler = () => {
-      this.ctx.map?.render();
+      debouncedMapResizeRender();
     };
     window.addEventListener('resize', this.boundResizeHandler);
 
@@ -297,9 +308,12 @@ export class EventHandlerManager implements AppModule {
     this.boundVisibilityHandler = () => {
       document.body?.classList.toggle('animations-paused', document.hidden);
       if (document.hidden) {
+        this.ctx.map?.setRenderPaused(true);
         this.callbacks.setHiddenSince(Date.now());
         mlWorker.unloadOptionalModels();
       } else {
+        this.ctx.map?.setRenderPaused(false);
+        this.requestMapRender('visibility-visible');
         this.resetIdleTimer();
         this.callbacks.flushStaleRefreshes();
       }
@@ -312,7 +326,7 @@ export class EventHandlerManager implements AppModule {
     window.addEventListener('focal-points-ready', this.boundFocalPointsHandler);
 
     this.boundThemeChangedHandler = () => {
-      this.ctx.map?.render();
+      this.requestMapRender('theme-change');
       this.updateHeaderThemeIcon();
     };
     window.addEventListener('theme-changed', this.boundThemeChangedHandler);
@@ -349,6 +363,11 @@ export class EventHandlerManager implements AppModule {
 
   private setupIdleDetection(): void {
     this.boundIdleResetHandler = () => {
+      const now = Date.now();
+      if (now - this.lastActivityBroadcastAt >= 250) {
+        this.lastActivityBroadcastAt = now;
+        broadcastUserActivity();
+      }
       if (this.ctx.isIdle) {
         this.ctx.isIdle = false;
         document.body?.classList.remove('animations-paused');
@@ -371,7 +390,6 @@ export class EventHandlerManager implements AppModule {
       if (!document.hidden) {
         this.ctx.isIdle = true;
         document.body?.classList.add('animations-paused');
-        console.log('[App] User idle - pausing animations to save resources');
       }
     }, this.IDLE_PAUSE_MS);
   }
@@ -545,6 +563,7 @@ export class EventHandlerManager implements AppModule {
     const el = document.getElementById('headerClock');
     if (!el) return;
     const tick = () => {
+      if (document.hidden) return;
       el.textContent = new Date().toUTCString().replace('GMT', 'UTC');
     };
     tick();
@@ -705,7 +724,6 @@ export class EventHandlerManager implements AppModule {
 
   setupMapLayerHandlers(): void {
     this.ctx.map?.setOnLayerChange((layer, enabled, source) => {
-      console.log(`[App.onLayerChange] ${layer}: ${enabled} (${source})`);
       trackMapLayerToggle(layer, enabled, source);
       this.ctx.mapLayers[layer] = enabled;
       saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
@@ -756,6 +774,16 @@ export class EventHandlerManager implements AppModule {
           this.panelViewObserver.observe(child);
         }
       }
+
+      this.panelViewMutationObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          mutation.addedNodes.forEach((node) => {
+            if (!(node instanceof HTMLElement)) return;
+            if (node.dataset.panel) this.panelViewObserver?.observe(node);
+          });
+        }
+      });
+      this.panelViewMutationObserver.observe(grid, { childList: true });
     }
   }
 
@@ -820,7 +848,7 @@ export class EventHandlerManager implements AppModule {
       if (!isResizing) return;
       isResizing = false;
       this.ctx.map?.setIsResizing(false);
-      this.ctx.map?.render();
+      this.requestMapRender('map-resize-end');
       mapSection.classList.remove('resizing');
       document.body.style.cursor = '';
       localStorage.setItem('map-height', mapContainer.style.height);
@@ -851,7 +879,7 @@ export class EventHandlerManager implements AppModule {
         mapContainer.removeEventListener('transitionend', onEnd);
         localStorage.setItem('map-height', `${finalHeight}px`);
         this.ctx.map?.setIsResizing(false);
-        this.ctx.map?.render();
+        this.requestMapRender('map-resize-dblclick');
       };
 
       mapContainer.addEventListener('transitionend', onEnd);
@@ -949,10 +977,19 @@ export class EventHandlerManager implements AppModule {
           }
           this.callbacks.ensureCorrectZones();
         }
+        const shouldPauseMap = !config.enabled || document.hidden;
+        this.ctx.map?.setRenderPaused(shouldPauseMap);
+        if (!shouldPauseMap) this.requestMapRender('panel-settings-map');
         return;
       }
       const panel = this.ctx.panels[key];
       panel?.toggle(config.enabled);
+    });
+  }
+
+  private requestMapRender(reason: string): void {
+    dashboardUpdateScheduler.scheduleMapUpdate(reason, () => {
+      this.ctx.map?.render();
     });
   }
 }

@@ -16,7 +16,7 @@ test('matches full variant for dotted World.Monitor AppImage asset names', async
   globalThis.fetch = async () => makeGitHubReleaseResponse([
     {
       name: 'World.Monitor_2.5.7_amd64.AppImage',
-      browser_download_url: 'https://downloads.example/World.Monitor_2.5.7_amd64.AppImage',
+      browser_download_url: 'https://github.com/koala73/worldmonitor/releases/download/v2.5.7/World.Monitor_2.5.7_amd64.AppImage',
     },
   ]);
 
@@ -27,7 +27,7 @@ test('matches full variant for dotted World.Monitor AppImage asset names', async
     assert.equal(response.status, 302);
     assert.equal(
       response.headers.get('location'),
-      'https://downloads.example/World.Monitor_2.5.7_amd64.AppImage'
+      'https://github.com/koala73/worldmonitor/releases/download/v2.5.7/World.Monitor_2.5.7_amd64.AppImage'
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -39,11 +39,11 @@ test('matches tech variant for dashed Tech-Monitor AppImage asset names', async 
   globalThis.fetch = async () => makeGitHubReleaseResponse([
     {
       name: 'Tech-Monitor_2.5.7_amd64.AppImage',
-      browser_download_url: 'https://downloads.example/Tech-Monitor_2.5.7_amd64.AppImage',
+      browser_download_url: 'https://github.com/koala73/worldmonitor/releases/download/v2.5.7/Tech-Monitor_2.5.7_amd64.AppImage',
     },
     {
       name: 'World.Monitor_2.5.7_amd64.AppImage',
-      browser_download_url: 'https://downloads.example/World.Monitor_2.5.7_amd64.AppImage',
+      browser_download_url: 'https://github.com/koala73/worldmonitor/releases/download/v2.5.7/World.Monitor_2.5.7_amd64.AppImage',
     },
   ]);
 
@@ -54,7 +54,7 @@ test('matches tech variant for dashed Tech-Monitor AppImage asset names', async 
     assert.equal(response.status, 302);
     assert.equal(
       response.headers.get('location'),
-      'https://downloads.example/Tech-Monitor_2.5.7_amd64.AppImage'
+      'https://github.com/koala73/worldmonitor/releases/download/v2.5.7/Tech-Monitor_2.5.7_amd64.AppImage'
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -66,7 +66,7 @@ test('falls back to release page when requested variant has no matching asset', 
   globalThis.fetch = async () => makeGitHubReleaseResponse([
     {
       name: 'World.Monitor_2.5.7_amd64.AppImage',
-      browser_download_url: 'https://downloads.example/World.Monitor_2.5.7_amd64.AppImage',
+      browser_download_url: 'https://github.com/koala73/worldmonitor/releases/download/v2.5.7/World.Monitor_2.5.7_amd64.AppImage',
     },
   ]);
 

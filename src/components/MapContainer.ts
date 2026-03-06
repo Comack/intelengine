@@ -4,7 +4,7 @@
  */
 import { isMobileDevice } from '@/utils';
 import { MapComponent } from './Map';
-import { DeckGLMap, type DeckMapView, type CountryClickPayload } from './DeckGLMap';
+import { DeckGLMap, type DeckMapView, type CountryClickPayload, type MapPerformanceProfile } from './DeckGLMap';
 import type {
   MapLayers,
   Hotspot,
@@ -46,6 +46,7 @@ import type { SpaceWeatherStatus } from '@/services/space';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
+export type { MapPerformanceProfile };
 
 export interface MapContainerState {
   zoom: number;
@@ -150,6 +151,28 @@ export class MapContainer {
     } else {
       this.svgMap?.render();
     }
+  }
+
+  public beginUpdateBatch(): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.beginUpdateBatch();
+    }
+  }
+
+  public endUpdateBatch(): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.endUpdateBatch();
+    }
+  }
+
+  public runInUpdateBatch(fn: () => void): void {
+    if (this.useDeckGL) {
+      if (this.deckGLMap) {
+        this.deckGLMap.runInUpdateBatch(fn);
+        return;
+      }
+    }
+    fn();
   }
 
   public setIsResizing(isResizing: boolean): void {
@@ -728,6 +751,12 @@ export class MapContainer {
   public setRenderPaused(paused: boolean): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setRenderPaused(paused);
+    }
+  }
+
+  public setPerformanceProfile(profile: MapPerformanceProfile): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.setPerformanceProfile(profile);
     }
   }
 

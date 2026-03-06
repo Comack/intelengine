@@ -641,7 +641,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
 describe('country intel brief caching behavior', { concurrency: 1 }, () => {
   async function importCountryIntelBrief() {
     return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-intel-brief.ts', {
-      './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
+      './_shared': resolve(root, 'tests/helpers/intelligence-shared.mjs'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
     });

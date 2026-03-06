@@ -4,6 +4,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { t } from '../services/i18n';
 import { trackWebcamSelected, trackWebcamRegionFiltered } from '@/services/analytics';
 import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-flow-settings';
+import { dashboardUpdateScheduler } from '@/services/dashboard-update-scheduler';
 
 type WebcamRegion = 'iran' | 'middle-east' | 'europe' | 'asia' | 'americas';
 
@@ -58,16 +59,21 @@ export class LiveWebcamsPanel extends Panel {
   private regionFilter: RegionFilter = 'iran';
   private activeFeed: WebcamFeed = WEBCAM_FEEDS[0]!;
   private toolbar: HTMLElement | null = null;
-  private iframes: HTMLIFrameElement[] = [];
+  private iframeByFeedId = new Map<string, HTMLIFrameElement>();
   private observer: IntersectionObserver | null = null;
-  private isVisible = false;
+  private streamsVisible = false;
   private idleTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pendingGridMountTimers: ReturnType<typeof setTimeout>[] = [];
+  private activeRenderToken = 0;
+  private renderSignature = '';
+  private forceRenderPending = false;
   private boundIdleResetHandler!: () => void;
   private boundVisibilityHandler!: () => void;
   private readonly IDLE_PAUSE_MS = 5 * 60 * 1000;
   private isIdle = false;
   private fullscreenBtn: HTMLButtonElement | null = null;
   private isFullscreen = false;
+  private unsubscribeStreamQuality: (() => void) | null = null;
 
   constructor() {
     super({ id: 'live-webcams', title: t('panels.liveWebcams'), className: 'panel-wide' });
@@ -75,9 +81,18 @@ export class LiveWebcamsPanel extends Panel {
     this.createToolbar();
     this.setupIntersectionObserver();
     this.setupIdleDetection();
-    subscribeStreamQualityChange(() => this.render());
-    this.render();
+    this.unsubscribeStreamQuality = subscribeStreamQualityChange(() => this.handleStreamQualityChange());
+    this.requestRender(true, 'critical');
     document.addEventListener('keydown', this.boundFullscreenEscHandler);
+  }
+
+  protected override onPanelVisibilityChanged(visible: boolean): void {
+    if (visible) {
+      if (!this.isIdle) this.requestRender(true, 'critical');
+      return;
+    }
+    this.streamsVisible = false;
+    this.suspendStreams('components.webcams.paused');
   }
 
   private createFullscreenButton(): void {
@@ -186,7 +201,7 @@ export class LiveWebcamsPanel extends Panel {
     if (feeds.length > 0 && !feeds.includes(this.activeFeed)) {
       this.activeFeed = feeds[0]!;
     }
-    this.render();
+    this.requestRender(true, 'normal');
   }
 
   private setViewMode(mode: ViewMode): void {
@@ -195,7 +210,7 @@ export class LiveWebcamsPanel extends Panel {
     this.toolbar?.querySelectorAll('.webcam-view-btn').forEach(btn => {
       (btn as HTMLElement).classList.toggle('active', (btn as HTMLElement).dataset.mode === mode);
     });
-    this.render();
+    this.requestRender(true, 'normal');
   }
 
   private buildEmbedUrl(videoId: string): string {
@@ -226,22 +241,39 @@ export class LiveWebcamsPanel extends Panel {
     return iframe;
   }
 
-  private render(): void {
-    this.destroyIframes();
+  private requestRender(force = false, priority: 'critical' | 'normal' | 'idle' = 'normal'): void {
+    this.forceRenderPending = this.forceRenderPending || force;
+    dashboardUpdateScheduler.schedulePanelUpdate('live-webcams', () => {
+      const shouldForceRender = this.forceRenderPending;
+      this.forceRenderPending = false;
+      this.render(shouldForceRender);
+    }, priority);
+  }
 
-    if (!this.isVisible || this.isIdle) {
-      this.content.innerHTML = `<div class="webcam-placeholder">${escapeHtml(t('components.webcams.paused'))}</div>`;
+  private render(force = false): void {
+    if (!this.streamsVisible || this.isIdle) {
+      const key = this.isIdle ? 'components.webcams.pausedIdle' : 'components.webcams.paused';
+      this.suspendStreams(key);
       return;
     }
 
+    const signature = `${this.viewMode}|${this.regionFilter}|${this.activeFeed.id}`;
+    if (!force && signature === this.renderSignature) {
+      return;
+    }
+
+    this.renderSignature = signature;
+    this.activeRenderToken += 1;
+    this.clearPendingGridMounts();
+
     if (this.viewMode === 'grid') {
-      this.renderGrid();
+      this.renderGrid(this.activeRenderToken);
     } else {
       this.renderSingle();
     }
   }
 
-  private renderGrid(): void {
+  private renderGrid(renderToken: number): void {
     this.content.innerHTML = '';
     this.content.className = 'panel-content webcam-content';
 
@@ -284,18 +316,19 @@ export class LiveWebcamsPanel extends Panel {
       cell.appendChild(label);
       grid.appendChild(cell);
 
-      if (desktop && i > 0) {
-        // Stagger iframe creation on desktop — WKWebView throttles concurrent autoplay.
-        setTimeout(() => {
-          if (!this.isVisible || this.isIdle) return;
-          const iframe = this.createIframe(feed);
+      const attachIframe = () => {
+        if (renderToken !== this.activeRenderToken || !this.streamsVisible || this.isIdle) return;
+        const iframe = this.getOrCreateIframe(feed);
+        if (iframe.parentElement !== cell) {
           cell.insertBefore(iframe, label);
-          this.iframes.push(iframe);
-        }, i * 800);
+        }
+      };
+
+      if (desktop && i > 0) {
+        const timer = setTimeout(attachIframe, i * 800);
+        this.pendingGridMountTimers.push(timer);
       } else {
-        const iframe = this.createIframe(feed);
-        cell.insertBefore(iframe, label);
-        this.iframes.push(iframe);
+        attachIframe();
       }
     });
 
@@ -309,9 +342,8 @@ export class LiveWebcamsPanel extends Panel {
     const wrapper = document.createElement('div');
     wrapper.className = 'webcam-single';
 
-    const iframe = this.createIframe(this.activeFeed);
+    const iframe = this.getOrCreateIframe(this.activeFeed);
     wrapper.appendChild(iframe);
-    this.iframes.push(iframe);
 
     const switcher = document.createElement('div');
     switcher.className = 'webcam-switcher';
@@ -329,7 +361,7 @@ export class LiveWebcamsPanel extends Panel {
       btn.addEventListener('click', () => {
         trackWebcamSelected(feed.id, feed.city, 'single');
         this.activeFeed = feed;
-        this.render();
+        this.requestRender(true, 'normal');
       });
       switcher.appendChild(btn);
     });
@@ -338,23 +370,63 @@ export class LiveWebcamsPanel extends Panel {
     this.content.appendChild(switcher);
   }
 
-  private destroyIframes(): void {
-    this.iframes.forEach(iframe => {
+  private destroyIframes(clearCache = false): void {
+    this.iframeByFeedId.forEach(iframe => {
       iframe.src = 'about:blank';
       iframe.remove();
     });
-    this.iframes = [];
+    if (clearCache) this.iframeByFeedId.clear();
+  }
+
+  private getOrCreateIframe(feed: WebcamFeed): HTMLIFrameElement {
+    const existing = this.iframeByFeedId.get(feed.id);
+    if (existing) {
+      this.ensureIframeQuality(existing, feed);
+      return existing;
+    }
+    const iframe = this.createIframe(feed);
+    this.iframeByFeedId.set(feed.id, iframe);
+    return iframe;
+  }
+
+  private ensureIframeQuality(iframe: HTMLIFrameElement, feed: WebcamFeed): void {
+    const nextSrc = this.buildEmbedUrl(feed.fallbackVideoId);
+    const current = iframe.getAttribute('src') ?? '';
+    if (current !== nextSrc) iframe.src = nextSrc;
+  }
+
+  private handleStreamQualityChange(): void {
+    if (!this.streamsVisible || this.isIdle) return;
+    this.iframeByFeedId.forEach((iframe, feedId) => {
+      const feed = WEBCAM_FEEDS.find((entry) => entry.id === feedId);
+      if (!feed) return;
+      this.ensureIframeQuality(iframe, feed);
+    });
+    this.requestRender(true, 'normal');
+  }
+
+  private clearPendingGridMounts(): void {
+    this.pendingGridMountTimers.forEach((timer) => clearTimeout(timer));
+    this.pendingGridMountTimers = [];
+  }
+
+  private suspendStreams(messageKey: string): void {
+    this.clearPendingGridMounts();
+    this.destroyIframes();
+    this.renderSignature = '';
+    this.content.className = 'panel-content webcam-content';
+    this.content.innerHTML = `<div class="webcam-placeholder">${escapeHtml(t(messageKey))}</div>`;
   }
 
   private setupIntersectionObserver(): void {
     this.observer = new IntersectionObserver(
       (entries) => {
-        const wasVisible = this.isVisible;
-        this.isVisible = entries.some(e => e.isIntersecting);
-        if (this.isVisible && !wasVisible && !this.isIdle) {
-          this.render();
-        } else if (!this.isVisible && wasVisible) {
-          this.destroyIframes();
+        const wasVisible = this.streamsVisible;
+        this.streamsVisible = entries.some(e => e.isIntersecting);
+        if (this.streamsVisible && !wasVisible && !this.isIdle) {
+          this.requestRender(true, 'normal');
+        } else if (!this.streamsVisible && wasVisible) {
+          this.suspendStreams('components.webcams.paused');
         }
       },
       { threshold: 0.1 }
@@ -369,7 +441,7 @@ export class LiveWebcamsPanel extends Panel {
       } else {
         if (this.isIdle) {
           this.isIdle = false;
-          if (this.isVisible) this.render();
+          if (this.streamsVisible) this.requestRender(true, 'normal');
         }
         this.boundIdleResetHandler();
       }
@@ -380,12 +452,11 @@ export class LiveWebcamsPanel extends Panel {
       if (this.idleTimeout) clearTimeout(this.idleTimeout);
       if (this.isIdle) {
         this.isIdle = false;
-        if (this.isVisible) this.render();
+        if (this.streamsVisible) this.requestRender(true, 'normal');
       }
       this.idleTimeout = setTimeout(() => {
         this.isIdle = true;
-        this.destroyIframes();
-        this.content.innerHTML = `<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`;
+        this.suspendStreams('components.webcams.pausedIdle');
       }, this.IDLE_PAUSE_MS);
     };
 
@@ -397,8 +468,8 @@ export class LiveWebcamsPanel extends Panel {
   }
 
   public refresh(): void {
-    if (this.isVisible && !this.isIdle) {
-      this.render();
+    if (this.streamsVisible && !this.isIdle) {
+      this.requestRender(true, 'idle');
     }
   }
 
@@ -414,7 +485,10 @@ export class LiveWebcamsPanel extends Panel {
     });
     if (this.isFullscreen) this.toggleFullscreen();
     this.observer?.disconnect();
-    this.destroyIframes();
+    this.clearPendingGridMounts();
+    this.destroyIframes(true);
+    this.unsubscribeStreamQuality?.();
+    this.unsubscribeStreamQuality = null;
     super.destroy();
   }
 }

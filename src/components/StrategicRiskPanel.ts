@@ -21,6 +21,7 @@ import {
 import { getLearningProgress } from '@/services/country-instability';
 import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
+import { dashboardUpdateScheduler } from '@/services/dashboard-update-scheduler';
 
 export class StrategicRiskPanel extends Panel {
   private overview: StrategicRiskOverview | null = null;
@@ -33,6 +34,9 @@ export class StrategicRiskPanel extends Panel {
   private breakingAlerts: Map<string, { threatLevel: 'critical' | 'high'; timestamp: number }> = new Map();
   private boundOnBreaking: ((e: Event) => void) | null = null;
   private breakingExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private freshnessRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
+  private lastRenderSignature = '';
+  private boundContentClickHandler: ((event: MouseEvent) => void) | null = null;
 
   constructor() {
     super({
@@ -42,20 +46,20 @@ export class StrategicRiskPanel extends Panel {
       trackActivity: true,
       infoTooltip: t('components.strategicRisk.infoTooltip'),
     });
+    this.boundContentClickHandler = (event: MouseEvent) => this.handleContentClick(event);
+    this.content.addEventListener('click', this.boundContentClickHandler);
     this.init();
   }
 
   private async init(): Promise<void> {
     this.showLoading();
     try {
-      // Subscribe to data freshness changes - debounce to avoid excessive recalculations
-      let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
       this.unsubscribeFreshness = dataFreshness.subscribe(() => {
-        // Debounce refresh to batch multiple rapid updates
-        if (refreshTimeout) clearTimeout(refreshTimeout);
-        refreshTimeout = setTimeout(() => {
-          this.refresh();
-        }, 500);
+        if (this.freshnessRefreshTimeout) clearTimeout(this.freshnessRefreshTimeout);
+        this.freshnessRefreshTimeout = setTimeout(() => {
+          this.freshnessRefreshTimeout = null;
+          this.requestRefresh('freshness', 'normal');
+        }, 350);
       });
 
       // Listen for breaking news events (dispatched on document)
@@ -68,7 +72,7 @@ export class StrategicRiskPanel extends Panel {
           threatLevel: level,
           timestamp: Date.now(),
         });
-        this.refresh();
+        this.requestRefresh('breaking', 'critical');
       };
       document.addEventListener('wm:breaking-news', this.boundOnBreaking);
 
@@ -103,7 +107,9 @@ export class StrategicRiskPanel extends Panel {
         if (entry.timestamp < earliest) earliest = entry.timestamp;
       }
       const msUntilExpiry = (earliest + BREAKING_TTL) - now + 500;
-      this.breakingExpiryTimer = setTimeout(() => this.refresh(), Math.max(1000, msUntilExpiry));
+      this.breakingExpiryTimer = setTimeout(() => {
+        this.requestRefresh('breaking-expiry', 'normal');
+      }, Math.max(1000, msUntilExpiry));
     }
 
     // Severity-weighted score: critical=15, high=8
@@ -134,7 +140,6 @@ export class StrategicRiskPanel extends Panel {
       if (!this.element?.isConnected) return false;
       if (cached && cached.strategicRisk) {
         this.usedCachedScores = true;
-        console.log('[StrategicRiskPanel] Using cached scores from backend');
       }
     }
 
@@ -146,6 +151,11 @@ export class StrategicRiskPanel extends Panel {
       this.setDataBadge('live');
     }
 
+    const renderSignature = this.getRenderSignature();
+    if (renderSignature === this.lastRenderSignature) {
+      return false;
+    }
+    this.lastRenderSignature = renderSignature;
     this.render();
 
     const alertIds = this.alerts.map(a => a.id).sort().join(',');
@@ -465,64 +475,65 @@ export class StrategicRiskPanel extends Panel {
       html = this.renderFullData();
     }
 
-    this.content.innerHTML = html;
-    this.attachEventListeners();
+    this.setContent(html);
   }
 
-  private attachEventListeners(): void {
-    // Refresh button
-    const refreshBtn = this.content.querySelector('.risk-refresh-btn');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', () => this.refresh());
+  private getRenderSignature(): string {
+    const overview = this.overview;
+    const alertIds = this.alerts.slice(0, 5).map((a) => `${a.id}:${a.priority}:${a.timestamp.getTime()}`).join('|');
+    const topRisks = overview?.topRisks.slice(0, 4).join('|') ?? '';
+    return [
+      overview?.compositeScore ?? 'na',
+      overview?.trend ?? 'na',
+      overview?.timestamp ? Math.floor(overview.timestamp.getTime() / 60_000) : 'na',
+      this.usedCachedScores ? 'cached' : 'live',
+      this.freshnessSummary?.overallStatus ?? 'na',
+      this.freshnessSummary?.activeSources ?? 0,
+      this.breakingAlerts.size,
+      alertIds,
+      topRisks,
+    ].join('::');
+  }
+
+  private handleContentClick(event: MouseEvent): void {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+
+    const refreshButton = target.closest('.risk-refresh-btn');
+    if (refreshButton) {
+      this.requestRefresh('manual-refresh', 'critical');
+      return;
     }
 
-    // Enable source buttons
-    const enableBtns = this.content.querySelectorAll('.risk-source-enable');
-    enableBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const panelId = (e.target as HTMLElement).dataset.panel;
-        if (panelId) {
-          this.emitEnablePanel(panelId);
-        }
-      });
-    });
+    const enableSourceButton = target.closest('.risk-source-enable') as HTMLElement | null;
+    if (enableSourceButton?.dataset.panel) {
+      this.emitEnablePanel(enableSourceButton.dataset.panel);
+      return;
+    }
 
-    // Action buttons
-    const actionBtns = this.content.querySelectorAll('.risk-action-btn');
-    actionBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const action = (e.target as HTMLElement).dataset.action;
-        if (action === 'enable-core') {
-          this.emitEnablePanels(['protests', 'intel', 'live-news']);
-        } else if (action === 'enable-all') {
-          this.emitEnablePanels(['protests', 'intel', 'live-news', 'military', 'shipping']);
-        }
-      });
-    });
+    const actionButton = target.closest('.risk-action-btn') as HTMLElement | null;
+    if (actionButton?.dataset.action === 'enable-core') {
+      this.emitEnablePanels(['protests', 'intel', 'live-news']);
+      return;
+    }
+    if (actionButton?.dataset.action === 'enable-all') {
+      this.emitEnablePanels(['protests', 'intel', 'live-news', 'military', 'shipping']);
+      return;
+    }
 
-    // Clickable risk items (convergence zones)
-    const clickableRisks = this.content.querySelectorAll('.risk-item-clickable');
-    clickableRisks.forEach(item => {
-      item.addEventListener('click', () => {
-        const lat = parseFloat((item as HTMLElement).dataset.lat || '0');
-        const lon = parseFloat((item as HTMLElement).dataset.lon || '0');
-        if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
-          this.onLocationClick(lat, lon);
-        }
-      });
-    });
+    const locationTarget = target.closest('.risk-item-clickable, .risk-alert-clickable') as HTMLElement | null;
+    if (!locationTarget) return;
+    const lat = Number.parseFloat(locationTarget.dataset.lat ?? '');
+    const lon = Number.parseFloat(locationTarget.dataset.lon ?? '');
+    if (this.onLocationClick && Number.isFinite(lat) && Number.isFinite(lon)) {
+      this.onLocationClick(lat, lon);
+    }
+  }
 
-    // Clickable alerts with location
-    const clickableAlerts = this.content.querySelectorAll('.risk-alert-clickable');
-    clickableAlerts.forEach(alert => {
-      alert.addEventListener('click', () => {
-        const lat = parseFloat((alert as HTMLElement).dataset.lat || '0');
-        const lon = parseFloat((alert as HTMLElement).dataset.lon || '0');
-        if (this.onLocationClick && !isNaN(lat) && !isNaN(lon)) {
-          this.onLocationClick(lat, lon);
-        }
-      });
-    });
+  private requestRefresh(_reason: string, priority: 'critical' | 'normal' | 'idle' = 'normal'): void {
+    dashboardUpdateScheduler.schedulePanelUpdate('strategic-risk', () => {
+      void this.refresh();
+    }, priority);
   }
 
   private emitEnablePanel(panelId: string): void {
@@ -542,8 +553,16 @@ export class StrategicRiskPanel extends Panel {
       clearTimeout(this.breakingExpiryTimer);
       this.breakingExpiryTimer = null;
     }
+    if (this.freshnessRefreshTimeout) {
+      clearTimeout(this.freshnessRefreshTimeout);
+      this.freshnessRefreshTimeout = null;
+    }
     if (this.unsubscribeFreshness) {
       this.unsubscribeFreshness();
+    }
+    if (this.boundContentClickHandler) {
+      this.content.removeEventListener('click', this.boundContentClickHandler);
+      this.boundContentClickHandler = null;
     }
     super.destroy();
   }

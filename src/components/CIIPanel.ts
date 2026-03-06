@@ -8,6 +8,7 @@ export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
   private focalPointsReady = false;
   private onShareStory?: (code: string, name: string) => void;
+  private lastRenderSignature = '__init__';
 
   constructor() {
     super({
@@ -104,8 +105,6 @@ export class CIIPanel extends Panel {
       console.log('[CIIPanel] Focal points ready, calculating scores...');
     }
 
-    this.showLoading();
-
     try {
       const localScores = calculateCII();
       const localWithData = localScores.filter(s => s.score > 0).length;
@@ -114,6 +113,11 @@ export class CIIPanel extends Panel {
 
       const withData = this.scores.filter(s => s.score > 0);
       this.setCount(withData.length);
+      const signature = withData
+        .map((country) => `${country.code}:${country.score}:${country.trend}:${country.change24h}`)
+        .join('|');
+      if (signature === this.lastRenderSignature) return;
+      this.lastRenderSignature = signature;
 
       if (withData.length === 0) {
         replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.cii.noSignals')));

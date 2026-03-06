@@ -37,6 +37,7 @@ let lastFetchAt = 0;
 const CACHE_TTL = 8_000;
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
 let updateCallbacks: Array<(data: OrefAlertsResponse) => void> = [];
+const pollingConsumers = new Set<string>();
 
 let locationTranslator: ((s: string) => string) | null = null;
 let locationMapPromise: Promise<void> | null = null;
@@ -301,7 +302,7 @@ export function onOrefAlertsUpdate(cb: (data: OrefAlertsResponse) => void): () =
 }
 
 export function startOrefPolling(): void {
-  if (pollingInterval) return;
+  if (pollingInterval || pollingConsumers.size === 0) return;
   pollingInterval = setInterval(async () => {
     const data = await fetchOrefAlerts();
     for (const cb of updateCallbacks) cb(data);
@@ -313,5 +314,16 @@ export function stopOrefPolling(): void {
     clearInterval(pollingInterval);
     pollingInterval = null;
   }
-  updateCallbacks = [];
+}
+
+export function acquireOrefPolling(consumerId: string): void {
+  pollingConsumers.add(consumerId);
+  startOrefPolling();
+}
+
+export function releaseOrefPolling(consumerId: string): void {
+  pollingConsumers.delete(consumerId);
+  if (pollingConsumers.size === 0) {
+    stopOrefPolling();
+  }
 }

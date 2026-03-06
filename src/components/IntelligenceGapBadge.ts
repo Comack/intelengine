@@ -39,6 +39,7 @@ export class IntelligenceFindingsBadge {
   private findings: UnifiedFinding[] = [];
   private boundCloseDropdown = () => this.closeDropdown();
   private pendingUpdateFrame = 0;
+  private lastDropdownSignature = '';
   private boundUpdate = () => {
     if (this.pendingUpdateFrame) return;
     this.pendingUpdateFrame = requestAnimationFrame(() => {
@@ -268,7 +269,9 @@ export class IntelligenceFindingsBadge {
       this.badge.title = t('components.intelligenceFindings.reviewRecommended', { count: String(count) });
     }
 
-    this.renderDropdown();
+    if (this.isOpen) {
+      this.renderDropdown();
+    }
   }
 
   private mergeFindings(): UnifiedFinding[] {
@@ -335,6 +338,10 @@ export class IntelligenceFindingsBadge {
   }
 
   private renderDropdown(): void {
+    const signature = this.getDropdownSignature();
+    if (signature === this.lastDropdownSignature) return;
+    this.lastDropdownSignature = signature;
+
     const toggleHtml = this.renderPopupToggle();
 
     if (this.findings.length === 0) {
@@ -404,6 +411,14 @@ export class IntelligenceFindingsBadge {
     `;
   }
 
+  private getDropdownSignature(): string {
+    const breakingSettings = getAlertSettings();
+    const findingSignature = this.findings
+      .map((finding) => `${finding.id}|${finding.priority}|${finding.timestamp.getTime()}`)
+      .join('\n');
+    return `${this.popupEnabled ? 1 : 0}|${breakingSettings.enabled ? 1 : 0}|${findingSignature}`;
+  }
+
   private getInsight(finding: UnifiedFinding): string {
     if (finding.source === 'signal') {
       const context = getSignalContext((finding.original as CorrelationSignal).type);
@@ -460,6 +475,7 @@ export class IntelligenceFindingsBadge {
     this.dropdown.classList.toggle('open', this.isOpen);
     this.badge.classList.toggle('active', this.isOpen);
     if (this.isOpen) {
+      this.lastDropdownSignature = '';
       this.update();
     }
   }

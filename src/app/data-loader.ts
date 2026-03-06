@@ -1,5 +1,5 @@
 import type { AppContext, AppModule } from '@/app/app-context';
-import type { NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
+import type { ClusteredEvent, NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components';
 import {
@@ -58,7 +58,6 @@ import {
   fetchCriticalMinerals,
 } from '@/services';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
-import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
 import { signalAggregator } from '@/services/signal-aggregator';
@@ -85,7 +84,7 @@ import type { AisDisruptionEvent } from '@/types';
 import type { WhaleTransfer } from '@/services/market';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchTelegramFeed } from '@/services/telegram-intel';
-import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate } from '@/services/oref-alerts';
+import { fetchOrefAlerts, onOrefAlertsUpdate, acquireOrefPolling, releaseOrefPolling } from '@/services/oref-alerts';
 import { enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
@@ -207,6 +206,8 @@ export class DataLoaderManager implements AppModule {
   private readonly applyTimeRangeFilterToNewsPanelsDebounced = debounce(() => {
     this.applyTimeRangeFilterToNewsPanels();
   }, 120);
+  private ciiRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
+  private readonly ciiRefreshDebounceMs = 140;
 
   public updateSearchIndex: () => void = () => {};
 
@@ -218,17 +219,135 @@ export class DataLoaderManager implements AppModule {
   private readonly perFeedFallbackIntelFeedLimit = 6;
   private readonly perFeedFallbackBatchSize = 2;
   private lastGoodDigest: ListFeedDigestResponse | null = null;
+  private orefUnsubscribe: (() => void) | null = null;
+  private orefPollingRelease: (() => void) | null = null;
+  private readonly orefPollingConsumerId = `data-loader:${SITE_VARIANT}`;
+  private pendingMapMutations: Array<() => void> = [];
+  private mapMutationRafId: number | null = null;
+  private mapMutationTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastClusterNewsSignature = '';
+  private lastClusterResult: ClusteredEvent[] = [];
 
   constructor(ctx: AppContext, callbacks: DataLoaderCallbacks) {
     this.ctx = ctx;
     this.callbacks = callbacks;
   }
 
-  init(): void {}
+  init(): void {
+    // OREF subscription/polling is demand-driven.
+  }
 
   destroy(): void {
     this.applyTimeRangeFilterToNewsPanelsDebounced.cancel();
-    stopOrefPolling();
+    if (this.ciiRefreshTimeout) {
+      clearTimeout(this.ciiRefreshTimeout);
+      this.ciiRefreshTimeout = null;
+    }
+    if (this.mapMutationRafId != null) {
+      cancelAnimationFrame(this.mapMutationRafId);
+      this.mapMutationRafId = null;
+    }
+    if (this.mapMutationTimer) {
+      clearTimeout(this.mapMutationTimer);
+      this.mapMutationTimer = null;
+    }
+    this.pendingMapMutations = [];
+    this.updateOrefDemand(false);
+  }
+
+  private withMapBatch(action: () => void): void {
+    if (!this.ctx.map) {
+      action();
+      return;
+    }
+    this.pendingMapMutations.push(action);
+    this.scheduleMapMutationFlush();
+  }
+
+  private scheduleMapMutationFlush(): void {
+    if (this.mapMutationRafId != null || this.mapMutationTimer) return;
+    if (document.hidden) {
+      this.mapMutationTimer = setTimeout(() => {
+        this.mapMutationTimer = null;
+        this.flushMapMutations();
+      }, 70);
+      return;
+    }
+    this.mapMutationRafId = requestAnimationFrame(() => {
+      this.mapMutationRafId = null;
+      this.flushMapMutations();
+    });
+  }
+
+  private flushMapMutations(): void {
+    if (!this.ctx.map || this.pendingMapMutations.length === 0) return;
+    const actions = this.pendingMapMutations;
+    this.pendingMapMutations = [];
+    this.ctx.map.runInUpdateBatch(() => {
+      for (const action of actions) {
+        try {
+          action();
+        } catch (error) {
+          console.warn('[DataLoader] Deferred map mutation failed:', error);
+        }
+      }
+    });
+  }
+
+  private scheduleCiiRefresh(forceLocal = false): void {
+    if (this.ciiRefreshTimeout) clearTimeout(this.ciiRefreshTimeout);
+    this.ciiRefreshTimeout = setTimeout(() => {
+      this.ciiRefreshTimeout = null;
+      const ciiPanel = this.ctx.panels['cii'] as CIIPanel | undefined;
+      if (!ciiPanel) return;
+      void ciiPanel.refresh(forceLocal);
+    }, this.ciiRefreshDebounceMs);
+  }
+
+  private isPanelEnabledAndVisible(panelId: string): boolean {
+    const panel = this.ctx.panels[panelId];
+    if (!panel) return false;
+    const setting = this.ctx.panelSettings[panelId];
+    if (setting && !setting.enabled) return false;
+    return panel.isVisible();
+  }
+
+  private isAnyPanelVisible(panelIds: string[]): boolean {
+    return panelIds.some((id) => this.isPanelEnabledAndVisible(id));
+  }
+
+  private isAnyLayerEnabled(layerIds: (keyof MapLayers)[]): boolean {
+    return layerIds.some((id) => this.ctx.mapLayers[id]);
+  }
+
+  private ensureOrefSubscription(): void {
+    if (this.orefUnsubscribe) return;
+    this.orefUnsubscribe = onOrefAlertsUpdate((update) => this.handleOrefAlertsUpdate(update));
+  }
+
+  private updateOrefDemand(enabled: boolean): void {
+    if (enabled) {
+      this.ensureOrefSubscription();
+      if (!this.orefPollingRelease) {
+        acquireOrefPolling(this.orefPollingConsumerId);
+        this.orefPollingRelease = () => releaseOrefPolling(this.orefPollingConsumerId);
+      }
+      return;
+    }
+
+    this.orefPollingRelease?.();
+    this.orefPollingRelease = null;
+    this.orefUnsubscribe?.();
+    this.orefUnsubscribe = null;
+  }
+
+  private handleOrefAlertsUpdate(data: Awaited<ReturnType<typeof fetchOrefAlerts>>): void {
+    (this.ctx.panels['oref-sirens'] as OrefSirensPanel)?.setData(data);
+    const alertCount = data.alerts?.length ?? 0;
+    const historyCount24h = data.historyCount24h ?? 0;
+    ingestOrefForCII(alertCount, historyCount24h);
+    this.ctx.intelligenceCache.orefAlerts = { alertCount, historyCount24h };
+    if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts);
   }
 
   private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {
@@ -298,8 +417,8 @@ export class DataLoaderManager implements AppModule {
     return !this.ctx.isMobile && !!this.ctx.findingsBadge?.isPopupEnabled();
   }
 
-  async loadAllData(): Promise<void> {
-    const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
+  private createGuardedRunner(): (name: string, fn: () => Promise<void>) => Promise<void> {
+    return async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
       try {
@@ -310,6 +429,10 @@ export class DataLoaderManager implements AppModule {
         this.ctx.inFlight.delete(name);
       }
     };
+  }
+
+  async loadCriticalData(): Promise<void> {
+    const runGuarded = this.createGuardedRunner();
 
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       { name: 'news', task: runGuarded('news', () => this.loadNews()) },
@@ -317,19 +440,22 @@ export class DataLoaderManager implements AppModule {
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
-      tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
-      tasks.push({ name: 'predictions', task: runGuarded('predictions', () => this.loadPredictions()) });
-      tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
-      tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
-      tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
-      tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
-      tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
-
-      // Trade policy data (FULL and FINANCE only)
-      if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
-        tasks.push({ name: 'tradePolicy', task: runGuarded('tradePolicy', () => this.loadTradePolicy()) });
-        tasks.push({ name: 'supplyChain', task: runGuarded('supplyChain', () => this.loadSupplyChain()) });
+      if (this.isAnyPanelVisible(['markets', 'heatmap', 'commodities', 'crypto', 'strategic-risk', 'forensics'])) {
+        tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
       }
+      if (this.isAnyPanelVisible(['polymarket', 'strategic-risk', 'forensics'])) {
+        tasks.push({ name: 'predictions', task: runGuarded('predictions', () => this.loadPredictions()) });
+      }
+      if (SITE_VARIANT === 'full' && this.ctx.pizzintIndicator) {
+        tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
+      }
+      if (this.isAnyPanelVisible(['economic', 'strategic-risk', 'forensics'])) {
+        tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
+        tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
+        tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
+        tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
+      }
+
     }
 
     // Progress charts data (happy variant only)
@@ -350,38 +476,34 @@ export class DataLoaderManager implements AppModule {
         name: 'happinessMap',
         task: runGuarded('happinessMap', async () => {
           const data = await fetchHappinessScores();
-          this.ctx.map?.setHappinessScores(data);
+          this.withMapBatch(() => {
+            this.ctx.map?.setHappinessScores(data);
+          });
         }),
       });
       tasks.push({
         name: 'renewableMap',
         task: runGuarded('renewableMap', async () => {
           const installations = await fetchRenewableInstallations();
-          this.ctx.map?.setRenewableInstallations(installations);
+          this.withMapBatch(() => {
+            this.ctx.map?.setRenewableInstallations(installations);
+          });
         }),
       });
     }
 
-    // Global giving activity data (all variants)
-    tasks.push({
-      name: 'giving',
-      task: runGuarded('giving', async () => {
-        const givingResult = await fetchGivingSummary();
-        if (!givingResult.ok) {
-          dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
-          return;
-        }
-        const data = givingResult.data;
-        (this.ctx.panels['giving'] as GivingPanel)?.setData(data);
-        if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
-      }),
-    });
-
-    if (SITE_VARIANT === 'full') {
+    if (
+      SITE_VARIANT === 'full' && (
+        this.isAnyPanelVisible(['cii', 'strategic-posture', 'strategic-risk', 'forensics']) ||
+        this.isAnyLayerEnabled(['outages', 'protests', 'military', 'ucdpEvents', 'displacement', 'climate', 'gpsJamming'])
+      )
+    ) {
       tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
 
-    if (SITE_VARIANT === 'full') tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
+    if (SITE_VARIANT === 'full' && (this.ctx.mapLayers.fires || this.isAnyPanelVisible(['satellite-fires', 'cii', 'strategic-risk']))) {
+      tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
+    }
     if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
@@ -403,11 +525,8 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.acarsMessages) tasks.push({ name: 'acarsMessages', task: runGuarded('acarsMessages', () => this.loadAcarsMessages()) });
     if ((SITE_VARIANT === 'finance' || SITE_VARIANT === 'full') && this.ctx.mapLayers.whaleTransfers) tasks.push({ name: 'whaleTransfers', task: runGuarded('whaleTransfers', () => this.loadWhaleTransfers()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.navWarnings) tasks.push({ name: 'navWarnings', task: runGuarded('navWarnings', () => this.loadNavWarnings()) });
-    if (SITE_VARIANT !== 'happy') tasks.push({ name: 'spaceWeather', task: runGuarded('spaceWeather', () => this.loadSpaceWeather()) });
-    if (SITE_VARIANT === 'full') tasks.push({ name: 'forensics', task: runGuarded('forensics', () => this.loadForensics()) });
-
-    if (SITE_VARIANT === 'tech') {
-      tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
+    if (SITE_VARIANT === 'full' && this.isPanelEnabledAndVisible('forensics')) {
+      tasks.push({ name: 'forensics', task: runGuarded('forensics', () => this.loadForensics()) });
     }
 
     const results = await Promise.allSettled(tasks.map(t => t.task));
@@ -419,6 +538,57 @@ export class DataLoaderManager implements AppModule {
     });
 
     this.updateSearchIndex();
+  }
+
+  async loadDeferredData(): Promise<void> {
+    const runGuarded = this.createGuardedRunner();
+    const tasks: Array<{ name: string; task: Promise<void> }> = [];
+
+    // Trade + supply chain are lower urgency and can be deferred after first paint.
+    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance') {
+      tasks.push({ name: 'tradePolicy', task: runGuarded('tradePolicy', () => this.loadTradePolicy()) });
+      tasks.push({ name: 'supplyChain', task: runGuarded('supplyChain', () => this.loadSupplyChain()) });
+    }
+
+    // Global giving panel can warm in after core map/news settle.
+    tasks.push({
+      name: 'giving',
+      task: runGuarded('giving', async () => {
+        const givingResult = await fetchGivingSummary();
+        if (!givingResult.ok) {
+          dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
+          return;
+        }
+        const data = givingResult.data;
+        (this.ctx.panels['giving'] as GivingPanel)?.setData(data);
+        if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
+      }),
+    });
+
+    if (SITE_VARIANT !== 'happy') {
+      tasks.push({ name: 'spaceWeather', task: runGuarded('spaceWeather', () => this.loadSpaceWeather()) });
+    }
+
+    if (SITE_VARIANT === 'tech') {
+      tasks.push({
+        name: 'techReadiness',
+        task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()),
+      });
+    }
+
+    if (tasks.length === 0) return;
+    const results = await Promise.allSettled(tasks.map((t) => t.task));
+    results.forEach((result, idx) => {
+      if (result.status === 'rejected') {
+        console.error(`[App] ${tasks[idx]?.name} deferred load failed:`, result.reason);
+      }
+    });
+    this.updateSearchIndex();
+  }
+
+  async loadAllData(): Promise<void> {
+    await this.loadCriticalData();
+    await this.loadDeferredData();
   }
 
   async loadDataForLayer(layer: keyof MapLayers): Promise<void> {
@@ -458,9 +628,7 @@ export class DataLoaderManager implements AppModule {
           await this.loadMilitary();
           break;
         case 'techEvents':
-          console.log('[loadDataForLayer] Loading techEvents...');
           await this.loadTechEvents();
-          console.log('[loadDataForLayer] techEvents loaded');
           break;
         case 'positiveEvents':
           await this.loadPositiveEvents();
@@ -634,6 +802,38 @@ export class DataLoaderManager implements AppModule {
     this.applyTimeRangeFilterToNewsPanelsDebounced();
   }
 
+  private async clusterNewsForDashboard(items: NewsItem[]): Promise<ClusteredEvent[]> {
+    const signature = this.getNewsClusterSignature(items);
+    if (signature === this.lastClusterNewsSignature && this.lastClusterResult.length > 0) {
+      return this.lastClusterResult;
+    }
+
+    try {
+      const clusters = await analysisWorker.clusterNews(items);
+      this.lastClusterNewsSignature = signature;
+      this.lastClusterResult = clusters;
+      return clusters;
+    } catch (error) {
+      console.warn('[News] Worker clustering failed, falling back to hybrid clustering:', error);
+      const clusters = await clusterNewsHybrid(items);
+      this.lastClusterNewsSignature = signature;
+      this.lastClusterResult = clusters;
+      return clusters;
+    }
+  }
+
+  private getNewsClusterSignature(items: NewsItem[]): string {
+    let hash = 2166136261;
+    for (const item of items) {
+      const payload = `${item.source}|${item.link || item.title}|${item.pubDate.getTime()}`;
+      for (let i = 0; i < payload.length; i++) {
+        hash ^= payload.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+    }
+    return `${items.length}:${hash >>> 0}`;
+  }
+
   private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null): Promise<NewsItem[]> {
     try {
       const panel = this.ctx.newsPanels[category];
@@ -652,49 +852,6 @@ export class DataLoaderManager implements AppModule {
 
       // Digest branch: server already aggregated feeds — map proto items to client types
       if (digest?.categories && category in digest.categories) {
-        let items = (digest.categories[category]?.items ?? [])
-          .map(protoItemToNewsItem)
-          .filter(i => enabledNames.has(i.source));
-
-        ingestHeadlines(items.map(i => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })));
-
-        const aiCandidates = items
-          .filter(i => i.threat?.source === 'keyword')
-          .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
-          .slice(0, AI_CLASSIFY_MAX_PER_FEED);
-        for (const item of aiCandidates) {
-          if (!canQueueAiClassification(item.title)) continue;
-          classifyWithAI(item.title, SITE_VARIANT).then(ai => {
-            if (ai && item.threat && ai.confidence > item.threat.confidence) {
-              item.threat = ai;
-              item.isAlert = ai.level === 'critical' || ai.level === 'high';
-            }
-          }).catch(() => {});
-        }
-
-        checkBatchForBreakingAlerts(items);
-        this.flashMapForNews(items);
-        this.renderNewsForCategory(category, items);
-
-        this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
-          status: 'ok',
-          itemCount: items.length,
-        });
-
-        if (panel) {
-          try {
-            const baseline = await updateBaseline(`news:${category}`, items.length);
-            const deviation = calculateDeviation(items.length, baseline);
-            panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-          } catch (e) { console.warn(`[Baseline] news:${category} write failed:`, e); }
-        }
-
-        return items;
-      }
-
-      // Digest branch: server already aggregated feeds — map proto items to client types
-      if (digest?.categories && category in digest.categories) {
-        const enabledNames = new Set(enabledFeeds.map(f => f.name));
         let items = (digest.categories[category]?.items ?? [])
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
@@ -975,18 +1132,22 @@ export class DataLoaderManager implements AppModule {
       if (anomalies.length > 0) {
         signalAggregator.ingestTemporalAnomalies(anomalies);
         ingestTemporalAnomaliesForCII(anomalies);
-        (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+        this.scheduleCiiRefresh();
       }
     }).catch(() => { });
 
-    this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
+    const mapEnabled = this.ctx.panelSettings.map?.enabled !== false;
+    const shouldUpdateMapNewsOverlays = mapEnabled && this.ctx.mapLayers.hotspots;
+    if (shouldUpdateMapNewsOverlays) {
+      this.withMapBatch(() => {
+        this.ctx.map?.updateHotspotActivity(this.ctx.allNews);
+      });
+    }
 
     this.updateMonitorResults();
 
     try {
-      this.ctx.latestClusters = mlWorker.isAvailable
-        ? await clusterNewsHybrid(this.ctx.allNews)
-        : await analysisWorker.clusterNews(this.ctx.allNews);
+      this.ctx.latestClusters = await this.clusterNewsForDashboard(this.ctx.allNews);
 
       if (this.ctx.latestClusters.length > 0) {
         const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
@@ -1002,8 +1163,10 @@ export class DataLoaderManager implements AppModule {
           threatLevel: c.threat?.level ?? 'info',
           timestamp: c.lastUpdated,
         }));
-      if (geoLocated.length > 0) {
-        this.ctx.map?.setNewsLocations(geoLocated);
+      if (shouldUpdateMapNewsOverlays && geoLocated.length > 0) {
+        this.withMapBatch(() => {
+          this.ctx.map?.setNewsLocations(geoLocated);
+        });
       }
     } catch (error) {
       console.error('[App] Clustering failed, clusters unchanged:', error);
@@ -1070,12 +1233,8 @@ export class DataLoaderManager implements AppModule {
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel;
       const mapCommodity = (c: MarketData) => ({ display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
 
-      let commoditiesLoaded = stocksResult.rateLimited && stocksResult.data.length === 0;
-      for (let attempt = 0; attempt < 3 && !commoditiesLoaded; attempt++) {
-        if (attempt > 0) {
-          commoditiesPanel.showRetrying();
-          await new Promise(r => setTimeout(r, 20_000));
-        }
+      let commoditiesLoaded = false;
+      if (!(stocksResult.rateLimited && stocksResult.data.length === 0)) {
         const commoditiesResult = await fetchMultipleStocks(COMMODITIES, {
           onBatch: (partial) => commoditiesPanel.renderCommodities(partial.map(mapCommodity)),
         });
@@ -1093,12 +1252,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
-      let crypto = await fetchCrypto();
-      if (crypto.length === 0) {
-        (this.ctx.panels['crypto'] as CryptoPanel).showRetrying();
-        await new Promise(r => setTimeout(r, 20_000));
-        crypto = await fetchCrypto();
-      }
+      const crypto = await fetchCrypto();
       (this.ctx.panels['crypto'] as CryptoPanel).renderCrypto(crypto);
       this.ctx.statusPanel?.updateApi('CoinGecko', { status: crypto.length > 0 ? 'ok' : 'error' });
     } catch {
@@ -1134,39 +1288,37 @@ export class DataLoaderManager implements AppModule {
 
     if (earthquakeResult.status === 'fulfilled') {
       this.ctx.intelligenceCache.earthquakes = earthquakeResult.value;
-      this.ctx.map?.setEarthquakes(earthquakeResult.value);
       ingestEarthquakes(earthquakeResult.value);
       this.ctx.statusPanel?.updateApi('USGS', { status: 'ok' });
       dataFreshness.recordUpdate('usgs', earthquakeResult.value.length);
     } else {
       this.ctx.intelligenceCache.earthquakes = [];
-      this.ctx.map?.setEarthquakes([]);
       this.ctx.statusPanel?.updateApi('USGS', { status: 'error' });
       dataFreshness.recordError('usgs', String(earthquakeResult.reason));
     }
 
     if (eonetResult.status === 'fulfilled') {
-      this.ctx.map?.setNaturalEvents(eonetResult.value);
       this.ctx.statusPanel?.updateFeed('EONET', {
         status: 'ok',
         itemCount: eonetResult.value.length,
       });
       this.ctx.statusPanel?.updateApi('NASA EONET', { status: 'ok' });
     } else {
-      this.ctx.map?.setNaturalEvents([]);
       this.ctx.statusPanel?.updateFeed('EONET', { status: 'error', errorMessage: String(eonetResult.reason) });
       this.ctx.statusPanel?.updateApi('NASA EONET', { status: 'error' });
     }
 
     const hasEarthquakes = earthquakeResult.status === 'fulfilled' && earthquakeResult.value.length > 0;
     const hasEonet = eonetResult.status === 'fulfilled' && eonetResult.value.length > 0;
-    this.ctx.map?.setLayerReady('natural', hasEarthquakes || hasEonet);
+    this.withMapBatch(() => {
+      this.ctx.map?.setEarthquakes(earthquakeResult.status === 'fulfilled' ? earthquakeResult.value : []);
+      this.ctx.map?.setNaturalEvents(eonetResult.status === 'fulfilled' ? eonetResult.value : []);
+      this.ctx.map?.setLayerReady('natural', hasEarthquakes || hasEonet);
+    });
   }
 
   async loadTechEvents(): Promise<void> {
-    console.log('[loadTechEvents] Called. SITE_VARIANT:', SITE_VARIANT, 'techEvents layer:', this.ctx.mapLayers.techEvents);
     if (SITE_VARIANT !== 'tech' && !this.ctx.mapLayers.techEvents) {
-      console.log('[loadTechEvents] Skipping - not tech variant and layer disabled');
       return;
     }
 
@@ -1194,8 +1346,10 @@ export class DataLoaderManager implements AppModule {
         daysUntil: Math.ceil((new Date(e.startDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
       }));
 
-      this.ctx.map?.setTechEvents(mapEvents);
-      this.ctx.map?.setLayerReady('techEvents', mapEvents.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setTechEvents(mapEvents);
+        this.ctx.map?.setLayerReady('techEvents', mapEvents.length > 0);
+      });
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'ok', itemCount: mapEvents.length });
 
       if (SITE_VARIANT === 'tech' && this.ctx.searchModal) {
@@ -1208,8 +1362,10 @@ export class DataLoaderManager implements AppModule {
       }
     } catch (error) {
       console.error('[App] Failed to load tech events:', error);
-      this.ctx.map?.setTechEvents([]);
-      this.ctx.map?.setLayerReady('techEvents', false);
+      this.withMapBatch(() => {
+        this.ctx.map?.setTechEvents([]);
+        this.ctx.map?.setLayerReady('techEvents', false);
+      });
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
     }
   }
@@ -1217,8 +1373,10 @@ export class DataLoaderManager implements AppModule {
   async loadWeatherAlerts(): Promise<void> {
     try {
       const alerts = await fetchWeatherAlerts();
-      this.ctx.map?.setWeatherAlerts(alerts);
-      this.ctx.map?.setLayerReady('weather', alerts.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setWeatherAlerts(alerts);
+        this.ctx.map?.setLayerReady('weather', alerts.length > 0);
+      });
       this.ctx.statusPanel?.updateFeed('Weather', { status: 'ok', itemCount: alerts.length });
       dataFreshness.recordUpdate('weather', alerts.length);
     } catch (error) {
@@ -1229,9 +1387,23 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadIntelligenceSignals(): Promise<void> {
+    const needsCoreIntel = this.isAnyPanelVisible(['cii', 'strategic-risk', 'strategic-posture', 'forensics']);
+    const needsOutages = this.ctx.mapLayers.outages || needsCoreIntel;
+    const needsProtests = this.ctx.mapLayers.protests || needsCoreIntel || this.isAnyPanelVisible(['ucdp-events', 'population-exposure']);
+    const needsMilitary = this.ctx.mapLayers.military || needsCoreIntel || this.isPanelEnabledAndVisible('strategic-posture');
+    const needsUcdpEvents = this.ctx.mapLayers.ucdpEvents || needsCoreIntel || this.isAnyPanelVisible(['ucdp-events', 'population-exposure']);
+    const needsDisplacement = this.ctx.mapLayers.displacement || needsCoreIntel || this.isPanelEnabledAndVisible('displacement');
+    const needsClimate = this.ctx.mapLayers.climate || needsCoreIntel || this.isPanelEnabledAndVisible('climate');
+    const needsAdvisories = needsCoreIntel || this.isPanelEnabledAndVisible('security-advisories');
+    const needsTelegram = needsCoreIntel || this.isPanelEnabledAndVisible('telegram-intel');
+    const needsOref = needsCoreIntel || this.isPanelEnabledAndVisible('oref-sirens');
+    const needsGpsJamming = this.ctx.mapLayers.gpsJamming || needsCoreIntel;
+    const needsPopulationExposure = this.isPanelEnabledAndVisible('population-exposure');
+    this.updateOrefDemand(needsOref);
+
     const tasks: Promise<void>[] = [];
 
-    tasks.push((async () => {
+    if (needsOutages) tasks.push((async () => {
       try {
         const outages = await fetchInternetOutages();
         this.ctx.intelligenceCache.outages = outages;
@@ -1239,8 +1411,10 @@ export class DataLoaderManager implements AppModule {
         signalAggregator.ingestOutages(outages);
         dataFreshness.recordUpdate('outages', outages.length);
         if (this.ctx.mapLayers.outages) {
-          this.ctx.map?.setOutages(outages);
-          this.ctx.map?.setLayerReady('outages', outages.length > 0);
+          this.withMapBatch(() => {
+            this.ctx.map?.setOutages(outages);
+            this.ctx.map?.setLayerReady('outages', outages.length > 0);
+          });
           this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
         }
       } catch (error) {
@@ -1249,7 +1423,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    const protestsTask = (async (): Promise<SocialUnrestEvent[]> => {
+    const protestsTask: Promise<SocialUnrestEvent[]> = needsProtests ? (async (): Promise<SocialUnrestEvent[]> => {
       try {
         const protestData = await fetchProtestEvents();
         this.ctx.intelligenceCache.protests = protestData;
@@ -1261,8 +1435,10 @@ export class DataLoaderManager implements AppModule {
         if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
         if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt_doc', protestData.sources.gdelt);
         if (this.ctx.mapLayers.protests) {
-          this.ctx.map?.setProtests(protestData.events);
-          this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
+          this.withMapBatch(() => {
+            this.ctx.map?.setProtests(protestData.events);
+            this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
+          });
           const status = getProtestStatus();
           this.ctx.statusPanel?.updateFeed('Protests', {
             status: 'ok',
@@ -1276,10 +1452,10 @@ export class DataLoaderManager implements AppModule {
         dataFreshness.recordError('acled', String(error));
         return [];
       }
-    })();
-    tasks.push(protestsTask.then(() => undefined));
+    })() : Promise.resolve([]);
+    if (needsProtests) tasks.push(protestsTask.then(() => undefined));
 
-    tasks.push((async () => {
+    if (needsCoreIntel) tasks.push((async () => {
       try {
         const conflictData = await fetchConflictEvents();
         ingestConflictsForCII(conflictData.events);
@@ -1290,7 +1466,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    tasks.push((async () => {
+    if (needsCoreIntel) tasks.push((async () => {
       try {
         const classifications = await fetchUcdpClassifications();
         ingestUcdpForCII(classifications);
@@ -1301,7 +1477,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    tasks.push((async () => {
+    if (needsCoreIntel) tasks.push((async () => {
       try {
         const summaries = await fetchHapiSummary();
         ingestHapiForCII(summaries);
@@ -1312,7 +1488,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    tasks.push((async () => {
+    if (needsMilitary) tasks.push((async () => {
       try {
         if (isMilitaryVesselTrackingConfigured()) {
           initMilitaryVesselStream();
@@ -1343,13 +1519,15 @@ export class DataLoaderManager implements AppModule {
           if (anomalies.length > 0) {
             signalAggregator.ingestTemporalAnomalies(anomalies);
             ingestTemporalAnomaliesForCII(anomalies);
-            (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+            this.scheduleCiiRefresh();
           }
         }).catch(() => { });
         if (this.ctx.mapLayers.military) {
-          this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
-          this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
-          this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
+          this.withMapBatch(() => {
+            this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
+            this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
+            this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
+          });
           const militaryCount = flightData.flights.length + vesselData.vessels.length;
           this.ctx.statusPanel?.updateFeed('Military', {
             status: militaryCount > 0 ? 'ok' : 'warning',
@@ -1376,14 +1554,10 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    tasks.push((async () => {
+    if (needsUcdpEvents) tasks.push((async () => {
       try {
         const protestEvents = await protestsTask;
-        let result = await fetchUcdpEvents();
-        for (let attempt = 1; attempt < 3 && !result.success; attempt++) {
-          await new Promise(r => setTimeout(r, 15_000));
-          result = await fetchUcdpEvents();
-        }
+        const result = await fetchUcdpEvents();
         if (!result.success) {
           dataFreshness.recordError('ucdp_events', 'UCDP events unavailable (retaining prior event state)');
           return;
@@ -1394,7 +1568,9 @@ export class DataLoaderManager implements AppModule {
         const events = deduplicateAgainstAcled(result.data, acledEvents);
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(events);
         if (this.ctx.mapLayers.ucdpEvents) {
-          this.ctx.map?.setUcdpEvents(events);
+          this.withMapBatch(() => {
+            this.ctx.map?.setUcdpEvents(events);
+          });
         }
         if (events.length > 0) dataFreshness.recordUpdate('ucdp_events', events.length);
       } catch (error) {
@@ -1403,7 +1579,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    tasks.push((async () => {
+    if (needsDisplacement) tasks.push((async () => {
       try {
         const unhcrResult = await fetchUnhcrPopulation();
         if (!unhcrResult.ok) {
@@ -1414,7 +1590,9 @@ export class DataLoaderManager implements AppModule {
         (this.ctx.panels['displacement'] as DisplacementPanel)?.setData(data);
         ingestDisplacementForCII(data.countries);
         if (this.ctx.mapLayers.displacement && data.topFlows) {
-          this.ctx.map?.setDisplacementFlows(data.topFlows);
+          this.withMapBatch(() => {
+            this.ctx.map?.setDisplacementFlows(data.topFlows);
+          });
         }
         if (data.countries.length > 0) dataFreshness.recordUpdate('unhcr', data.countries.length);
       } catch (error) {
@@ -1423,7 +1601,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    tasks.push((async () => {
+    if (needsClimate) tasks.push((async () => {
       try {
         const climateResult = await fetchClimateAnomalies();
         if (!climateResult.ok) {
@@ -1434,7 +1612,9 @@ export class DataLoaderManager implements AppModule {
         (this.ctx.panels['climate'] as ClimateAnomalyPanel)?.setAnomalies(anomalies);
         ingestClimateForCII(anomalies);
         if (this.ctx.mapLayers.climate) {
-          this.ctx.map?.setClimateAnomalies(anomalies);
+          this.withMapBatch(() => {
+            this.ctx.map?.setClimateAnomalies(anomalies);
+          });
         }
         if (anomalies.length > 0) dataFreshness.recordUpdate('climate', anomalies.length);
       } catch (error) {
@@ -1444,37 +1624,23 @@ export class DataLoaderManager implements AppModule {
     })());
 
     // Security advisories
-    tasks.push(this.loadSecurityAdvisories());
+    if (needsAdvisories) tasks.push(this.loadSecurityAdvisories());
 
     // Telegram Intel
-    tasks.push(this.loadTelegramIntel());
+    if (needsTelegram) tasks.push(this.loadTelegramIntel());
 
     // OREF sirens
-    tasks.push((async () => {
+    if (needsOref) tasks.push((async () => {
       try {
         const data = await fetchOrefAlerts();
-        (this.ctx.panels['oref-sirens'] as OrefSirensPanel)?.setData(data);
-        const alertCount = data.alerts?.length ?? 0;
-        const historyCount24h = data.historyCount24h ?? 0;
-        ingestOrefForCII(alertCount, historyCount24h);
-        this.ctx.intelligenceCache.orefAlerts = { alertCount, historyCount24h };
-        if (data.alerts?.length) dispatchOrefBreakingAlert(data.alerts);
-        onOrefAlertsUpdate((update) => {
-          (this.ctx.panels['oref-sirens'] as OrefSirensPanel)?.setData(update);
-          const updAlerts = update.alerts?.length ?? 0;
-          const updHistory = update.historyCount24h ?? 0;
-          ingestOrefForCII(updAlerts, updHistory);
-          this.ctx.intelligenceCache.orefAlerts = { alertCount: updAlerts, historyCount24h: updHistory };
-          if (update.alerts?.length) dispatchOrefBreakingAlert(update.alerts);
-        });
-        startOrefPolling();
+        this.handleOrefAlertsUpdate(data);
       } catch (error) {
         console.error('[Intelligence] OREF alerts fetch failed:', error);
       }
     })());
 
     // GPS/GNSS jamming
-    tasks.push((async () => {
+    if (needsGpsJamming) tasks.push((async () => {
       try {
         const data = await fetchGpsInterference();
         if (!data) {
@@ -1484,8 +1650,10 @@ export class DataLoaderManager implements AppModule {
         }
         ingestGpsJammingForCII(data.hexes);
         if (this.ctx.mapLayers.gpsJamming) {
-          this.ctx.map?.setGpsJamming(data.hexes);
-          this.ctx.map?.setLayerReady('gpsJamming', data.hexes.length > 0);
+          this.withMapBatch(() => {
+            this.ctx.map?.setGpsJamming(data.hexes);
+            this.ctx.map?.setLayerReady('gpsJamming', data.hexes.length > 0);
+          });
         }
         this.ctx.statusPanel?.updateFeed('GPS Jam', { status: 'ok', itemCount: data.hexes.length });
         dataFreshness.recordUpdate('gpsjam', data.hexes.length);
@@ -1498,45 +1666,52 @@ export class DataLoaderManager implements AppModule {
 
     await Promise.allSettled(tasks);
 
-    try {
-      const ucdpEvts = (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.getEvents?.() || [];
-      const events = [
-        ...(this.ctx.intelligenceCache.protests?.events || []).slice(0, 10).map(e => ({
-          id: e.id, lat: e.lat, lon: e.lon, type: 'conflict' as const, name: e.title || 'Protest',
-        })),
-        ...ucdpEvts.slice(0, 10).map(e => ({
-          id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence as string, name: `${e.side_a} vs ${e.side_b}`,
-        })),
-      ];
-      if (events.length > 0) {
-        const exposures = await enrichEventsWithExposure(events);
-        (this.ctx.panels['population-exposure'] as PopulationExposurePanel)?.setExposures(exposures);
-        if (exposures.length > 0) dataFreshness.recordUpdate('worldpop', exposures.length);
-      } else {
-        (this.ctx.panels['population-exposure'] as PopulationExposurePanel)?.setExposures([]);
+    if (needsPopulationExposure) {
+      try {
+        const ucdpEvts = (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.getEvents?.() || [];
+        const events = [
+          ...(this.ctx.intelligenceCache.protests?.events || []).slice(0, 10).map(e => ({
+            id: e.id, lat: e.lat, lon: e.lon, type: 'conflict' as const, name: e.title || 'Protest',
+          })),
+          ...ucdpEvts.slice(0, 10).map(e => ({
+            id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence as string, name: `${e.side_a} vs ${e.side_b}`,
+          })),
+        ];
+        if (events.length > 0) {
+          const exposures = await enrichEventsWithExposure(events);
+          (this.ctx.panels['population-exposure'] as PopulationExposurePanel)?.setExposures(exposures);
+          if (exposures.length > 0) dataFreshness.recordUpdate('worldpop', exposures.length);
+        } else {
+          (this.ctx.panels['population-exposure'] as PopulationExposurePanel)?.setExposures([]);
+        }
+      } catch (error) {
+        console.error('[Intelligence] Population exposure fetch failed:', error);
+        dataFreshness.recordError('worldpop', String(error));
       }
-    } catch (error) {
-      console.error('[Intelligence] Population exposure fetch failed:', error);
-      dataFreshness.recordError('worldpop', String(error));
     }
 
-    (this.ctx.panels['cii'] as CIIPanel)?.refresh();
-    console.log('[Intelligence] All signals loaded for CII calculation');
+    if (needsCoreIntel || this.isPanelEnabledAndVisible('cii')) {
+      this.scheduleCiiRefresh();
+    }
   }
 
   async loadOutages(): Promise<void> {
     if (this.ctx.intelligenceCache.outages) {
       const outages = this.ctx.intelligenceCache.outages;
-      this.ctx.map?.setOutages(outages);
-      this.ctx.map?.setLayerReady('outages', outages.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setOutages(outages);
+        this.ctx.map?.setLayerReady('outages', outages.length > 0);
+      });
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
       return;
     }
     try {
       const outages = await fetchInternetOutages();
       this.ctx.intelligenceCache.outages = outages;
-      this.ctx.map?.setOutages(outages);
-      this.ctx.map?.setLayerReady('outages', outages.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setOutages(outages);
+        this.ctx.map?.setLayerReady('outages', outages.length > 0);
+      });
       ingestOutagesForCII(outages);
       signalAggregator.ingestOutages(outages);
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
@@ -1555,22 +1730,27 @@ export class DataLoaderManager implements AppModule {
       return;
     }
 
-    if (this.ctx.cyberThreatsCache) {
-      this.ctx.map?.setCyberThreats(this.ctx.cyberThreatsCache);
-      this.ctx.map?.setLayerReady('cyberThreats', this.ctx.cyberThreatsCache.length > 0);
-      ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
-      this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: this.ctx.cyberThreatsCache.length });
+    const cachedThreats = this.ctx.cyberThreatsCache;
+    if (cachedThreats) {
+      this.withMapBatch(() => {
+        this.ctx.map?.setCyberThreats(cachedThreats);
+        this.ctx.map?.setLayerReady('cyberThreats', cachedThreats.length > 0);
+      });
+      ingestCyberThreatsForCII(cachedThreats);
+      this.scheduleCiiRefresh();
+      this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: cachedThreats.length });
       return;
     }
 
     try {
       const threats = await fetchCyberThreats({ limit: 500, days: 14 });
       this.ctx.cyberThreatsCache = threats;
-      this.ctx.map?.setCyberThreats(threats);
-      this.ctx.map?.setLayerReady('cyberThreats', threats.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setCyberThreats(threats);
+        this.ctx.map?.setLayerReady('cyberThreats', threats.length > 0);
+      });
       ingestCyberThreatsForCII(threats);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      this.scheduleCiiRefresh();
       this.ctx.statusPanel?.updateFeed('Cyber Threats', { status: 'ok', itemCount: threats.length });
       this.ctx.statusPanel?.updateApi('Cyber Threats API', { status: 'ok' });
       dataFreshness.recordUpdate('cyber_threats', threats.length);
@@ -1586,12 +1766,14 @@ export class DataLoaderManager implements AppModule {
     try {
       const events = await fetchIranEvents();
       this.ctx.intelligenceCache.iranEvents = events;
-      this.ctx.map?.setIranEvents(events);
-      this.ctx.map?.setLayerReady('iranAttacks', events.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setIranEvents(events);
+        this.ctx.map?.setLayerReady('iranAttacks', events.length > 0);
+      });
       const coerced = events.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
       signalAggregator.ingestConflictEvents(coerced);
       ingestStrikesForCII(coerced);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      this.scheduleCiiRefresh();
     } catch {
       this.ctx.map?.setLayerReady('iranAttacks', false);
     }
@@ -1601,24 +1783,24 @@ export class DataLoaderManager implements AppModule {
     try {
       const { disruptions, density } = await fetchAisSignals();
       const aisStatus = getAisStatus();
-      console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
       this.cachedAisDisruptions = disruptions;
-      this.ctx.map?.setAisData(disruptions, density);
+      const hasData = disruptions.length > 0 || density.length > 0;
+      this.withMapBatch(() => {
+        this.ctx.map?.setAisData(disruptions, density);
+        this.ctx.map?.setLayerReady('ais', hasData);
+      });
       signalAggregator.ingestAisDisruptions(disruptions);
       ingestAisDisruptionsForCII(disruptions);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      this.scheduleCiiRefresh();
       updateAndCheck([
         { type: 'ais_gaps', region: 'global', count: disruptions.length },
       ]).then(anomalies => {
         if (anomalies.length > 0) {
           signalAggregator.ingestTemporalAnomalies(anomalies);
           ingestTemporalAnomaliesForCII(anomalies);
-          (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+          this.scheduleCiiRefresh();
         }
       }).catch(() => { });
-
-      const hasData = disruptions.length > 0 || density.length > 0;
-      this.ctx.map?.setLayerReady('ais', hasData);
 
       const shippingCount = disruptions.length + density.length;
       const shippingStatus = shippingCount > 0 ? 'ok' : (aisStatus.connected ? 'warning' : 'error');
@@ -1675,7 +1857,9 @@ export class DataLoaderManager implements AppModule {
   async loadCableActivity(): Promise<void> {
     try {
       const activity = await fetchCableActivity();
-      this.ctx.map?.setCableActivity(activity.advisories, activity.repairShips);
+      this.withMapBatch(() => {
+        this.ctx.map?.setCableActivity(activity.advisories, activity.repairShips);
+      });
       const itemCount = activity.advisories.length + activity.repairShips.length;
       this.ctx.statusPanel?.updateFeed('CableOps', { status: 'ok', itemCount });
     } catch {
@@ -1686,7 +1870,9 @@ export class DataLoaderManager implements AppModule {
   async loadCableHealth(): Promise<void> {
     try {
       const healthData = await fetchCableHealth();
-      this.ctx.map?.setCableHealth(healthData.cables);
+      this.withMapBatch(() => {
+        this.ctx.map?.setCableHealth(healthData.cables);
+      });
       const cableIds = Object.keys(healthData.cables);
       const faultCount = cableIds.filter((id) => healthData.cables[id]?.status === 'fault').length;
       const degradedCount = cableIds.filter((id) => healthData.cables[id]?.status === 'degraded').length;
@@ -1699,8 +1885,10 @@ export class DataLoaderManager implements AppModule {
   async loadProtests(): Promise<void> {
     if (this.ctx.intelligenceCache.protests) {
       const protestData = this.ctx.intelligenceCache.protests;
-      this.ctx.map?.setProtests(protestData.events);
-      this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setProtests(protestData.events);
+        this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
+      });
       const status = getProtestStatus();
       this.ctx.statusPanel?.updateFeed('Protests', {
         status: 'ok',
@@ -1719,8 +1907,10 @@ export class DataLoaderManager implements AppModule {
     try {
       const protestData = await fetchProtestEvents();
       this.ctx.intelligenceCache.protests = protestData;
-      this.ctx.map?.setProtests(protestData.events);
-      this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setProtests(protestData.events);
+        this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
+      });
       ingestProtests(protestData.events);
       ingestProtestsForCII(protestData.events);
       signalAggregator.ingestProtests(protestData.events);
@@ -1728,7 +1918,7 @@ export class DataLoaderManager implements AppModule {
       if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt_doc', protestData.sources.gdelt);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      this.scheduleCiiRefresh();
       const status = getProtestStatus();
       this.ctx.statusPanel?.updateFeed('Protests', {
         status: 'ok',
@@ -1753,8 +1943,10 @@ export class DataLoaderManager implements AppModule {
   async loadFlightDelays(): Promise<void> {
     try {
       const delays = await fetchFlightDelays();
-      this.ctx.map?.setFlightDelays(delays);
-      this.ctx.map?.setLayerReady('flights', delays.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setFlightDelays(delays);
+        this.ctx.map?.setLayerReady('flights', delays.length > 0);
+      });
       this.ctx.intelligenceCache.flightDelays = delays;
       const severe = delays.filter(d => d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure');
       if (severe.length > 0) ingestAviationForCII(severe);
@@ -1773,14 +1965,16 @@ export class DataLoaderManager implements AppModule {
   async loadMilitary(): Promise<void> {
     if (this.ctx.intelligenceCache.military) {
       const { flights, flightClusters, vessels, vesselClusters } = this.ctx.intelligenceCache.military;
-      this.ctx.map?.setMilitaryFlights(flights, flightClusters);
-      this.ctx.map?.setMilitaryVessels(vessels, vesselClusters);
-      this.ctx.map?.updateMilitaryForEscalation(flights, vessels);
+      const hasData = flights.length > 0 || vessels.length > 0;
+      this.withMapBatch(() => {
+        this.ctx.map?.setMilitaryFlights(flights, flightClusters);
+        this.ctx.map?.setMilitaryVessels(vessels, vesselClusters);
+        this.ctx.map?.updateMilitaryForEscalation(flights, vessels);
+        this.ctx.map?.setLayerReady('military', hasData);
+      });
       this.loadCachedPosturesForBanner();
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.setMilitaryFlights(flights);
-      const hasData = flights.length > 0 || vessels.length > 0;
-      this.ctx.map?.setLayerReady('military', hasData);
       const militaryCount = flights.length + vessels.length;
       this.ctx.statusPanel?.updateFeed('Military', {
         status: militaryCount > 0 ? 'ok' : 'warning',
@@ -1807,8 +2001,13 @@ export class DataLoaderManager implements AppModule {
       fetchUSNIFleetReport().then((report) => {
         if (report) this.ctx.intelligenceCache.usniFleet = report;
       }).catch(() => {});
-      this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
-      this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
+      const hasData = flightData.flights.length > 0 || vesselData.vessels.length > 0;
+      this.withMapBatch(() => {
+        this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
+        this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
+        this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
+        this.ctx.map?.setLayerReady('military', hasData);
+      });
       ingestFlights(flightData.flights);
       ingestVessels(vesselData.vessels);
       ingestMilitaryForCII(flightData.flights, vesselData.vessels);
@@ -1821,11 +2020,10 @@ export class DataLoaderManager implements AppModule {
         if (anomalies.length > 0) {
           signalAggregator.ingestTemporalAnomalies(anomalies);
           ingestTemporalAnomaliesForCII(anomalies);
-          (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+          this.scheduleCiiRefresh();
         }
       }).catch(() => { });
-      this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
-      (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+      this.scheduleCiiRefresh();
       if (!isInLearningMode()) {
         const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
         if (surgeAlerts.length > 0) {
@@ -1844,9 +2042,6 @@ export class DataLoaderManager implements AppModule {
       this.loadCachedPosturesForBanner();
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.setMilitaryFlights(flightData.flights);
-
-      const hasData = flightData.flights.length > 0 || vesselData.vessels.length > 0;
-      this.ctx.map?.setLayerReady('military', hasData);
       const militaryCount = flightData.flights.length + vesselData.vessels.length;
       this.ctx.statusPanel?.updateFeed('Military', {
         status: militaryCount > 0 ? 'ok' : 'warning',
@@ -1902,18 +2097,8 @@ export class DataLoaderManager implements AppModule {
           this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
           return;
         }
-        economicPanel?.showRetrying();
-        await new Promise(r => setTimeout(r, 20_000));
-        const retryData = await fetchFredData();
-        if (retryData.length === 0) {
-          economicPanel?.setErrorState(true, 'FRED data temporarily unavailable — will retry');
-          this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
-          return;
-        }
-        economicPanel?.setErrorState(false);
-        economicPanel?.update(retryData);
-        this.ctx.statusPanel?.updateApi('FRED', { status: 'ok' });
-        dataFreshness.recordUpdate('economic', retryData.length);
+        economicPanel?.setErrorState(true, 'FRED data temporarily unavailable — will retry');
+        this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
         return;
       }
 
@@ -1922,20 +2107,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('FRED', { status: 'ok' });
       dataFreshness.recordUpdate('economic', data.length);
     } catch {
-      if (isFeatureAvailable('economicFred')) {
-        economicPanel?.showRetrying();
-        try {
-          await new Promise(r => setTimeout(r, 20_000));
-          const retryData = await fetchFredData();
-          if (retryData.length > 0) {
-            economicPanel?.setErrorState(false);
-            economicPanel?.update(retryData);
-            this.ctx.statusPanel?.updateApi('FRED', { status: 'ok' });
-            dataFreshness.recordUpdate('economic', retryData.length);
-            return;
-          }
-        } catch { /* fall through */ }
-      }
       this.ctx.statusPanel?.updateApi('FRED', { status: 'error' });
       economicPanel?.setErrorState(true, 'FRED data temporarily unavailable — will retry');
       economicPanel?.setLoading(false);
@@ -2069,21 +2240,20 @@ export class DataLoaderManager implements AppModule {
 
   updateMonitorResults(): void {
     const monitorPanel = this.ctx.panels['monitors'] as MonitorPanel;
+    if (!monitorPanel || !this.isPanelEnabledAndVisible('monitors')) return;
     monitorPanel.renderResults(this.ctx.allNews);
   }
 
   async runCorrelationAnalysis(): Promise<void> {
     try {
       if (this.ctx.latestClusters.length === 0 && this.ctx.allNews.length > 0) {
-        this.ctx.latestClusters = mlWorker.isAvailable
-          ? await clusterNewsHybrid(this.ctx.allNews)
-          : await analysisWorker.clusterNews(this.ctx.allNews);
+        this.ctx.latestClusters = await this.clusterNewsForDashboard(this.ctx.allNews);
       }
 
       if (this.ctx.latestClusters.length > 0) {
         ingestNewsForCII(this.ctx.latestClusters);
         dataFreshness.recordUpdate('gdelt', this.ctx.latestClusters.length);
-        (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+        this.scheduleCiiRefresh();
       }
 
       const signals = await analysisWorker.analyzeCorrelations(
@@ -2132,9 +2302,11 @@ export class DataLoaderManager implements AppModule {
 
         signalAggregator.ingestSatelliteFires(satelliteFires);
         ingestSatelliteFiresForCII(satelliteFires);
-        (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+        this.scheduleCiiRefresh();
 
-        this.ctx.map?.setFires(toMapFires(flat));
+        this.withMapBatch(() => {
+          this.ctx.map?.setFires(toMapFires(flat));
+        });
 
         (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update(stats, totalCount);
 
@@ -2146,12 +2318,12 @@ export class DataLoaderManager implements AppModule {
           if (anomalies.length > 0) {
             signalAggregator.ingestTemporalAnomalies(anomalies);
             ingestTemporalAnomaliesForCII(anomalies);
-            (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+            this.scheduleCiiRefresh();
           }
         }).catch(() => { });
       } else {
         ingestSatelliteFiresForCII([]);
-        (this.ctx.panels['cii'] as CIIPanel)?.refresh();
+        this.scheduleCiiRefresh();
         (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
       }
       this.ctx.statusPanel?.updateApi('FIRMS', { status: 'ok' });
@@ -2305,7 +2477,9 @@ export class DataLoaderManager implements AppModule {
       seen.add(e.name);
       return true;
     });
-    this.ctx.map?.setPositiveEvents(merged);
+    this.withMapBatch(() => {
+      this.ctx.map?.setPositiveEvents(merged);
+    });
   }
 
   private loadKindnessData(): void {
@@ -2315,7 +2489,9 @@ export class DataLoaderManager implements AppModule {
         happyCategory: item.happyCategory,
       }))
     );
-    this.ctx.map?.setKindnessData(kindnessItems);
+    this.withMapBatch(() => {
+      this.ctx.map?.setKindnessData(kindnessItems);
+    });
   }
 
   private async loadProgressData(): Promise<void> {
@@ -2326,7 +2502,9 @@ export class DataLoaderManager implements AppModule {
   private async loadSpeciesData(): Promise<void> {
     const species = await fetchConservationWins();
     this.ctx.speciesPanel?.setData(species);
-    this.ctx.map?.setSpeciesRecoveryZones(species);
+    this.withMapBatch(() => {
+      this.ctx.map?.setSpeciesRecoveryZones(species);
+    });
     if (SITE_VARIANT === 'happy' && species.length > 0) {
       checkMilestones({
         speciesRecoveries: species.map(s => ({ name: s.commonName, status: s.recoveryStatus })),
@@ -2382,8 +2560,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchSarDetections();
       this.cachedSarDetections = data;
       this.sarFetchedAt = Date.now();
-      this.ctx.map?.setSarDetections(data);
-      this.ctx.map?.setLayerReady('sarDetections', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setSarDetections(data);
+        this.ctx.map?.setLayerReady('sarDetections', data.length > 0);
+      });
       signalAggregator.ingestSarDetections(data);
       dataFreshness.recordUpdate('sar_detections', data.length);
       this.ctx.statusPanel?.updateFeed('SAR Detections', { status: 'ok', itemCount: data.length });
@@ -2401,8 +2581,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchPortCongestion();
       this.cachedPortCongestion = data as unknown as Record<string, unknown>[];
       this.portFetchedAt = Date.now();
-      this.ctx.map?.setPortCongestion(data);
-      this.ctx.map?.setLayerReady('portCongestion', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setPortCongestion(data);
+        this.ctx.map?.setLayerReady('portCongestion', data.length > 0);
+      });
       signalAggregator.ingestPortCongestion(data);
       dataFreshness.recordUpdate('port_congestion', data.length);
       this.ctx.statusPanel?.updateFeed('Port Congestion', { status: 'ok', itemCount: data.length });
@@ -2420,8 +2602,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchGridStatus();
       this.cachedGridZones = data;
       this.gridFetchedAt = Date.now();
-      this.ctx.map?.setGridZones(data);
-      this.ctx.map?.setLayerReady('gridZones', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setGridZones(data);
+        this.ctx.map?.setLayerReady('gridZones', data.length > 0);
+      });
       signalAggregator.ingestGridZones(data);
       dataFreshness.recordUpdate('grid_zones', data.length);
       this.ctx.statusPanel?.updateFeed('Grid Stress', { status: 'ok', itemCount: data.length });
@@ -2439,8 +2623,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchRoutingAnomalies();
       this.cachedRoutingAnomalies = data;
       this.routingFetchedAt = Date.now();
-      this.ctx.map?.setRoutingAnomalies(data);
-      this.ctx.map?.setLayerReady('routingAnomalies', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setRoutingAnomalies(data);
+        this.ctx.map?.setLayerReady('routingAnomalies', data.length > 0);
+      });
       signalAggregator.ingestRoutingAnomalies(data);
       dataFreshness.recordUpdate('routing_anomalies', data.length);
       this.ctx.statusPanel?.updateFeed('BGP Anomalies', { status: 'ok', itemCount: data.length });
@@ -2456,8 +2642,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchRadiationReadings();
       this.cachedRadiationReadings = data;
       this.radiationFetchedAt = Date.now();
-      this.ctx.map?.setRadiationReadings(data);
-      this.ctx.map?.setLayerReady('radiationReadings', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setRadiationReadings(data);
+        this.ctx.map?.setLayerReady('radiationReadings', data.length > 0);
+      });
       signalAggregator.ingestRadiationReadings(data);
       dataFreshness.recordUpdate('radiation_readings', data.length);
       this.ctx.statusPanel?.updateFeed('Radiation', { status: 'ok', itemCount: data.length });
@@ -2473,8 +2661,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchAirQualityReadings();
       this.cachedAirQualityReadings = data;
       this.aqiFetchedAt = Date.now();
-      this.ctx.map?.setAirQualityReadings(data);
-      this.ctx.map?.setLayerReady('airQuality', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setAirQualityReadings(data);
+        this.ctx.map?.setLayerReady('airQuality', data.length > 0);
+      });
       signalAggregator.ingestAirQualityReadings(data);
       dataFreshness.recordUpdate('air_quality', data.length);
       this.ctx.statusPanel?.updateFeed('Air Quality', { status: 'ok', itemCount: data.length });
@@ -2492,8 +2682,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchDeforestationAlerts();
       this.cachedDeforestationAlerts = data;
       this.deforestationFetchedAt = Date.now();
-      this.ctx.map?.setDeforestationAlerts(data);
-      this.ctx.map?.setLayerReady('deforestationAlerts', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setDeforestationAlerts(data);
+        this.ctx.map?.setLayerReady('deforestationAlerts', data.length > 0);
+      });
       signalAggregator.ingestDeforestationAlerts(data);
       dataFreshness.recordUpdate('deforestation_alerts', data.length);
       this.ctx.statusPanel?.updateFeed('Deforestation', { status: 'ok', itemCount: data.length });
@@ -2511,8 +2703,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchAcarsMessages();
       this.cachedAcarsMessages = data as unknown as Record<string, unknown>[];
       this.acarsFetchedAt = Date.now();
-      this.ctx.map?.setAcarsMessages(data);
-      this.ctx.map?.setLayerReady('acarsMessages', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setAcarsMessages(data);
+        this.ctx.map?.setLayerReady('acarsMessages', data.length > 0);
+      });
       signalAggregator.ingestAcarsMessages(data);
       dataFreshness.recordUpdate('acars_messages', data.length);
       this.ctx.statusPanel?.updateFeed('ACARS Messages', { status: 'ok', itemCount: data.length });
@@ -2530,8 +2724,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchWhaleTransfers();
       this.cachedWhaleTransfers = data;
       this.whaleFetchedAt = Date.now();
-      this.ctx.map?.setWhaleTransfers(data);
-      this.ctx.map?.setLayerReady('whaleTransfers', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setWhaleTransfers(data);
+        this.ctx.map?.setLayerReady('whaleTransfers', data.length > 0);
+      });
       signalAggregator.ingestWhaleTransfers(data);
       dataFreshness.recordUpdate('whale_transfers', data.length);
       this.ctx.statusPanel?.updateFeed('Whale Transfers', { status: 'ok', itemCount: data.length });
@@ -2549,8 +2745,10 @@ export class DataLoaderManager implements AppModule {
       const data = await fetchNavWarnings();
       this.cachedNavWarnings = data;
       this.navFetchedAt = Date.now();
-      this.ctx.map?.setNavWarnings(data);
-      this.ctx.map?.setLayerReady('navWarnings', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setNavWarnings(data);
+        this.ctx.map?.setLayerReady('navWarnings', data.length > 0);
+      });
       signalAggregator.ingestNavWarnings(data);
       dataFreshness.recordUpdate('nav_warnings', data.length);
       this.ctx.statusPanel?.updateFeed('Nav Warnings', { status: 'ok', itemCount: data.length });
@@ -2565,8 +2763,10 @@ export class DataLoaderManager implements AppModule {
     try {
       const data = await fetchConflictIncidents();
       this.cachedConflictIncidents = data;
-      this.ctx.map?.setConflictIncidents(data);
-      this.ctx.map?.setLayerReady('conflictIncidents', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setConflictIncidents(data);
+        this.ctx.map?.setLayerReady('conflictIncidents', data.length > 0);
+      });
       signalAggregator.ingestConflictIncidents(data);
       dataFreshness.recordUpdate('conflict_incidents', data.length);
       this.ctx.statusPanel?.updateFeed('Liveuamap', { status: 'ok', itemCount: data.length });
@@ -2584,8 +2784,10 @@ export class DataLoaderManager implements AppModule {
       // Use a global bounding box for initial load or get from map
       const data = await fetchPollutionGrid(-60, 80, -180, 180);
       this.cachedPollutionGrid = data;
-      this.ctx.map?.setPollutionGrid(data);
-      this.ctx.map?.setLayerReady('pollutionGrid', data.length > 0);
+      this.withMapBatch(() => {
+        this.ctx.map?.setPollutionGrid(data);
+        this.ctx.map?.setLayerReady('pollutionGrid', data.length > 0);
+      });
       signalAggregator.ingestPollutionGrid(data);
       dataFreshness.recordUpdate('pollution_grid', data.length);
       this.ctx.statusPanel?.updateFeed('Pollution Grid', { status: 'ok', itemCount: data.length });
@@ -2627,9 +2829,12 @@ export class DataLoaderManager implements AppModule {
   async loadSpaceWeather(): Promise<void> {
     try {
       const result = await getSpaceWeather();
-      if (result.status) {
-        this.ctx.intelligenceCache.spaceWeather = result.status;
-        this.ctx.map?.setSpaceWeather(result.status);
+      const status = result.status;
+      if (status) {
+        this.ctx.intelligenceCache.spaceWeather = status;
+        this.withMapBatch(() => {
+          this.ctx.map?.setSpaceWeather(status);
+        });
         dataFreshness.recordUpdate('space_weather', 1);
       }
     } catch {
@@ -2639,6 +2844,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadForensics(): Promise<void> {
     try {
+      if (!this.isPanelEnabledAndVisible('forensics')) return;
       const panel = this.ctx.panels['forensics'] as ForensicsPanel | undefined;
       if (!panel) return;
 

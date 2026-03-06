@@ -191,9 +191,11 @@ export class Panel {
   private onColTouchEnd: (() => void) | null = null;
   private onColTouchCancel: (() => void) | null = null;
   private colSpanReconcileRaf: number | null = null;
-  private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastContentCommitAt = 0;
+  private rapidContentUpdateCount = 0;
+  private visibilityListeners = new Set<(visible: boolean) => void>();
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -686,16 +688,35 @@ export class Panel {
       return;
     }
 
+    const now = Date.now();
+    const sinceLastCommit = now - this.lastContentCommitAt;
+    if (sinceLastCommit > 240 && !this.contentDebounceTimer) {
+      this.setContentImmediate(html);
+      return;
+    }
+
+    if (sinceLastCommit < 120) {
+      this.rapidContentUpdateCount = Math.min(10, this.rapidContentUpdateCount + 1);
+    } else {
+      this.rapidContentUpdateCount = 1;
+    }
+
     this.pendingContentHtml = html;
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
     }
 
+    const debounceMs = this.rapidContentUpdateCount >= 4
+      ? 140
+      : this.rapidContentUpdateCount >= 2
+        ? 70
+        : 30;
+
     this.contentDebounceTimer = setTimeout(() => {
       if (this.pendingContentHtml !== null) {
         this.setContentImmediate(this.pendingContentHtml);
       }
-    }, this.contentDebounceMs);
+    }, debounceMs);
   }
 
   private setContentImmediate(html: string): void {
@@ -708,20 +729,40 @@ export class Panel {
     if (this.content.innerHTML !== html) {
       this.content.innerHTML = html;
     }
+    this.lastContentCommitAt = Date.now();
+    this.rapidContentUpdateCount = 0;
   }
 
   public show(): void {
+    if (!this.element.classList.contains('hidden')) return;
     this.element.classList.remove('hidden');
+    this.onPanelVisibilityChanged(true);
+    for (const listener of this.visibilityListeners) listener(true);
   }
 
   public hide(): void {
+    if (this.element.classList.contains('hidden')) return;
     this.element.classList.add('hidden');
+    this.onPanelVisibilityChanged(false);
+    for (const listener of this.visibilityListeners) listener(false);
   }
 
   public toggle(visible: boolean): void {
     if (visible) this.show();
     else this.hide();
   }
+
+  public isVisible(): boolean {
+    return this.element.isConnected && !this.element.classList.contains('hidden');
+  }
+
+  public onVisibilityChange(listener: (visible: boolean) => void): () => void {
+    this.visibilityListeners.add(listener);
+    return () => this.visibilityListeners.delete(listener);
+  }
+
+  // Subclasses can override to pause/resume expensive work when hidden.
+  protected onPanelVisibilityChanged(_visible: boolean): void {}
 
   /**
    * Update the "new items" badge
@@ -797,6 +838,7 @@ export class Panel {
       this.contentDebounceTimer = null;
     }
     this.pendingContentHtml = null;
+    this.visibilityListeners.clear();
 
     if (this.tooltipCloseHandler) {
       document.removeEventListener('click', this.tooltipCloseHandler);

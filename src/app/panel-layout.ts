@@ -62,6 +62,7 @@ import {
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
+import { dashboardUpdateScheduler, queueIdleWork } from '@/services/dashboard-update-scheduler';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction } from '@/services/analytics';
 
@@ -77,7 +78,11 @@ export class PanelLayoutManager implements AppModule {
   private callbacks: PanelLayoutCallbacks;
   private panelDragCleanupHandlers: Array<() => void> = [];
   private criticalBannerEl: HTMLElement | null = null;
+  private boundEnsureCorrectZones: (() => void) | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
+  private deferredPanelMountKeys: string[] = [];
+  private deferredMountCancel: { cancel: () => void } | null = null;
+  private panelOrderForMounting: string[] = [];
 
   constructor(ctx: AppContext, callbacks: PanelLayoutCallbacks) {
     this.ctx = ctx;
@@ -93,6 +98,7 @@ export class PanelLayoutManager implements AppModule {
 
   destroy(): void {
     this.applyTimeRangeFilterDebounced.cancel();
+    this.cancelDeferredPanelMounts();
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
     if (this.criticalBannerEl) {
@@ -110,7 +116,10 @@ export class PanelLayoutManager implements AppModule {
     this.ctx.speciesPanel?.destroy();
     this.ctx.renewablePanel?.destroy();
 
-    window.removeEventListener('resize', this.ensureCorrectZones);
+    if (this.boundEnsureCorrectZones) {
+      window.removeEventListener('resize', this.boundEnsureCorrectZones);
+      this.boundEnsureCorrectZones = null;
+    }
   }
 
   renderLayout(): void {
@@ -315,7 +324,6 @@ export class PanelLayoutManager implements AppModule {
     `;
 
     this.criticalBannerEl.querySelector('.banner-view')?.addEventListener('click', () => {
-      console.log('[Banner] View Region clicked:', top.theaterId, 'lat:', top.centerLat, 'lon:', top.centerLon);
       trackCriticalBannerAction('view', top.theaterId);
       if (typeof top.centerLat === 'number' && typeof top.centerLon === 'number') {
         this.ctx.map?.setCenter(top.centerLat, top.centerLon, 4);
@@ -339,6 +347,9 @@ export class PanelLayoutManager implements AppModule {
         if (mapSection) {
           mapSection.classList.toggle('hidden', !config.enabled);
         }
+        const shouldPauseMap = !config.enabled || document.hidden;
+        this.ctx.map?.setRenderPaused(shouldPauseMap);
+        if (!shouldPauseMap) this.requestMapRender('panel-layout-settings-map');
         return;
       }
       const panel = this.ctx.panels[key];
@@ -347,8 +358,6 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private createPanels(): void {
-    const panelsGrid = document.getElementById('panelsGrid')!;
-
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
     this.ctx.map = new MapContainer(mapContainer, {
       zoom: this.ctx.isMobile ? 2.5 : 1.0,
@@ -585,7 +594,6 @@ export class PanelLayoutManager implements AppModule {
 
       const strategicPosturePanel = new StrategicPosturePanel(() => this.ctx.allNews);
       strategicPosturePanel.setLocationClickHandler((lat, lon) => {
-        console.log('[App] StrategicPosture handler called:', { lat, lon, hasMap: !!this.ctx.map });
         this.ctx.map?.setCenter(lat, lon, 4);
       });
       this.ctx.panels['strategic-posture'] = strategicPosturePanel;
@@ -730,14 +738,7 @@ export class PanelLayoutManager implements AppModule {
       panelOrder = valid;
 
       // Handle bottom panels
-      validBottom.forEach(key => {
-        const panel = this.ctx.panels[key];
-        if (panel) {
-          const el = panel.getElement();
-          this.makeDraggable(el, key);
-          document.getElementById('mapBottomGrid')?.appendChild(el);
-        }
-      });
+      validBottom.forEach(key => this.mountPanelToBottomGrid(key));
     }
 
     if (SITE_VARIANT !== 'happy') {
@@ -765,16 +766,26 @@ export class PanelLayoutManager implements AppModule {
       }
     }
 
-    panelOrder.forEach((key: string) => {
-      const panel = this.ctx.panels[key];
-      if (panel && !panel.getElement().parentElement) {
-        const el = panel.getElement();
-        this.makeDraggable(el, key);
-        panelsGrid.appendChild(el);
+    this.panelOrderForMounting = [...panelOrder];
+    this.cancelDeferredPanelMounts();
+    this.deferredPanelMountKeys = [];
+    const eagerMountIds = new Set(['live-news', 'live-webcams', 'insights', 'strategic-risk']);
+    const eagerCount = this.ctx.isMobile ? 5 : 9;
+
+    panelOrder.forEach((key: string, index) => {
+      const shouldMountEagerly = index < eagerCount || eagerMountIds.has(key);
+      if (shouldMountEagerly) {
+        this.mountPanelToMainGrid(key);
+      } else {
+        this.deferredPanelMountKeys.push(key);
       }
     });
+    this.scheduleDeferredPanelMounts();
 
-    window.addEventListener('resize', () => this.ensureCorrectZones());
+    if (!this.boundEnsureCorrectZones) {
+      this.boundEnsureCorrectZones = () => this.ensureCorrectZones();
+      window.addEventListener('resize', this.boundEnsureCorrectZones);
+    }
 
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
@@ -783,6 +794,10 @@ export class PanelLayoutManager implements AppModule {
 
     this.applyPanelSettings();
     this.applyInitialUrlState();
+  }
+
+  private requestMapRender(reason: string): void {
+    dashboardUpdateScheduler.scheduleMapUpdate(reason, () => this.ctx.map?.render());
   }
 
   private applyTimeRangeFilterToNewsPanels(): void {
@@ -1128,6 +1143,68 @@ export class PanelLayoutManager implements AppModule {
       // Dragging over an empty or near-empty grid zone
       currentTargetGrid.appendChild(dragging);
     }
+  }
+
+  private mountPanelToBottomGrid(key: string): void {
+    const panel = this.ctx.panels[key];
+    const grid = document.getElementById('mapBottomGrid');
+    if (!panel || !grid) return;
+
+    const el = panel.getElement();
+    if (!el.parentElement) this.makeDraggable(el, key);
+    if (el.parentElement !== grid) grid.appendChild(el);
+  }
+
+  private mountPanelToMainGrid(key: string): void {
+    const panel = this.ctx.panels[key];
+    const grid = document.getElementById('panelsGrid');
+    if (!panel || !grid) return;
+
+    const el = panel.getElement();
+    if (!el.parentElement) this.makeDraggable(el, key);
+    if (el.parentElement === grid) return;
+
+    const targetIndex = this.panelOrderForMounting.indexOf(key);
+    if (targetIndex < 0) {
+      grid.appendChild(el);
+      return;
+    }
+
+    for (let i = targetIndex + 1; i < this.panelOrderForMounting.length; i++) {
+      const nextPanelId = this.panelOrderForMounting[i];
+      const nextEl = grid.querySelector(`[data-panel="${nextPanelId}"]`);
+      if (nextEl) {
+        grid.insertBefore(el, nextEl);
+        return;
+      }
+    }
+
+    grid.appendChild(el);
+  }
+
+  private scheduleDeferredPanelMounts(): void {
+    if (this.deferredPanelMountKeys.length === 0 || this.deferredMountCancel) return;
+
+    this.deferredMountCancel = queueIdleWork(() => {
+      this.deferredMountCancel = null;
+      const mountBatchSize = this.ctx.isMobile ? 1 : 2;
+      for (let i = 0; i < mountBatchSize; i++) {
+        const panelId = this.deferredPanelMountKeys.shift();
+        if (!panelId) break;
+        this.mountPanelToMainGrid(panelId);
+      }
+      if (this.deferredPanelMountKeys.length > 0) {
+        this.scheduleDeferredPanelMounts();
+      }
+    });
+  }
+
+  private cancelDeferredPanelMounts(): void {
+    if (this.deferredMountCancel) {
+      this.deferredMountCancel.cancel();
+      this.deferredMountCancel = null;
+    }
+    this.deferredPanelMountKeys = [];
   }
 
   getLocalizedPanelName(panelKey: string, fallback: string): string {

@@ -805,5 +805,6 @@ export const STORAGE_KEYS = {
   panels: 'worldmonitor-panels',
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
+  mapPerformanceProfile: 'worldmonitor-map-performance-profile',
   disabledFeeds: 'worldmonitor-disabled-feeds',
 } as const;

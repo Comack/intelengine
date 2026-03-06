@@ -34,8 +34,18 @@ export class NewsPanel extends Panel {
   private windowedList: WindowedList<PreparedCluster> | null = null;
   private useVirtualScroll = true;
   private renderRequestId = 0;
+  private lastNewsRenderSignature = '';
+  private lastClusterRenderSignature = '';
+  private pendingHiddenItems: NewsItem[] | null = null;
+  private pendingHiddenEmptyMessage: string | null = null;
   private boundScrollHandler: (() => void) | null = null;
   private boundClickHandler: (() => void) | null = null;
+  private relatedAssetEventsBound = false;
+  private boundContentClickHandler: ((event: MouseEvent) => void) | null = null;
+  private boundContentMouseOverHandler: ((event: MouseEvent) => void) | null = null;
+  private boundContentMouseOutHandler: ((event: MouseEvent) => void) | null = null;
+  private clusterRenderInFlight = false;
+  private queuedClusterItems: NewsItem[] | null = null;
 
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
@@ -50,6 +60,7 @@ export class NewsPanel extends Panel {
     this.createSummarizeButton();
     this.setupActivityTracking();
     this.initWindowedList();
+    this.bindRelatedAssetEvents();
   }
 
   private initWindowedList(): void {
@@ -293,8 +304,25 @@ export class NewsPanel extends Panel {
   }
 
   public renderNews(items: NewsItem[]): void {
+    const signature = this.getNewsItemsSignature(items);
+    if (signature === this.lastNewsRenderSignature) return;
+    this.lastNewsRenderSignature = signature;
+
+    if (!this.isVisible()) {
+      this.pendingHiddenItems = items;
+      this.pendingHiddenEmptyMessage = null;
+      this.renderRequestId += 1; // Cancel any in-flight clustering while hidden.
+      this.setCount(items.length);
+      return;
+    }
+
+    this.pendingHiddenItems = null;
+    this.pendingHiddenEmptyMessage = null;
+
     if (items.length === 0) {
       this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
+      this.queuedClusterItems = null;
+      this.lastClusterRenderSignature = '';
       this.setDataBadge('unavailable');
       this.showError(t('common.noNewsAvailable'));
       return;
@@ -307,12 +335,23 @@ export class NewsPanel extends Panel {
     this.renderFlat(items);
 
     if (this.clusteredMode) {
-      void this.renderClustersAsync(items);
+      this.queueClusterRender(items);
     }
   }
 
   public renderFilteredEmpty(message: string): void {
+    if (!this.isVisible()) {
+      this.pendingHiddenItems = null;
+      this.pendingHiddenEmptyMessage = message;
+      this.renderRequestId += 1;
+      this.lastClusterRenderSignature = '';
+      this.setCount(0);
+      return;
+    }
+
     this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
+    this.queuedClusterItems = null;
+    this.lastClusterRenderSignature = '';
     this.setDataBadge('live');
     this.setCount(0);
     this.relatedAssetContext.clear();
@@ -321,19 +360,34 @@ export class NewsPanel extends Panel {
     this.setContent(`<div class="panel-empty">${escapeHtml(message)}</div>`);
   }
 
-  private async renderClustersAsync(items: NewsItem[]): Promise<void> {
-    const requestId = ++this.renderRequestId;
+  private queueClusterRender(items: NewsItem[]): void {
+    this.queuedClusterItems = items;
+    if (this.clusterRenderInFlight) return;
+    void this.processClusterRenderQueue();
+  }
 
-    try {
-      const clusters = await analysisWorker.clusterNews(items);
-      if (requestId !== this.renderRequestId) return;
-      const enriched = await enrichWithVelocityML(clusters);
-      this.renderClusters(enriched);
-    } catch (error) {
-      if (requestId !== this.renderRequestId) return;
-      // Keep already-rendered flat list visible when clustering fails.
-      console.warn('[NewsPanel] Failed to cluster news, keeping flat list:', error);
+  private async processClusterRenderQueue(): Promise<void> {
+    if (this.clusterRenderInFlight) return;
+    this.clusterRenderInFlight = true;
+
+    while (this.queuedClusterItems) {
+      const items = this.queuedClusterItems;
+      this.queuedClusterItems = null;
+      const requestId = ++this.renderRequestId;
+      try {
+        const clusters = await analysisWorker.clusterNews(items);
+        if (requestId !== this.renderRequestId) continue;
+        const enriched = await enrichWithVelocityML(clusters);
+        if (requestId !== this.renderRequestId) continue;
+        this.renderClusters(enriched);
+      } catch (error) {
+        if (requestId !== this.renderRequestId) continue;
+        // Keep already-rendered flat list visible when clustering fails.
+        console.warn('[NewsPanel] Failed to cluster news, keeping flat list:', error);
+      }
     }
+
+    this.clusterRenderInFlight = false;
   }
 
   private renderFlat(items: NewsItem[]): void {
@@ -368,6 +422,10 @@ export class NewsPanel extends Panel {
   }
 
   private renderClusters(clusters: ClusteredEvent[]): void {
+    const clusterSignature = this.getClusterSignature(clusters);
+    if (clusterSignature === this.lastClusterRenderSignature) return;
+    this.lastClusterRenderSignature = clusterSignature;
+
     // Sort by threat priority, then by time within same level
     const sorted = [...clusters].sort((a, b) => {
       const pa = THREAT_PRIORITY[a.threat?.level ?? 'info'];
@@ -572,47 +630,62 @@ export class NewsPanel extends Panel {
   }
 
   private bindRelatedAssetEvents(): void {
-    const containers = this.content.querySelectorAll<HTMLDivElement>('.related-assets');
-    containers.forEach((container) => {
-      const clusterId = container.dataset.clusterId;
-      if (!clusterId) return;
-      const context = this.relatedAssetContext.get(clusterId);
-      if (!context) return;
+    if (this.relatedAssetEventsBound) return;
+    this.relatedAssetEventsBound = true;
 
-      container.addEventListener('mouseenter', () => {
-        this.onRelatedAssetsFocus?.(context.assets, context.origin.label);
-      });
+    this.boundContentClickHandler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
 
-      container.addEventListener('mouseleave', () => {
-        this.onRelatedAssetsClear?.();
-      });
-    });
-
-    const assetButtons = this.content.querySelectorAll<HTMLButtonElement>('.related-asset');
-    assetButtons.forEach((button) => {
-      button.addEventListener('click', (event) => {
+      const assetButton = target.closest<HTMLButtonElement>('.related-asset');
+      if (assetButton && this.content.contains(assetButton)) {
         event.stopPropagation();
-        const clusterId = button.dataset.clusterId;
-        const assetId = button.dataset.assetId;
-        const assetType = button.dataset.assetType as RelatedAsset['type'] | undefined;
+        const clusterId = assetButton.dataset.clusterId;
+        const assetId = assetButton.dataset.assetId;
+        const assetType = assetButton.dataset.assetType as RelatedAsset['type'] | undefined;
         if (!clusterId || !assetId || !assetType) return;
         const context = this.relatedAssetContext.get(clusterId);
         const asset = context?.assets.find(item => item.id === assetId && item.type === assetType);
         if (asset) {
           this.onRelatedAssetClick?.(asset);
         }
-      });
-    });
+        return;
+      }
 
-    // Translation buttons
-    const translateBtns = this.content.querySelectorAll<HTMLElement>('.item-translate-btn');
-    translateBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const text = btn.dataset.text;
-        if (text) this.handleTranslate(btn, text);
-      });
-    });
+      const translateBtn = target.closest<HTMLElement>('.item-translate-btn');
+      if (translateBtn && this.content.contains(translateBtn)) {
+        event.stopPropagation();
+        const text = translateBtn.dataset.text;
+        if (text) void this.handleTranslate(translateBtn, text);
+      }
+    };
+
+    this.boundContentMouseOverHandler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const container = target?.closest<HTMLDivElement>('.related-assets');
+      if (!container || !this.content.contains(container)) return;
+      const relatedTarget = event.relatedTarget as Node | null;
+      if (relatedTarget && container.contains(relatedTarget)) return;
+
+      const clusterId = container.dataset.clusterId;
+      if (!clusterId) return;
+      const context = this.relatedAssetContext.get(clusterId);
+      if (!context) return;
+      this.onRelatedAssetsFocus?.(context.assets, context.origin.label);
+    };
+
+    this.boundContentMouseOutHandler = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const container = target?.closest<HTMLDivElement>('.related-assets');
+      if (!container || !this.content.contains(container)) return;
+      const relatedTarget = event.relatedTarget as Node | null;
+      if (relatedTarget && container.contains(relatedTarget)) return;
+      this.onRelatedAssetsClear?.();
+    };
+
+    this.content.addEventListener('click', this.boundContentClickHandler);
+    this.content.addEventListener('mouseover', this.boundContentMouseOverHandler);
+    this.content.addEventListener('mouseout', this.boundContentMouseOutHandler);
   }
 
   private getLocalizedAssetLabel(type: RelatedAsset['type']): string {
@@ -624,6 +697,38 @@ export class NewsPanel extends Panel {
       nuclear: 'modals.countryBrief.infra.nuclear',
     };
     return t(keyMap[type]);
+  }
+
+  private getNewsItemsSignature(items: NewsItem[]): string {
+    return items.map((item) => `${item.link}|${item.pubDate.getTime()}|${item.title}`).join('\n');
+  }
+
+  private getClusterSignature(clusters: ClusteredEvent[]): string {
+    return clusters
+      .map((cluster) => `${cluster.id}|${cluster.sourceCount}|${cluster.lastUpdated.getTime()}|${cluster.threat?.level ?? 'info'}`)
+      .join('\n');
+  }
+
+  protected override onPanelVisibilityChanged(visible: boolean): void {
+    if (!visible) {
+      this.renderRequestId += 1;
+      this.queuedClusterItems = null;
+      return;
+    }
+
+    if (this.pendingHiddenEmptyMessage) {
+      const message = this.pendingHiddenEmptyMessage;
+      this.pendingHiddenEmptyMessage = null;
+      this.renderFilteredEmpty(message);
+      return;
+    }
+
+    if (this.pendingHiddenItems) {
+      const items = this.pendingHiddenItems;
+      this.pendingHiddenItems = null;
+      this.lastNewsRenderSignature = '';
+      this.renderNews(items);
+    }
   }
 
   /**
@@ -643,6 +748,20 @@ export class NewsPanel extends Panel {
       this.element.removeEventListener('click', this.boundClickHandler);
       this.boundClickHandler = null;
     }
+
+    if (this.boundContentClickHandler) {
+      this.content.removeEventListener('click', this.boundContentClickHandler);
+      this.boundContentClickHandler = null;
+    }
+    if (this.boundContentMouseOverHandler) {
+      this.content.removeEventListener('mouseover', this.boundContentMouseOverHandler);
+      this.boundContentMouseOverHandler = null;
+    }
+    if (this.boundContentMouseOutHandler) {
+      this.content.removeEventListener('mouseout', this.boundContentMouseOutHandler);
+      this.boundContentMouseOutHandler = null;
+    }
+    this.relatedAssetEventsBound = false;
 
     // Unregister from activity tracker
     activityTracker.unregister(this.panelId);

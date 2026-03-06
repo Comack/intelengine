@@ -261,6 +261,8 @@ export class WindowedList<T> {
   private chunkSize: number;
   private bufferChunks: number;
   private items: T[] = [];
+  private totalChunks = 0;
+  private estimatedChunkHeight = 100;
   private renderItem: (item: T, index: number) => string;
   private onRendered?: () => void;
 
@@ -288,6 +290,7 @@ export class WindowedList<T> {
    */
   setItems(items: T[]): void {
     this.items = items;
+    this.totalChunks = Math.ceil(items.length / this.chunkSize);
     this.renderedChunks.clear();
 
     // Clear existing chunk elements
@@ -304,13 +307,12 @@ export class WindowedList<T> {
     }
 
     // Calculate chunks
-    const totalChunks = Math.ceil(items.length / this.chunkSize);
-
     // Create placeholder for each chunk
-    for (let i = 0; i < totalChunks; i++) {
+    for (let i = 0; i < this.totalChunks; i++) {
       const placeholder = document.createElement('div');
       placeholder.className = 'windowed-chunk';
       placeholder.dataset.chunk = String(i);
+      placeholder.style.minHeight = `${Math.round(this.estimatedChunkHeight)}px`;
       this.container.appendChild(placeholder);
       this.chunkElements.set(i, placeholder);
     }
@@ -340,22 +342,23 @@ export class WindowedList<T> {
   };
 
   private getVisibleChunks(): number[] {
+    if (this.totalChunks === 0) {
+      return [];
+    }
+
     const scrollTop = this.container.scrollTop;
     const viewportHeight = this.container.clientHeight;
+    const bufferPx = viewportHeight * this.bufferChunks;
+    const chunkHeight = Math.max(1, this.estimatedChunkHeight);
+    const start = Math.max(0, Math.floor((scrollTop - bufferPx) / chunkHeight));
+    const end = Math.min(
+      this.totalChunks - 1,
+      Math.ceil((scrollTop + viewportHeight + bufferPx) / chunkHeight)
+    );
+
     const chunks: number[] = [];
-
-    for (const [index, element] of this.chunkElements) {
-      const rect = element.getBoundingClientRect();
-      const containerRect = this.container.getBoundingClientRect();
-      const relativeTop = rect.top - containerRect.top + scrollTop;
-      const relativeBottom = relativeTop + rect.height;
-
-      // Check if chunk is in viewport (with buffer)
-      const bufferPx = viewportHeight * this.bufferChunks;
-      if (relativeBottom >= scrollTop - bufferPx &&
-          relativeTop <= scrollTop + viewportHeight + bufferPx) {
-        chunks.push(index);
-      }
+    for (let i = start; i <= end; i++) {
+      chunks.push(i);
     }
 
     return chunks;
@@ -392,7 +395,25 @@ export class WindowedList<T> {
 
     element.innerHTML = html;
     element.classList.add('rendered');
+    element.style.minHeight = '0';
     this.renderedChunks.add(chunkIndex);
+
+    // Adapt chunk height estimate to avoid viewport scans on every scroll.
+    const renderedHeight = element.offsetHeight;
+    if (renderedHeight > 0) {
+      const alpha = 0.2;
+      const prevEstimate = this.estimatedChunkHeight;
+      this.estimatedChunkHeight = prevEstimate > 0
+        ? (prevEstimate * (1 - alpha)) + (renderedHeight * alpha)
+        : renderedHeight;
+
+      const roundedEstimate = `${Math.max(1, Math.round(this.estimatedChunkHeight))}px`;
+      for (const [index, chunkEl] of this.chunkElements) {
+        if (!this.renderedChunks.has(index)) {
+          chunkEl.style.minHeight = roundedEstimate;
+        }
+      }
+    }
   }
 
   /**
@@ -407,6 +428,6 @@ export class WindowedList<T> {
     this.chunkElements.clear();
     this.renderedChunks.clear();
     this.items = [];
+    this.totalChunks = 0;
   }
 }
-

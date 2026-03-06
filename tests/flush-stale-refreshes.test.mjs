@@ -206,15 +206,15 @@ describe('flushStaleRefreshes behavior', () => {
 
     ctx.refreshRunners.set('fast-service', {
       run: () => { flushed.push('fast-service'); },
-      intervalMs: 60_000,
+      policy: { intervalMs: 60_000 },
     });
     ctx.refreshRunners.set('medium-service', {
       run: () => { flushed.push('medium-service'); },
-      intervalMs: 300_000,
+      policy: { intervalMs: 300_000 },
     });
     ctx.refreshRunners.set('slow-service', {
       run: () => { flushed.push('slow-service'); },
-      intervalMs: 1_800_000,
+      policy: { intervalMs: 1_800_000 },
     });
 
     for (const name of ctx.refreshRunners.keys()) {
@@ -235,7 +235,7 @@ describe('flushStaleRefreshes behavior', () => {
     let called = false;
     ctx.refreshRunners.set('service', {
       run: () => { called = true; },
-      intervalMs: 60_000,
+      policy: { intervalMs: 60_000 },
     });
 
     ctx.hiddenSince = 0;
@@ -248,7 +248,7 @@ describe('flushStaleRefreshes behavior', () => {
     let called = false;
     ctx.refreshRunners.set('service', {
       run: () => { called = true; },
-      intervalMs: 300_000,
+      policy: { intervalMs: 300_000 },
     });
     const originalId = timers.setTimeout(() => {}, 999_999);
     ctx.refreshTimeoutIds.set('service', originalId);
@@ -269,7 +269,7 @@ describe('flushStaleRefreshes behavior', () => {
     for (const name of ['svc-a', 'svc-b', 'svc-c']) {
       ctx.refreshRunners.set(name, {
         run: () => { timestamps.push(timers.now - start); },
-        intervalMs: 60_000,
+        policy: { intervalMs: 60_000 },
       });
       ctx.refreshTimeoutIds.set(name, timers.setTimeout(() => {}, 999_999));
     }
@@ -285,7 +285,7 @@ describe('flushStaleRefreshes behavior', () => {
   it('replaces timeout IDs in refreshTimeoutIds after flush', () => {
     ctx.refreshRunners.set('svc', {
       run: () => {},
-      intervalMs: 60_000,
+      policy: { intervalMs: 60_000 },
     });
     const originalId = timers.setTimeout(() => {}, 999_999);
     ctx.refreshTimeoutIds.set('svc', originalId);
@@ -302,7 +302,7 @@ describe('flushStaleRefreshes behavior', () => {
   it('does not touch timeout IDs for non-stale services', () => {
     ctx.refreshRunners.set('fresh', {
       run: () => {},
-      intervalMs: 1_800_000,
+      policy: { intervalMs: 1_800_000 },
     });
     const originalId = timers.setTimeout(() => {}, 999_999);
     ctx.refreshTimeoutIds.set('fresh', originalId);
