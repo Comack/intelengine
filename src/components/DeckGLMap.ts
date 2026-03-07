@@ -270,6 +270,9 @@ const PULSE_LAYER_IDS = new Set<string>([
 
 const createSvgIconDataUrl = (svgContent: string): string =>
   `data:image/svg+xml;base64,${btoa(svgContent)}`;
+const createIconMapping = (icon: string): Record<string, { x: number; y: number; width: number; height: number; mask: boolean }> => ({
+  [icon]: { x: 0, y: 0, width: 32, height: 32, mask: true },
+});
 
 // SVG icons as data URLs for different marker shapes
 const MARKER_ICONS = {
@@ -295,16 +298,71 @@ const MARKER_ICONS = {
   outage: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="18,2 6,18 14,18 10,30 26,12 18,12" fill="white"/></svg>`),
   // Warning triangle - for AIS disruption signals
   warning: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,28 2,28" fill="white"/><rect x="14.5" y="10" width="3" height="10" fill="black"/><circle cx="16" cy="24" r="2" fill="black"/></svg>`),
+  // Radiation symbol - for irradiators
+  radiation: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="3" fill="white"/><path d="M16 3 A13 13 0 0 1 26 10 L20 13 A6 6 0 0 0 16 9Z" fill="white"/><path d="M28 20 A13 13 0 0 1 16 29 L16 22 A6 6 0 0 0 21 19Z" fill="white"/><path d="M4 10 A13 13 0 0 1 14 3 L16 9 A6 6 0 0 0 12 13Z" fill="white"/></svg>`),
+  // Rocket - for spaceports
+  rocket: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M16 2 C22 6 23 14 20 20 L12 20 C9 14 10 6 16 2Z" fill="white"/><circle cx="16" cy="11" r="2.5" fill="white"/><polygon points="12,20 8,25 12,25" fill="white"/><polygon points="20,20 24,25 20,25" fill="white"/><polygon points="16,20 13,30 19,30" fill="white"/></svg>`),
+  // Anchor - for ports/repair ships/waterways
+  anchor: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="4.5" r="3" fill="white"/><rect x="14.8" y="8" width="2.4" height="15" fill="white"/><path d="M7 18 A9 9 0 0 0 25 18 L22 18 A6 6 0 0 1 10 18Z" fill="white"/><polygon points="7,18 3,16 5,22" fill="white"/><polygon points="25,18 29,16 27,22" fill="white"/></svg>`),
+  // Airport marker - for delay/closure alerts
+  airport: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 19,10 30,13 19,16 16,30 13,16 2,13 13,10" fill="white"/><rect x="14.5" y="6" width="3" height="20" fill="white"/></svg>`),
+  // Shield - for cyber/security signals
+  shield: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M16 2 L27 7 V15 C27 23 22 28 16 30 C10 28 5 23 5 15 V7Z" fill="white"/><path d="M16 7 V24" stroke="black" stroke-width="2"/><path d="M10 15 H22" stroke="black" stroke-width="2"/></svg>`),
+  // Radar pulse - for GNSS/GPS interference
+  radar: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="3" fill="white"/><circle cx="16" cy="16" r="8" stroke="white" stroke-width="2" fill="none"/><circle cx="16" cy="16" r="13" stroke="white" stroke-width="2" fill="none"/><polygon points="16,16 27,10 19,18" fill="white"/></svg>`),
+  // Bank/building - for economic centers
+  bank: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,3 30,10 2,10" fill="white"/><rect x="4" y="10" width="24" height="3" fill="white"/><rect x="6" y="13" width="3" height="12" fill="white"/><rect x="14.5" y="13" width="3" height="12" fill="white"/><rect x="23" y="13" width="3" height="12" fill="white"/><rect x="3" y="25" width="26" height="4" fill="white"/></svg>`),
+  // Gem - for critical minerals
+  gem: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="8,6 24,6 30,14 16,28 2,14" fill="white"/><polyline points="8,6 16,14 24,6" stroke="black" stroke-width="1.4" fill="none"/><line x1="16" y1="14" x2="16" y2="28" stroke="black" stroke-width="1.4"/></svg>`),
+  // Tree - for deforestation alerts
+  tree: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,3 27,15 22,15 29,24 3,24 10,15 5,15" fill="white"/><rect x="13.5" y="24" width="5" height="6" fill="white"/></svg>`),
+  // Smog cloud - for air quality
+  smog: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="13" r="5" fill="white"/><circle cx="19" cy="12" r="6" fill="white"/><circle cx="24" cy="16" r="4" fill="white"/><rect x="8" y="15" width="18" height="6" rx="3" fill="white"/><rect x="7" y="23" width="18" height="2.5" rx="1.2" fill="white"/><rect x="11" y="27" width="14" height="2.5" rx="1.2" fill="white"/></svg>`),
+  // Whale silhouette - for whale transfers
+  whale: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M6 20 C6 13 12 9 18 9 C23 9 27 12 28 16 L31 13 L30 20 L24 20 C22 23 18 25 14 25 C9 25 6 23 6 20Z" fill="white"/><circle cx="21.2" cy="13.5" r="1.2" fill="white"/></svg>`),
 };
 
-const BASES_ICON_MAPPING = { triangleUp: { x: 0, y: 0, width: 32, height: 32, mask: true } };
-const NUCLEAR_ICON_MAPPING = { hexagon: { x: 0, y: 0, width: 32, height: 32, mask: true } };
-const DATACENTER_ICON_MAPPING = { square: { x: 0, y: 0, width: 32, height: 32, mask: true } };
-const WEATHER_ICON_MAPPING = { weather: { x: 0, y: 0, width: 32, height: 32, mask: true } };
-const OUTAGE_ICON_MAPPING = { outage: { x: 0, y: 0, width: 32, height: 32, mask: true } };
-const WARNING_ICON_MAPPING = { warning: { x: 0, y: 0, width: 32, height: 32, mask: true } };
-const MILITARY_VESSEL_ICON_MAPPING = { ship: { x: 0, y: 0, width: 32, height: 32, mask: true } };
-const MILITARY_FLIGHT_ICON_MAPPING = { aircraft: { x: 0, y: 0, width: 32, height: 32, mask: true } };
+const BASES_ICON_MAPPING = createIconMapping('triangleUp');
+const NUCLEAR_ICON_MAPPING = createIconMapping('hexagon');
+const DATACENTER_ICON_MAPPING = createIconMapping('square');
+const WEATHER_ICON_MAPPING = createIconMapping('weather');
+const OUTAGE_ICON_MAPPING = createIconMapping('outage');
+const WARNING_ICON_MAPPING = createIconMapping('warning');
+const MILITARY_VESSEL_ICON_MAPPING = createIconMapping('ship');
+const MILITARY_FLIGHT_ICON_MAPPING = createIconMapping('aircraft');
+const RADIATION_ICON_MAPPING = createIconMapping('radiation');
+const ROCKET_ICON_MAPPING = createIconMapping('rocket');
+const ANCHOR_ICON_MAPPING = createIconMapping('anchor');
+const AIRPORT_ICON_MAPPING = createIconMapping('airport');
+const SHIELD_ICON_MAPPING = createIconMapping('shield');
+const RADAR_ICON_MAPPING = createIconMapping('radar');
+const BANK_ICON_MAPPING = createIconMapping('bank');
+const GEM_ICON_MAPPING = createIconMapping('gem');
+const TREE_ICON_MAPPING = createIconMapping('tree');
+const SMOG_ICON_MAPPING = createIconMapping('smog');
+const WHALE_ICON_MAPPING = createIconMapping('whale');
+
+const SIGNAL_ICON_VISUALS = {
+  irradiators: { icon: 'radiation', atlas: MARKER_ICONS.radiation, mapping: RADIATION_ICON_MAPPING },
+  spaceports: { icon: 'rocket', atlas: MARKER_ICONS.rocket, mapping: ROCKET_ICON_MAPPING },
+  ports: { icon: 'anchor', atlas: MARKER_ICONS.anchor, mapping: ANCHOR_ICON_MAPPING },
+  flightDelays: { icon: 'airport', atlas: MARKER_ICONS.airport, mapping: AIRPORT_ICON_MAPPING },
+  cyberThreats: { icon: 'shield', atlas: MARKER_ICONS.shield, mapping: SHIELD_ICON_MAPPING },
+  gpsJamming: { icon: 'radar', atlas: MARKER_ICONS.radar, mapping: RADAR_ICON_MAPPING },
+  repairShips: { icon: 'anchor', atlas: MARKER_ICONS.anchor, mapping: ANCHOR_ICON_MAPPING },
+  waterways: { icon: 'anchor', atlas: MARKER_ICONS.anchor, mapping: ANCHOR_ICON_MAPPING },
+  economic: { icon: 'bank', atlas: MARKER_ICONS.bank, mapping: BANK_ICON_MAPPING },
+  minerals: { icon: 'gem', atlas: MARKER_ICONS.gem, mapping: GEM_ICON_MAPPING },
+  aptGroups: { icon: 'shield', atlas: MARKER_ICONS.shield, mapping: SHIELD_ICON_MAPPING },
+  sarDetections: { icon: 'ship', atlas: MARKER_ICONS.ship, mapping: MILITARY_VESSEL_ICON_MAPPING },
+  routingAnomalies: { icon: 'radar', atlas: MARKER_ICONS.radar, mapping: RADAR_ICON_MAPPING },
+  radiationReadings: { icon: 'radiation', atlas: MARKER_ICONS.radiation, mapping: RADIATION_ICON_MAPPING },
+  airQuality: { icon: 'smog', atlas: MARKER_ICONS.smog, mapping: SMOG_ICON_MAPPING },
+  deforestation: { icon: 'tree', atlas: MARKER_ICONS.tree, mapping: TREE_ICON_MAPPING },
+  acarsMessages: { icon: 'aircraft', atlas: MARKER_ICONS.aircraft, mapping: MILITARY_FLIGHT_ICON_MAPPING },
+  whaleTransfers: { icon: 'whale', atlas: MARKER_ICONS.whale, mapping: WHALE_ICON_MAPPING },
+  navWarnings: { icon: 'warning', atlas: MARKER_ICONS.warning, mapping: WARNING_ICON_MAPPING },
+} as const;
 
 const CONFLICT_ZONES_GEOJSON: GeoJSON.FeatureCollection = {
   type: 'FeatureCollection',
@@ -1662,7 +1720,7 @@ export class DeckGLMap {
 
     // Weather alerts layer
     if (mapLayers.weather && filteredWeatherAlerts.length > 0) {
-      layers.push(...this.createWeatherLayers(filteredWeatherAlerts, deferHeavyLayers));
+      layers.push(...this.createWeatherLayers(filteredWeatherAlerts, deferHeavyLayers, interactionMode));
     }
 
     // Internet outages layer
@@ -1725,7 +1783,10 @@ export class DeckGLMap {
 
     // Military vessel clusters layer
     if (mapLayers.military && filteredMilitaryVesselClusters.length > 0) {
+      layers.push(this.createMilitaryVesselClusterEnvelopeLayer(filteredMilitaryVesselClusters));
       layers.push(this.createMilitaryVesselClustersLayer(filteredMilitaryVesselClusters));
+      const vesselClusterCountLayer = this.createMilitaryVesselClusterCountLayer(filteredMilitaryVesselClusters);
+      if (vesselClusterCountLayer) layers.push(vesselClusterCountLayer);
     }
 
     // Military flights layer
@@ -1736,6 +1797,8 @@ export class DeckGLMap {
     // Military flight clusters layer
     if (mapLayers.military && filteredMilitaryFlightClusters.length > 0) {
       layers.push(this.createMilitaryFlightClustersLayer(filteredMilitaryFlightClusters));
+      const flightClusterCountLayer = this.createMilitaryFlightClusterCountLayer(filteredMilitaryFlightClusters);
+      if (flightClusterCountLayer) layers.push(flightClusterCountLayer);
     }
 
     // Strategic waterways layer
@@ -2096,39 +2159,49 @@ export class DeckGLMap {
     });
   }
 
-  private createIrradiatorsLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createIrradiatorsLayer(): IconLayer {
+    return new IconLayer({
       id: 'irradiators-layer',
       data: GAMMA_IRRADIATORS,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 6000,
-      getFillColor: [255, 100, 255, 180] as [number, number, number, number], // Magenta
-      radiusMinPixels: 4,
-      radiusMaxPixels: 10,
+      getIcon: () => SIGNAL_ICON_VISUALS.irradiators.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.irradiators.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.irradiators.mapping,
+      getColor: [255, 120, 255, 210] as [number, number, number, number],
+      getSize: 18,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 24,
       pickable: true,
     });
   }
 
-  private createSpaceportsLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createSpaceportsLayer(): IconLayer {
+    return new IconLayer({
       id: 'spaceports-layer',
       data: SPACEPORTS,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 10000,
-      getFillColor: [200, 100, 255, 200] as [number, number, number, number], // Purple
-      radiusMinPixels: 5,
-      radiusMaxPixels: 12,
+      getIcon: () => SIGNAL_ICON_VISUALS.spaceports.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.spaceports.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.spaceports.mapping,
+      getColor: [202, 122, 255, 220] as [number, number, number, number],
+      getSize: 20,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
     });
   }
 
-  private createPortsLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createPortsLayer(): IconLayer {
+    return new IconLayer({
       id: 'ports-layer',
       data: PORTS,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 6000,
-      getFillColor: (d) => {
+      getIcon: () => SIGNAL_ICON_VISUALS.ports.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.ports.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.ports.mapping,
+      getColor: (d) => {
         // Color by port type (matching old Map.ts icons)
         switch (d.type) {
           case 'naval': return [100, 150, 255, 200] as [number, number, number, number]; // Blue - ⚓
@@ -2140,31 +2213,37 @@ export class DeckGLMap {
           default: return [0, 200, 255, 160] as [number, number, number, number];
         }
       },
-      radiusMinPixels: 4,
-      radiusMaxPixels: 10,
+      getSize: (d) => d.type === 'naval' ? 19 : d.type === 'oil' || d.type === 'lng' ? 18 : 17,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 9,
+      sizeMaxPixels: 24,
       pickable: true,
     });
   }
 
-  private createFlightDelaysLayer(delays: AirportDelayAlert[]): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createFlightDelaysLayer(delays: AirportDelayAlert[]): IconLayer<AirportDelayAlert> {
+    return new IconLayer<AirportDelayAlert>({
       id: 'flight-delays-layer',
       data: delays,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => {
-        if (d.severity === 'severe') return 15000;
-        if (d.severity === 'major') return 12000;
-        if (d.severity === 'moderate') return 10000;
-        return 8000;
-      },
-      getFillColor: (d) => {
+      getIcon: () => SIGNAL_ICON_VISUALS.flightDelays.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.flightDelays.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.flightDelays.mapping,
+      getColor: (d) => {
         if (d.severity === 'severe') return [255, 50, 50, 200] as [number, number, number, number];
         if (d.severity === 'major') return [255, 150, 0, 200] as [number, number, number, number];
         if (d.severity === 'moderate') return [255, 200, 100, 180] as [number, number, number, number];
         return [180, 180, 180, 150] as [number, number, number, number];
       },
-      radiusMinPixels: 4,
-      radiusMaxPixels: 15,
+      getSize: (d) => {
+        if (d.severity === 'severe') return 22;
+        if (d.severity === 'major') return 20;
+        if (d.severity === 'moderate') return 18;
+        return 16;
+      },
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
     });
   }
@@ -2292,21 +2371,49 @@ export class DeckGLMap {
     return [110, 166, 255, alpha];
   }
 
-  private createWeatherLayers(alerts: WeatherAlert[], deferHeavyLayers: boolean): Layer[] {
+  private createWeatherLayers(alerts: WeatherAlert[], deferHeavyLayers: boolean, interactionMode = false): Layer[] {
     const zoom = this.maplibreMap?.getZoom() ?? 2;
-    const showAreaGeometry = !deferHeavyLayers && zoom >= 4.75;
+    const showFullAreaGeometry = !deferHeavyLayers && zoom >= 4.75;
+    const showPriorityAreaGeometry = !showFullAreaGeometry && !interactionMode && zoom >= 3.4;
     const layers: Layer[] = [];
 
-    if (showAreaGeometry) {
-      const areaLayer = this.createWeatherAreasLayer(alerts);
+    if (showFullAreaGeometry || showPriorityAreaGeometry) {
+      const areaLayer = this.createWeatherAreasLayer(alerts, zoom, showPriorityAreaGeometry);
       if (areaLayer) layers.push(areaLayer);
     }
 
-    layers.push(this.createWeatherLayer(alerts, showAreaGeometry));
+    layers.push(this.createWeatherLayer(alerts, showFullAreaGeometry || showPriorityAreaGeometry));
     return layers;
   }
 
-  private createWeatherAreasLayer(alerts: WeatherAlert[]): PolygonLayer<WeatherPolygonDatum> | null {
+  private getWeatherSeverityRank(severity: WeatherAlert['severity']): number {
+    if (severity === 'Extreme') return 4;
+    if (severity === 'Severe') return 3;
+    if (severity === 'Moderate') return 2;
+    if (severity === 'Minor') return 1;
+    return 0;
+  }
+
+  private simplifyPolygonRing(polygon: [number, number][], zoom: number): [number, number][] {
+    if (polygon.length <= 8 || zoom >= 7) return polygon;
+    const stride = zoom >= 6 ? 2 : zoom >= 5 ? 3 : 4;
+    const simplified: [number, number][] = [];
+    for (let i = 0; i < polygon.length; i += 1) {
+      if (i === 0 || i === polygon.length - 1 || i % stride === 0) {
+        const point = polygon[i];
+        if (point) simplified.push(point);
+      }
+    }
+    if (simplified.length < 4) return polygon;
+    const first = simplified[0];
+    const last = simplified[simplified.length - 1];
+    if (first && last && (first[0] !== last[0] || first[1] !== last[1])) {
+      simplified.push(first);
+    }
+    return simplified;
+  }
+
+  private createWeatherAreasLayer(alerts: WeatherAlert[], zoom: number, priorityOnly = false): PolygonLayer<WeatherPolygonDatum> | null {
     const polygons: WeatherPolygonDatum[] = [];
     for (const alert of alerts) {
       for (const polygon of alert.polygons ?? []) {
@@ -2314,10 +2421,23 @@ export class DeckGLMap {
       }
     }
     if (polygons.length === 0) return null;
+    const severityFloor = priorityOnly ? 3 : 0;
+    const simplifyZoom = priorityOnly ? Math.max(3, zoom - 1.2) : zoom;
+    const maxPolygons = priorityOnly
+      ? (this.performanceProfile === 'quality' ? 80 : 40)
+      : (this.performanceProfile === 'quality' ? 220 : 120);
+    const ranked = polygons
+      .filter((entry) => this.getWeatherSeverityRank(entry.alert.severity) >= severityFloor)
+      .sort((a, b) => this.getWeatherSeverityRank(b.alert.severity) - this.getWeatherSeverityRank(a.alert.severity));
+    const clipped = ranked.slice(0, maxPolygons).map((entry) => ({
+      ...entry,
+      polygon: this.simplifyPolygonRing(entry.polygon, simplifyZoom),
+    }));
+    if (clipped.length === 0) return null;
 
     return new PolygonLayer<WeatherPolygonDatum>({
       id: 'weather-areas-layer',
-      data: polygons,
+      data: clipped,
       getPolygon: (d) => d.polygon,
       getFillColor: (d) => {
         const [r, g, b] = this.getWeatherSeverityColor(d.alert.severity, 220);
@@ -2382,20 +2502,15 @@ export class DeckGLMap {
     });
   }
 
-  private createCyberThreatsLayer(): ScatterplotLayer<CyberThreat> {
-    return new ScatterplotLayer<CyberThreat>({
+  private createCyberThreatsLayer(): IconLayer<CyberThreat> {
+    return new IconLayer<CyberThreat>({
       id: 'cyber-threats-layer',
       data: this.cyberThreats,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => {
-        switch (d.severity) {
-          case 'critical': return 22000;
-          case 'high': return 17000;
-          case 'medium': return 13000;
-          default: return 9000;
-        }
-      },
-      getFillColor: (d) => {
+      getIcon: () => SIGNAL_ICON_VISUALS.cyberThreats.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.cyberThreats.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.cyberThreats.mapping,
+      getColor: (d) => {
         switch (d.severity) {
           case 'critical': return [255, 61, 0, 225] as [number, number, number, number];
           case 'high': return [255, 102, 0, 205] as [number, number, number, number];
@@ -2403,12 +2518,18 @@ export class DeckGLMap {
           default: return [255, 235, 59, 170] as [number, number, number, number];
         }
       },
-      radiusMinPixels: 6,
-      radiusMaxPixels: 18,
+      getSize: (d) => {
+        switch (d.severity) {
+          case 'critical': return 24;
+          case 'high': return 21;
+          case 'medium': return 19;
+          default: return 17;
+        }
+      },
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 30,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 160] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
@@ -2434,22 +2555,23 @@ export class DeckGLMap {
     });
   }
 
-  private createGpsJammingLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createGpsJammingLayer(): IconLayer<GpsJamHex> {
+    return new IconLayer<GpsJamHex>({
       id: 'gps-jamming-layer',
       data: this.gpsJammingHexes,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => d.level === 'high' ? 15000 : 10000,
-      getFillColor: (d) => {
+      getIcon: () => SIGNAL_ICON_VISUALS.gpsJamming.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.gpsJamming.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.gpsJamming.mapping,
+      getColor: (d) => {
         if (d.level === 'high') return [255, 80, 80, 200] as [number, number, number, number];
         return [255, 180, 50, 180] as [number, number, number, number];
       },
-      radiusMinPixels: 4,
-      radiusMaxPixels: 14,
+      getSize: (d) => d.level === 'high' ? 22 : 18,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
@@ -2502,16 +2624,21 @@ export class DeckGLMap {
     });
   }
 
-  private createRepairShipsLayer(): ScatterplotLayer {
-    // Cable repair ships
-    return new ScatterplotLayer({
+  private createRepairShipsLayer(): IconLayer<RepairShip> {
+    return new IconLayer<RepairShip>({
       id: 'repair-ships-layer',
       data: this.repairShips,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 8000,
-      getFillColor: [0, 255, 200, 200] as [number, number, number, number], // Teal
-      radiusMinPixels: 4,
-      radiusMaxPixels: 10,
+      getIcon: () => SIGNAL_ICON_VISUALS.repairShips.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.repairShips.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.repairShips.mapping,
+      getColor: (d) => d.status === 'on-station'
+        ? [0, 240, 200, 220] as [number, number, number, number]
+        : [120, 220, 255, 210] as [number, number, number, number],
+      getSize: (d) => d.status === 'on-station' ? 20 : 17,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 26,
       pickable: true,
     });
   }
@@ -2556,22 +2683,71 @@ export class DeckGLMap {
     });
   }
 
-  private createMilitaryVesselClustersLayer(clusters: MilitaryVesselCluster[]): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createMilitaryVesselClusterEnvelopeLayer(clusters: MilitaryVesselCluster[]): ScatterplotLayer<MilitaryVesselCluster> {
+    return new ScatterplotLayer<MilitaryVesselCluster>({
+      id: 'military-vessel-cluster-envelope-layer',
+      data: clusters,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: (d) => 18000 + (d.vesselCount || 1) * 3500,
+      getFillColor: (d) => {
+        const activity = d.activityType || 'unknown';
+        if (activity === 'exercise' || activity === 'deployment') return [255, 90, 90, 42] as [number, number, number, number];
+        if (activity === 'transit') return [255, 170, 90, 36] as [number, number, number, number];
+        return [220, 160, 160, 30] as [number, number, number, number];
+      },
+      stroked: true,
+      getLineColor: (d) => {
+        const activity = d.activityType || 'unknown';
+        if (activity === 'exercise' || activity === 'deployment') return [255, 90, 90, 130] as [number, number, number, number];
+        if (activity === 'transit') return [255, 170, 90, 120] as [number, number, number, number];
+        return [220, 160, 160, 110] as [number, number, number, number];
+      },
+      lineWidthMinPixels: 1,
+      radiusMinPixels: 12,
+      radiusMaxPixels: 80,
+      pickable: false,
+    });
+  }
+
+  private createMilitaryVesselClustersLayer(clusters: MilitaryVesselCluster[]): IconLayer<MilitaryVesselCluster> {
+    return new IconLayer<MilitaryVesselCluster>({
       id: 'military-vessel-clusters-layer',
       data: clusters,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => 15000 + (d.vesselCount || 1) * 3000,
-      getFillColor: (d) => {
-        // Vessel types: 'exercise' | 'deployment' | 'transit' | 'unknown'
+      iconAtlas: MARKER_ICONS.ship,
+      iconMapping: MILITARY_VESSEL_ICON_MAPPING,
+      getIcon: () => 'ship',
+      getColor: (d) => {
         const activity = d.activityType || 'unknown';
-        if (activity === 'exercise' || activity === 'deployment') return [255, 100, 100, 200] as [number, number, number, number];
-        if (activity === 'transit') return [255, 180, 100, 180] as [number, number, number, number];
-        return [200, 150, 150, 160] as [number, number, number, number];
+        if (activity === 'exercise' || activity === 'deployment') return [255, 100, 100, 215] as [number, number, number, number];
+        if (activity === 'transit') return [255, 180, 100, 205] as [number, number, number, number];
+        return [210, 160, 160, 195] as [number, number, number, number];
       },
-      radiusMinPixels: 8,
-      radiusMaxPixels: 25,
+      getSize: (d) => Math.min(32, 18 + Math.max(0, (d.vesselCount || 1) - 1) * 1.4),
+      sizeUnits: 'pixels',
+      sizeMinPixels: 12,
+      sizeMaxPixels: 36,
       pickable: true,
+    });
+  }
+
+  private createMilitaryVesselClusterCountLayer(clusters: MilitaryVesselCluster[]): TextLayer<MilitaryVesselCluster> | null {
+    const multi = clusters.filter((cluster) => (cluster.vesselCount ?? 0) > 1);
+    if (multi.length === 0) return null;
+    return new TextLayer<MilitaryVesselCluster>({
+      id: 'military-vessel-clusters-count-layer',
+      data: multi,
+      getPosition: (d) => [d.lon, d.lat],
+      getText: (d) => String(d.vesselCount ?? 0),
+      background: true,
+      getBackgroundColor: [0, 0, 0, 175] as [number, number, number, number],
+      backgroundPadding: [4, 2, 4, 2],
+      getColor: [255, 255, 255, 255] as [number, number, number, number],
+      getSize: 12,
+      getPixelOffset: [0, -14],
+      pickable: false,
+      fontFamily: 'system-ui, sans-serif',
+      fontWeight: 700,
     });
   }
 
@@ -2617,46 +2793,78 @@ export class DeckGLMap {
     });
   }
 
-  private createMilitaryFlightClustersLayer(clusters: MilitaryFlightCluster[]): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createMilitaryFlightClustersLayer(clusters: MilitaryFlightCluster[]): IconLayer<MilitaryFlightCluster> {
+    return new IconLayer<MilitaryFlightCluster>({
       id: 'military-flight-clusters-layer',
       data: clusters,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: (d) => 15000 + (d.flightCount || 1) * 3000,
-      getFillColor: (d) => {
+      iconAtlas: MARKER_ICONS.aircraft,
+      iconMapping: MILITARY_FLIGHT_ICON_MAPPING,
+      getIcon: () => 'aircraft',
+      getColor: (d) => {
         const activity = d.activityType || 'unknown';
-        if (activity === 'exercise' || activity === 'patrol') return [100, 150, 255, 200] as [number, number, number, number];
-        if (activity === 'transport') return [255, 200, 100, 180] as [number, number, number, number];
-        return [150, 150, 200, 160] as [number, number, number, number];
+        if (activity === 'exercise' || activity === 'patrol') return [100, 160, 255, 215] as [number, number, number, number];
+        if (activity === 'transport') return [255, 200, 100, 205] as [number, number, number, number];
+        return [160, 160, 210, 195] as [number, number, number, number];
       },
-      radiusMinPixels: 8,
-      radiusMaxPixels: 25,
+      getSize: (d) => Math.min(32, 18 + Math.max(0, (d.flightCount || 1) - 1) * 1.4),
+      sizeUnits: 'pixels',
+      sizeMinPixels: 12,
+      sizeMaxPixels: 36,
       pickable: true,
     });
   }
 
-  private createWaterwaysLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createMilitaryFlightClusterCountLayer(clusters: MilitaryFlightCluster[]): TextLayer<MilitaryFlightCluster> | null {
+    const multi = clusters.filter((cluster) => (cluster.flightCount ?? 0) > 1);
+    if (multi.length === 0) return null;
+    return new TextLayer<MilitaryFlightCluster>({
+      id: 'military-flight-clusters-count-layer',
+      data: multi,
+      getPosition: (d) => [d.lon, d.lat],
+      getText: (d) => String(d.flightCount ?? 0),
+      background: true,
+      getBackgroundColor: [0, 0, 0, 175] as [number, number, number, number],
+      backgroundPadding: [4, 2, 4, 2],
+      getColor: [255, 255, 255, 255] as [number, number, number, number],
+      getSize: 12,
+      getPixelOffset: [0, -14],
+      pickable: false,
+      fontFamily: 'system-ui, sans-serif',
+      fontWeight: 700,
+    });
+  }
+
+  private createWaterwaysLayer(): IconLayer {
+    return new IconLayer({
       id: 'waterways-layer',
       data: STRATEGIC_WATERWAYS,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 10000,
-      getFillColor: [100, 150, 255, 180] as [number, number, number, number],
-      radiusMinPixels: 5,
-      radiusMaxPixels: 12,
+      getIcon: () => SIGNAL_ICON_VISUALS.waterways.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.waterways.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.waterways.mapping,
+      getColor: [110, 175, 255, 210] as [number, number, number, number],
+      getSize: 18,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 24,
       pickable: true,
     });
   }
 
-  private createEconomicCentersLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createEconomicCentersLayer(): IconLayer {
+    return new IconLayer({
       id: 'economic-centers-layer',
       data: ECONOMIC_CENTERS,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 8000,
-      getFillColor: [255, 215, 0, 180] as [number, number, number, number],
-      radiusMinPixels: 4,
-      radiusMaxPixels: 10,
+      getIcon: () => SIGNAL_ICON_VISUALS.economic.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.economic.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.economic.mapping,
+      getColor: [255, 218, 110, 220] as [number, number, number, number],
+      getSize: (d) => d.type === 'exchange' ? 20 : d.type === 'financial-hub' ? 18 : 17,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 26,
       pickable: true,
     });
   }
@@ -2729,41 +2937,51 @@ export class DeckGLMap {
     });
   }
 
-  private createAPTGroupsLayer(): ScatterplotLayer {
-    // APT Groups - cyber threat actor markers (geopolitical variant only)
-    // Made subtle to avoid visual clutter - small orange dots
-    return new ScatterplotLayer({
+  private createAPTGroupsLayer(): IconLayer<(typeof APT_GROUPS)[number]> {
+    return new IconLayer<(typeof APT_GROUPS)[number]>({
       id: 'apt-groups-layer',
       data: APT_GROUPS,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 6000,
-      getFillColor: [255, 140, 0, 140] as [number, number, number, number], // Subtle orange
-      radiusMinPixels: 4,
-      radiusMaxPixels: 8,
+      getIcon: () => SIGNAL_ICON_VISUALS.aptGroups.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.aptGroups.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.aptGroups.mapping,
+      getColor: (d) => {
+        const sponsor = String(d.sponsor || '').toLowerCase();
+        if (sponsor.includes('russia')) return [255, 130, 70, 210] as [number, number, number, number];
+        if (sponsor.includes('china')) return [255, 90, 90, 210] as [number, number, number, number];
+        if (sponsor.includes('iran')) return [190, 120, 255, 205] as [number, number, number, number];
+        if (sponsor.includes('north korea')) return [255, 170, 80, 205] as [number, number, number, number];
+        return [255, 160, 80, 195] as [number, number, number, number];
+      },
+      getSize: 14,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 8,
+      sizeMaxPixels: 18,
       pickable: true,
-      stroked: false, // No outline - cleaner look
     });
   }
 
-  private createMineralsLayer(): ScatterplotLayer {
-    // Critical minerals projects
-    return new ScatterplotLayer({
+  private createMineralsLayer(): IconLayer {
+    return new IconLayer({
       id: 'minerals-layer',
       data: CRITICAL_MINERALS,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 8000,
-      getFillColor: (d) => {
-        // Color by mineral type
+      getIcon: () => SIGNAL_ICON_VISUALS.minerals.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.minerals.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.minerals.mapping,
+      getColor: (d) => {
         switch (d.mineral) {
-          case 'Lithium': return [0, 200, 255, 200] as [number, number, number, number]; // Cyan
-          case 'Cobalt': return [100, 100, 255, 200] as [number, number, number, number]; // Blue
-          case 'Rare Earths': return [255, 100, 200, 200] as [number, number, number, number]; // Pink
-          case 'Nickel': return [100, 255, 100, 200] as [number, number, number, number]; // Green
-          default: return [200, 200, 200, 200] as [number, number, number, number]; // Gray
+          case 'Lithium': return [0, 200, 255, 210] as [number, number, number, number];
+          case 'Cobalt': return [100, 100, 255, 210] as [number, number, number, number];
+          case 'Rare Earths': return [255, 100, 200, 210] as [number, number, number, number];
+          case 'Nickel': return [100, 255, 100, 210] as [number, number, number, number];
+          default: return [200, 200, 200, 210] as [number, number, number, number];
         }
       },
-      radiusMinPixels: 5,
-      radiusMaxPixels: 12,
+      getSize: 18,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 24,
       pickable: true,
     });
   }
@@ -3405,23 +3623,24 @@ export class DeckGLMap {
     });
   }
 
-  private createSarDetectionsLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createSarDetectionsLayer(): IconLayer<SarDarkShip> {
+    return new IconLayer<SarDarkShip>({
       id: 'sar-detections-layer',
       data: this.sarDetections,
       getPosition: (d: SarDarkShip) => [d.lon, d.lat],
-      getRadius: 15000,
-      getFillColor: (d: SarDarkShip) => d.confidence > 0.8
+      getIcon: () => SIGNAL_ICON_VISUALS.sarDetections.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.sarDetections.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.sarDetections.mapping,
+      getColor: (d: SarDarkShip) => d.confidence > 0.8
         ? [180, 0, 255, 220] as [number, number, number, number]
         : d.confidence > 0.5
           ? [120, 0, 200, 180] as [number, number, number, number]
           : [80, 0, 160, 150] as [number, number, number, number],
-      radiusMinPixels: 4,
-      radiusMaxPixels: 14,
+      getSize: (d: SarDarkShip) => d.confidence > 0.8 ? 21 : d.confidence > 0.5 ? 18 : 16,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 26,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 120] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
@@ -3467,54 +3686,64 @@ export class DeckGLMap {
     });
   }
 
-  private createRoutingAnomaliesLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createRoutingAnomaliesLayer(): IconLayer<RoutingAnomaly> {
+    return new IconLayer<RoutingAnomaly>({
       id: 'routing-anomalies-layer',
       data: this.routingAnomalies,
       getPosition: (d: RoutingAnomaly) => [d.lon, d.lat],
-      getRadius: 25000,
-      getFillColor: (d: RoutingAnomaly) => d.severity === 'HIGH'
-        ? [255, 50, 100, 220] as [number, number, number, number]
-        : d.severity === 'MEDIUM'
-          ? [255, 140, 0, 190] as [number, number, number, number]
-          : [100, 100, 255, 160] as [number, number, number, number],
-      radiusMinPixels: 5,
-      radiusMaxPixels: 18,
+      getIcon: () => SIGNAL_ICON_VISUALS.routingAnomalies.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.routingAnomalies.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.routingAnomalies.mapping,
+      getColor: (d: RoutingAnomaly) => {
+        const severity = String(d.severity || '').toUpperCase();
+        if (severity.includes('HIGH')) return [255, 50, 100, 220] as [number, number, number, number];
+        if (severity.includes('MEDIUM')) return [255, 140, 0, 190] as [number, number, number, number];
+        return [100, 100, 255, 160] as [number, number, number, number];
+      },
+      getSize: (d: RoutingAnomaly) => {
+        const severity = String(d.severity || '').toUpperCase();
+        if (severity.includes('HIGH')) return 22;
+        if (severity.includes('MEDIUM')) return 19;
+        return 16;
+      },
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 120] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
-  private createRadiationReadingsLayer(): ScatterplotLayer {
+  private createRadiationReadingsLayer(): IconLayer<RadiationReading> {
     const BASELINE_CPM = 30;
-    return new ScatterplotLayer({
+    return new IconLayer<RadiationReading>({
       id: 'radiation-readings-layer',
       data: this.radiationReadings.filter(r => r.cpm > BASELINE_CPM * 2),
       getPosition: (d: RadiationReading) => [d.longitude, d.latitude],
-      getRadius: (d: RadiationReading) => Math.min(50000, 8000 + (d.cpm / BASELINE_CPM) * 5000),
-      getFillColor: (d: RadiationReading) => d.cpm > BASELINE_CPM * 10
+      getIcon: () => SIGNAL_ICON_VISUALS.radiationReadings.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.radiationReadings.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.radiationReadings.mapping,
+      getColor: (d: RadiationReading) => d.cpm > BASELINE_CPM * 10
         ? [255, 0, 0, 220] as [number, number, number, number]
         : d.cpm > BASELINE_CPM * 5
           ? [255, 140, 0, 200] as [number, number, number, number]
           : [255, 255, 0, 170] as [number, number, number, number],
-      radiusMinPixels: 4,
-      radiusMaxPixels: 20,
+      getSize: (d: RadiationReading) => Math.min(30, 14 + (d.cpm / BASELINE_CPM) * 2.2),
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 34,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
-  private createAirQualityLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createAirQualityLayer(): IconLayer<AirQualityReading> {
+    return new IconLayer<AirQualityReading>({
       id: 'air-quality-layer',
       data: this.airQualityReadings.filter(r => r.aqi > 50),
       getPosition: (d: AirQualityReading) => [d.lon, d.lat],
-      getRadius: 15000,
-      getFillColor: (d: AirQualityReading) => d.aqi > 300
+      getIcon: () => SIGNAL_ICON_VISUALS.airQuality.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.airQuality.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.airQuality.mapping,
+      getColor: (d: AirQualityReading) => d.aqi > 300
         ? [180, 0, 0, 230] as [number, number, number, number]
         : d.aqi > 200
           ? [255, 50, 50, 210] as [number, number, number, number]
@@ -3523,85 +3752,94 @@ export class DeckGLMap {
             : d.aqi > 100
               ? [255, 200, 0, 170] as [number, number, number, number]
               : [150, 220, 50, 140] as [number, number, number, number],
-      radiusMinPixels: 4,
-      radiusMaxPixels: 16,
+      getSize: (d: AirQualityReading) => d.aqi > 300 ? 23 : d.aqi > 200 ? 20 : d.aqi > 150 ? 18 : 16,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
-      stroked: false,
     });
   }
 
-  private createDeforestationAlertsLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createDeforestationAlertsLayer(): IconLayer<DeforestationAlert> {
+    return new IconLayer<DeforestationAlert>({
       id: 'deforestation-alerts-layer',
       data: this.deforestationAlerts,
       getPosition: (d: DeforestationAlert) => [d.lon, d.lat],
-      getRadius: (d: DeforestationAlert) => Math.min(80000, 10000 + d.areaHa * 200),
-      getFillColor: (d: DeforestationAlert) => d.nearStrategicSite
+      getIcon: () => SIGNAL_ICON_VISUALS.deforestation.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.deforestation.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.deforestation.mapping,
+      getColor: (d: DeforestationAlert) => d.nearStrategicSite
         ? [200, 80, 0, 220] as [number, number, number, number]
         : [180, 120, 0, 180] as [number, number, number, number],
-      radiusMinPixels: 5,
-      radiusMaxPixels: 24,
+      getSize: (d: DeforestationAlert) => Math.min(28, 13 + Math.sqrt(Math.max(0, d.areaHa)) * 0.6),
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 32,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 200, 100, 120] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
-  private createAcarsMessagesLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createAcarsMessagesLayer(): IconLayer<AcarsMessage> {
+    return new IconLayer<AcarsMessage>({
       id: 'acars-messages-layer',
       data: this.acarsMessages.filter(m => m.lat !== 0 || m.lon !== 0),
       getPosition: (d: AcarsMessage) => [d.lon, d.lat],
-      getRadius: 12000,
-      getFillColor: (d: AcarsMessage) => d.milCategory === 'ACARS_MIL_CATEGORY_MEDICAL_EVAC'
+      getIcon: () => SIGNAL_ICON_VISUALS.acarsMessages.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.acarsMessages.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.acarsMessages.mapping,
+      getColor: (d: AcarsMessage) => d.milCategory === 'ACARS_MIL_CATEGORY_MEDICAL_EVAC'
         ? [255, 50, 50, 220] as [number, number, number, number]
         : d.milCategory === 'ACARS_MIL_CATEGORY_TACTICAL'
           ? [255, 165, 0, 200] as [number, number, number, number]
           : [100, 180, 255, 180] as [number, number, number, number],
-      radiusMinPixels: 4,
-      radiusMaxPixels: 14,
+      getSize: (d: AcarsMessage) => d.milCategory === 'ACARS_MIL_CATEGORY_MEDICAL_EVAC'
+        ? 21
+        : d.milCategory === 'ACARS_MIL_CATEGORY_TACTICAL'
+          ? 19
+          : 17,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 120] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
-  private createWhaleTransfersLayer(): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createWhaleTransfersLayer(): IconLayer<WhaleTransfer> {
+    return new IconLayer<WhaleTransfer>({
       id: 'whale-transfers-layer',
       data: this.whaleTransfers.filter(t => t.lat !== 0 || t.lon !== 0),
       getPosition: (d: WhaleTransfer) => [d.lon, d.lat],
-      getRadius: (d: WhaleTransfer) => Math.min(80000, 10000 + Math.sqrt(d.amountUsd) * 2),
-      getFillColor: (d: WhaleTransfer) => d.amountUsd > 50_000_000
+      getIcon: () => SIGNAL_ICON_VISUALS.whaleTransfers.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.whaleTransfers.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.whaleTransfers.mapping,
+      getColor: (d: WhaleTransfer) => d.amountUsd > 50_000_000
         ? [255, 215, 0, 230] as [number, number, number, number]
         : d.amountUsd > 10_000_000
           ? [200, 160, 0, 200] as [number, number, number, number]
           : [150, 120, 0, 170] as [number, number, number, number],
-      radiusMinPixels: 5,
-      radiusMaxPixels: 22,
+      getSize: (d: WhaleTransfer) => Math.min(30, 14 + Math.log10(Math.max(1, d.amountUsd / 1_000_000)) * 7),
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 34,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 100] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
-  private createNavWarningsLayer(): ScatterplotLayer {
+  private createNavWarningsLayer(): IconLayer<NavigationalWarning> {
     const withCoords = this.navWarnings.filter(w => w.location != null && (w.location.latitude !== 0 || w.location.longitude !== 0));
-    return new ScatterplotLayer({
+    return new IconLayer<NavigationalWarning>({
       id: 'nav-warnings-layer',
       data: withCoords,
       getPosition: (d: NavigationalWarning) => [d.location!.longitude, d.location!.latitude],
-      getRadius: 40000,
-      getFillColor: [255, 165, 0, 200] as [number, number, number, number],
-      radiusMinPixels: 5,
-      radiusMaxPixels: 18,
+      getIcon: () => SIGNAL_ICON_VISUALS.navWarnings.icon,
+      iconAtlas: SIGNAL_ICON_VISUALS.navWarnings.atlas,
+      iconMapping: SIGNAL_ICON_VISUALS.navWarnings.mapping,
+      getColor: [255, 165, 0, 205] as [number, number, number, number],
+      getSize: 19,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 120] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
