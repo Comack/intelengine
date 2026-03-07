@@ -144,6 +144,11 @@ interface TechEventMarker {
   daysUntil: number;
 }
 
+interface WeatherPolygonDatum {
+  polygon: [number, number][];
+  alert: WeatherAlert;
+}
+
 // View presets with longitude, latitude, zoom
 const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; zoom: number }> = {
   global: { longitude: 0, latitude: 20, zoom: 1.5 },
@@ -263,25 +268,43 @@ const PULSE_LAYER_IDS = new Set<string>([
   'kindness-pulse',
 ]);
 
+const createSvgIconDataUrl = (svgContent: string): string =>
+  `data:image/svg+xml;base64,${btoa(svgContent)}`;
+
 // SVG icons as data URLs for different marker shapes
 const MARKER_ICONS = {
   // Square - for datacenters
-  square: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="3" fill="white"/></svg>`),
+  square: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="3" fill="white"/></svg>`),
   // Diamond - for hotspots
-  diamond: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,16 16,30 2,16" fill="white"/></svg>`),
+  diamond: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,16 16,30 2,16" fill="white"/></svg>`),
   // Triangle up - for military bases
-  triangleUp: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,28 2,28" fill="white"/></svg>`),
+  triangleUp: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,28 2,28" fill="white"/></svg>`),
   // Hexagon - for nuclear
-  hexagon: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="white"/></svg>`),
+  hexagon: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="white"/></svg>`),
   // Circle - fallback
-  circle: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="white"/></svg>`),
+  circle: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="white"/></svg>`),
   // Star - for special markers
-  star: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 20,12 30,12 22,19 25,30 16,23 7,30 10,19 2,12 12,12" fill="white"/></svg>`),
+  star: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 20,12 30,12 22,19 25,30 16,23 7,30 10,19 2,12 12,12" fill="white"/></svg>`),
+  // Ship - for military/naval signals
+  ship: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 24,12 22,25 10,25 8,12" fill="white"/><rect x="13" y="9" width="6" height="8" fill="white"/></svg>`),
+  // Aircraft - for military flights
+  aircraft: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 19,11 29,14 19,17 16,30 13,17 3,14 13,11" fill="white"/></svg>`),
+  // Cloud/bolt - for weather alerts
+  weather: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="12" cy="14" r="5" fill="white"/><circle cx="19" cy="13" r="6" fill="white"/><circle cx="24" cy="17" r="4" fill="white"/><rect x="8" y="16" width="18" height="7" rx="3" fill="white"/><polygon points="17,16 13,24 17,24 14,31 22,21 18,21 21,16" fill="white"/></svg>`),
+  // Lightning bolt - for outage hotspots
+  outage: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="18,2 6,18 14,18 10,30 26,12 18,12" fill="white"/></svg>`),
+  // Warning triangle - for AIS disruption signals
+  warning: createSvgIconDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,28 2,28" fill="white"/><rect x="14.5" y="10" width="3" height="10" fill="black"/><circle cx="16" cy="24" r="2" fill="black"/></svg>`),
 };
 
 const BASES_ICON_MAPPING = { triangleUp: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 const NUCLEAR_ICON_MAPPING = { hexagon: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 const DATACENTER_ICON_MAPPING = { square: { x: 0, y: 0, width: 32, height: 32, mask: true } };
+const WEATHER_ICON_MAPPING = { weather: { x: 0, y: 0, width: 32, height: 32, mask: true } };
+const OUTAGE_ICON_MAPPING = { outage: { x: 0, y: 0, width: 32, height: 32, mask: true } };
+const WARNING_ICON_MAPPING = { warning: { x: 0, y: 0, width: 32, height: 32, mask: true } };
+const MILITARY_VESSEL_ICON_MAPPING = { ship: { x: 0, y: 0, width: 32, height: 32, mask: true } };
+const MILITARY_FLIGHT_ICON_MAPPING = { aircraft: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 
 const CONFLICT_ZONES_GEOJSON: GeoJSON.FeatureCollection = {
   type: 'FeatureCollection',
@@ -1639,7 +1662,7 @@ export class DeckGLMap {
 
     // Weather alerts layer
     if (mapLayers.weather && filteredWeatherAlerts.length > 0) {
-      layers.push(this.createWeatherLayer(filteredWeatherAlerts));
+      layers.push(...this.createWeatherLayers(filteredWeatherAlerts, deferHeavyLayers));
     }
 
     // Internet outages layer
@@ -1965,7 +1988,10 @@ export class DeckGLMap {
   }
 
   private getBasesData(): MilitaryBaseEnriched[] {
-    return this.serverBasesLoaded ? this.serverBases : MILITARY_BASES as MilitaryBaseEnriched[];
+    if (this.serverBasesLoaded && this.serverBases.length > 0) {
+      return this.serverBases;
+    }
+    return MILITARY_BASES as MilitaryBaseEnriched[];
   }
 
   private getBaseColor(type: string, a: number): [number, number, number, number] {
@@ -2259,36 +2285,99 @@ export class DeckGLMap {
     });
   }
 
-  private createWeatherLayer(alerts: WeatherAlert[]): ScatterplotLayer {
-    // Filter weather alerts that have centroid coordinates
-    const alertsWithCoords = alerts.filter(a => a.centroid && a.centroid.length === 2);
+  private getWeatherSeverityColor(severity: WeatherAlert['severity'], alpha = 220): [number, number, number, number] {
+    if (severity === 'Extreme') return [255, 32, 32, alpha];
+    if (severity === 'Severe') return [255, 120, 32, alpha];
+    if (severity === 'Moderate') return [255, 185, 64, alpha];
+    return [110, 166, 255, alpha];
+  }
 
-    return new ScatterplotLayer({
-      id: 'weather-layer',
-      data: alertsWithCoords,
-      getPosition: (d) => d.centroid as [number, number], // centroid is [lon, lat]
-      getRadius: 25000,
+  private createWeatherLayers(alerts: WeatherAlert[], deferHeavyLayers: boolean): Layer[] {
+    const zoom = this.maplibreMap?.getZoom() ?? 2;
+    const showAreaGeometry = !deferHeavyLayers && zoom >= 4.75;
+    const layers: Layer[] = [];
+
+    if (showAreaGeometry) {
+      const areaLayer = this.createWeatherAreasLayer(alerts);
+      if (areaLayer) layers.push(areaLayer);
+    }
+
+    layers.push(this.createWeatherLayer(alerts, showAreaGeometry));
+    return layers;
+  }
+
+  private createWeatherAreasLayer(alerts: WeatherAlert[]): PolygonLayer<WeatherPolygonDatum> | null {
+    const polygons: WeatherPolygonDatum[] = [];
+    for (const alert of alerts) {
+      for (const polygon of alert.polygons ?? []) {
+        if (polygon.length >= 3) polygons.push({ polygon, alert });
+      }
+    }
+    if (polygons.length === 0) return null;
+
+    return new PolygonLayer<WeatherPolygonDatum>({
+      id: 'weather-areas-layer',
+      data: polygons,
+      getPolygon: (d) => d.polygon,
       getFillColor: (d) => {
-        if (d.severity === 'Extreme') return [255, 0, 0, 200] as [number, number, number, number];
-        if (d.severity === 'Severe') return [255, 100, 0, 180] as [number, number, number, number];
-        if (d.severity === 'Moderate') return [255, 170, 0, 160] as [number, number, number, number];
-        return COLORS.weather;
+        const [r, g, b] = this.getWeatherSeverityColor(d.alert.severity, 220);
+        return [r, g, b, 58] as [number, number, number, number];
       },
-      radiusMinPixels: 8,
-      radiusMaxPixels: 20,
+      getLineColor: (d) => this.getWeatherSeverityColor(d.alert.severity, 190),
+      lineWidthMinPixels: 1,
+      lineWidthMaxPixels: 2,
+      stroked: true,
+      filled: true,
       pickable: true,
     });
   }
 
-  private createOutagesLayer(outages: InternetOutage[]): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private createWeatherLayer(alerts: WeatherAlert[], areaLayerVisible = false): IconLayer<WeatherAlert> {
+    const alertsWithCoords = alerts.filter(a => a.centroid && a.centroid.length === 2);
+    return new IconLayer<WeatherAlert>({
+      id: 'weather-layer',
+      data: alertsWithCoords,
+      getPosition: (d) => d.centroid as [number, number],
+      iconAtlas: MARKER_ICONS.weather,
+      iconMapping: WEATHER_ICON_MAPPING,
+      getIcon: () => 'weather',
+      getColor: (d) => this.getWeatherSeverityColor(d.severity, areaLayerVisible ? 190 : 235),
+      getSize: (d) => {
+        if (d.severity === 'Extreme') return areaLayerVisible ? 26 : 30;
+        if (d.severity === 'Severe') return areaLayerVisible ? 23 : 27;
+        if (d.severity === 'Moderate') return areaLayerVisible ? 21 : 24;
+        return areaLayerVisible ? 19 : 22;
+      },
+      sizeUnits: 'pixels',
+      sizeMinPixels: 12,
+      sizeMaxPixels: 32,
+      pickable: true,
+    });
+  }
+
+  private getOutageColor(severity: InternetOutage['severity']): [number, number, number, number] {
+    if (severity === 'total') return [255, 48, 48, 230];
+    if (severity === 'major') return [255, 138, 42, 220];
+    return [255, 190, 70, 210];
+  }
+
+  private createOutagesLayer(outages: InternetOutage[]): IconLayer<InternetOutage> {
+    return new IconLayer<InternetOutage>({
       id: 'outages-layer',
       data: outages,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 20000,
-      getFillColor: COLORS.outage,
-      radiusMinPixels: 6,
-      radiusMaxPixels: 18,
+      iconAtlas: MARKER_ICONS.outage,
+      iconMapping: OUTAGE_ICON_MAPPING,
+      getIcon: () => 'outage',
+      getColor: (d) => this.getOutageColor(d.severity),
+      getSize: (d) => {
+        if (d.severity === 'total') return 23;
+        if (d.severity === 'major') return 20;
+        return 17;
+      },
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
     });
   }
@@ -2364,29 +2453,30 @@ export class DeckGLMap {
     });
   }
 
-  private createAisDisruptionsLayer(): ScatterplotLayer {
-    // AIS spoofing/jamming events
-    return new ScatterplotLayer({
+  private getAisDisruptionColor(event: AisDisruptionEvent): [number, number, number, number] {
+    if (event.severity === 'high') return [255, 64, 64, 230];
+    if (event.severity === 'elevated') return [255, 165, 56, 220];
+    return [255, 215, 110, 200];
+  }
+
+  private createAisDisruptionsLayer(): IconLayer<AisDisruptionEvent> {
+    return new IconLayer<AisDisruptionEvent>({
       id: 'ais-disruptions-layer',
       data: this.aisDisruptions,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 12000,
-      getFillColor: (d) => {
-        // Color by severity/type
-        if (d.severity === 'high' || d.type === 'spoofing') {
-          return [255, 50, 50, 220] as [number, number, number, number]; // Red
-        }
-        if (d.severity === 'medium') {
-          return [255, 150, 0, 200] as [number, number, number, number]; // Orange
-        }
-        return [255, 200, 100, 180] as [number, number, number, number]; // Yellow
+      iconAtlas: MARKER_ICONS.warning,
+      iconMapping: WARNING_ICON_MAPPING,
+      getIcon: () => 'warning',
+      getColor: (d) => this.getAisDisruptionColor(d),
+      getSize: (d) => {
+        if (d.severity === 'high') return 20;
+        if (d.severity === 'elevated') return 18;
+        return 16;
       },
-      radiusMinPixels: 6,
-      radiusMaxPixels: 14,
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 24,
       pickable: true,
-      stroked: true,
-      getLineColor: [255, 255, 255, 150] as [number, number, number, number],
-      lineWidthMinPixels: 1,
     });
   }
 
@@ -2426,25 +2516,43 @@ export class DeckGLMap {
     });
   }
 
-  private createMilitaryVesselsLayer(vessels: MilitaryVessel[]): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private getMilitaryVesselColor(vessel: MilitaryVessel): [number, number, number, number] {
+    if (vessel.usniSource) return [255, 174, 74, 205];
+    switch (vessel.vesselType) {
+      case 'carrier':
+      case 'amphibious':
+        return [255, 78, 78, 230];
+      case 'destroyer':
+      case 'frigate':
+        return [255, 130, 64, 225];
+      case 'submarine':
+        return [194, 120, 255, 220];
+      case 'patrol':
+        return [250, 190, 82, 220];
+      default:
+        return [255, 153, 112, 220];
+    }
+  }
+
+  private createMilitaryVesselsLayer(vessels: MilitaryVessel[]): IconLayer<MilitaryVessel> {
+    return new IconLayer<MilitaryVessel>({
       id: 'military-vessels-layer',
       data: vessels,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 6000,
-      getFillColor: (d) => {
-        if (d.usniSource) return [255, 160, 60, 160] as [number, number, number, number]; // Orange, lower alpha for USNI-only
-        return COLORS.vesselMilitary;
+      iconAtlas: MARKER_ICONS.ship,
+      iconMapping: MILITARY_VESSEL_ICON_MAPPING,
+      getIcon: () => 'ship',
+      getColor: (d) => this.getMilitaryVesselColor(d),
+      getSize: (d) => {
+        if (d.vesselType === 'carrier') return 22;
+        if (d.vesselType === 'amphibious' || d.vesselType === 'destroyer') return 20;
+        return 18;
       },
-      radiusMinPixels: 4,
-      radiusMaxPixels: 10,
+      getAngle: (d) => (Number.isFinite(d.heading) ? d.heading : 0),
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
-      stroked: true,
-      getLineColor: (d) => {
-        if (d.usniSource) return [255, 180, 80, 200] as [number, number, number, number]; // Orange outline
-        return [0, 0, 0, 0] as [number, number, number, number]; // No outline for AIS
-      },
-      lineWidthMinPixels: 2,
     });
   }
 
@@ -2467,15 +2575,44 @@ export class DeckGLMap {
     });
   }
 
-  private createMilitaryFlightsLayer(flights: MilitaryFlight[]): ScatterplotLayer {
-    return new ScatterplotLayer({
+  private getMilitaryFlightColor(flight: MilitaryFlight): [number, number, number, number] {
+    switch (flight.aircraftType) {
+      case 'fighter':
+      case 'bomber':
+        return [255, 76, 76, 230];
+      case 'awacs':
+      case 'reconnaissance':
+      case 'patrol':
+        return [90, 168, 255, 225];
+      case 'transport':
+      case 'tanker':
+      case 'vip':
+        return [255, 185, 84, 220];
+      case 'drone':
+        return [196, 128, 255, 220];
+      default:
+        return COLORS.flightMilitary;
+    }
+  }
+
+  private createMilitaryFlightsLayer(flights: MilitaryFlight[]): IconLayer<MilitaryFlight> {
+    return new IconLayer<MilitaryFlight>({
       id: 'military-flights-layer',
       data: flights,
       getPosition: (d) => [d.lon, d.lat],
-      getRadius: 8000,
-      getFillColor: COLORS.flightMilitary,
-      radiusMinPixels: 4,
-      radiusMaxPixels: 12,
+      iconAtlas: MARKER_ICONS.aircraft,
+      iconMapping: MILITARY_FLIGHT_ICON_MAPPING,
+      getIcon: () => 'aircraft',
+      getColor: (d) => this.getMilitaryFlightColor(d),
+      getSize: (d) => {
+        if (d.aircraftType === 'bomber' || d.aircraftType === 'transport') return 21;
+        if (d.aircraftType === 'fighter') return 19;
+        return 18;
+      },
+      getAngle: (d) => (Number.isFinite(d.heading) ? d.heading : 0),
+      sizeUnits: 'pixels',
+      sizeMinPixels: 10,
+      sizeMaxPixels: 28,
       pickable: true,
     });
   }
@@ -3513,7 +3650,7 @@ export class DeckGLMap {
       case 'military-vessels-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.operatorCountry)}</div>` };
       case 'military-flights-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.registration || t('components.deckgl.tooltip.militaryAircraft'))}</strong><br/>${text(obj.type)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.callsign || obj.registration || t('components.deckgl.tooltip.militaryAircraft'))}</strong><br/>${text(obj.aircraftType || t('components.deckgl.tooltip.militaryAircraft'))}</div>` };
       case 'military-vessel-clusters-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.vesselCluster'))}</strong><br/>${obj.vesselCount || 0} ${t('components.deckgl.tooltip.vessels')}<br/>${text(obj.activityType)}</div>` };
       case 'military-flight-clusters-layer':
@@ -3643,10 +3780,12 @@ export class DeckGLMap {
       }
       case 'repair-ships-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name || t('components.deckgl.tooltip.repairShip'))}</strong><br/>${text(obj.status)}</div>` };
-      case 'weather-layer': {
-        const areaDesc = typeof obj.areaDesc === 'string' ? obj.areaDesc : '';
+      case 'weather-layer':
+      case 'weather-areas-layer': {
+        const weatherObj = obj.alert ?? obj;
+        const areaDesc = typeof weatherObj.areaDesc === 'string' ? weatherObj.areaDesc : '';
         const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${area}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(weatherObj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(weatherObj.severity)}${area}</div>` };
       }
       case 'outages-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.asn || t('components.deckgl.tooltip.internetOutage'))}</strong><br/>${text(obj.country)}</div>` };
@@ -3905,6 +4044,7 @@ export class DeckGLMap {
       'pipelines-layer': 'pipeline',
       'earthquakes-layer': 'earthquake',
       'weather-layer': 'weather',
+      'weather-areas-layer': 'weather',
       'outages-layer': 'outage',
       'cyber-threats-layer': 'cyberThreat',
       'iran-events-layer': 'iranEvent',
@@ -3946,6 +4086,9 @@ export class DeckGLMap {
       const conflictId = info.object.properties.id;
       const fullConflict = CONFLICT_ZONES.find(c => c.id === conflictId);
       if (fullConflict) data = fullConflict;
+    }
+    if ((layerId === 'weather-layer' || layerId === 'weather-areas-layer') && typeof data === 'object' && data && 'alert' in data) {
+      data = (data as { alert: WeatherAlert }).alert;
     }
 
     // Enrich iran events with related events from same location

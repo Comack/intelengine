@@ -10,6 +10,7 @@ export interface WeatherAlert {
   onset: Date;
   expires: Date;
   coordinates: [number, number][];
+  polygons?: [number, number][][];
   centroid?: [number, number];
 }
 
@@ -26,7 +27,7 @@ interface NWSAlert {
   };
   geometry?: {
     type: string;
-    coordinates: number[][][] | number[][];
+    coordinates: number[][][] | number[][][][];
   };
 }
 
@@ -51,7 +52,8 @@ export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
       .filter(alert => alert.properties.severity !== 'Unknown')
       .slice(0, 50)
       .map(alert => {
-        const coords = extractCoordinates(alert.geometry);
+        const polygons = extractPolygons(alert.geometry);
+        const coords = flattenCoordinates(polygons);
         return {
           id: alert.id,
           event: alert.properties.event,
@@ -62,6 +64,7 @@ export async function fetchWeatherAlerts(): Promise<WeatherAlert[]> {
           onset: new Date(alert.properties.onset),
           expires: new Date(alert.properties.expires),
           coordinates: coords,
+          polygons,
           centroid: calculateCentroid(coords),
         };
       });
@@ -72,22 +75,47 @@ export function getWeatherStatus(): string {
   return breaker.getStatus();
 }
 
-function extractCoordinates(geometry?: NWSAlert['geometry']): [number, number][] {
+function extractPolygons(geometry?: NWSAlert['geometry']): [number, number][][] {
   if (!geometry) return [];
+
+  const normalizeRing = (ring: unknown): [number, number][] => {
+    if (!Array.isArray(ring)) return [];
+    const normalized: [number, number][] = [];
+    for (const point of ring) {
+      if (!Array.isArray(point) || point.length < 2) continue;
+      const lon = Number(point[0]);
+      const lat = Number(point[1]);
+      if (Number.isFinite(lon) && Number.isFinite(lat)) {
+        normalized.push([lon, lat]);
+      }
+    }
+    return normalized;
+  };
 
   try {
     if (geometry.type === 'Polygon') {
       const coords = geometry.coordinates as unknown as number[][][];
-      return coords[0]?.map(c => [c[0], c[1]] as [number, number]) || [];
+      const ring = normalizeRing(coords[0]);
+      return ring.length >= 3 ? [ring] : [];
     }
     if (geometry.type === 'MultiPolygon') {
       const coords = geometry.coordinates as unknown as number[][][][];
-      return coords[0]?.[0]?.map(c => [c[0], c[1]] as [number, number]) || [];
+      const polygons: [number, number][][] = [];
+      for (const polygon of coords) {
+        const ring = normalizeRing(polygon?.[0]);
+        if (ring.length >= 3) polygons.push(ring);
+      }
+      return polygons;
     }
   } catch {
     return [];
   }
   return [];
+}
+
+function flattenCoordinates(polygons: [number, number][][]): [number, number][] {
+  if (polygons.length === 0) return [];
+  return polygons.flatMap((ring) => ring);
 }
 
 function calculateCentroid(coords: [number, number][]): [number, number] | undefined {

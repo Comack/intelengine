@@ -538,7 +538,7 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
     variant: 'both',
     enabledLayers: ['weather'],
     camera: seededCameras.weather,
-    expectedDeckLayers: ['weather-layer'],
+    expectedDeckLayers: ['weather-layer', 'weather-areas-layer'],
     expectedSelectors: [],
   },
   {
@@ -859,6 +859,7 @@ const seedAllDynamicData = (): void => {
       onset: new Date('2026-02-01T09:00:00.000Z'),
       expires: new Date('2026-02-01T18:00:00.000Z'),
       coordinates: [[-80.1, 25.7], [-80.2, 25.8], [-80.3, 25.6]],
+      polygons: [[[-80.35, 25.55], [-80.05, 25.55], [-80.0, 25.85], [-80.3, 25.9], [-80.35, 25.55]]],
       centroid: [-80.2, 25.7],
     },
   ];
